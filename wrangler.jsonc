@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "minisquad",
+  "compatibility_date": "2026-10-01",
+  // Static Vite build only: no Worker script, Cloudflare serves ./dist directly.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
