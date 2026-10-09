@@ -17,6 +17,7 @@
 // then the floor (PROGRESSION.spreadFloorDeg) on the standing cone. The moving penalty is
 // scaled by the same factor, so the moving cone = standing + penalty is never below the floor.
 import type { SoldierStats } from './config';
+import { FIRST_MISSION } from './campaign';
 
 export const PROGRESSION = {
   /** XP is per soldier, equal for every eligible (extracted) soldier. No XP for kills etc. */
@@ -110,16 +111,26 @@ export function cleanRank(v: unknown, max: number): number {
 }
 
 // ---------------- account ----------------
-export interface MissionRecord { completions: number; firstClearRun: string | null }
+/** Per mission id. `bestStars` (v0.4) only ever goes up. */
+export interface MissionRecord { completions: number; firstClearRun: string | null; bestStars: number }
+/** v0.4 campaign progress. */
+export interface CampaignProgress {
+  /** Missions the player may deploy into (Mission 1 always; others by first clears). */
+  unlockedMissions: string[];
+  /** Mission chosen on the Campaign screen (next Deploy goes there). */
+  selectedMission: string;
+}
 export interface AccountData {
   credits: number;
   squadTraining: SquadTrainingRanks;
-  /** Per stable mission id. Supports more missions later. */
+  /** Per stable mission id (v0.3 'comms-outpost' records are kept as history). */
   missions: Record<string, MissionRecord>;
   /** Recently settled mission-run ids: a run is rewarded at most once. */
   settledRuns: string[];
+  campaign: CampaignProgress;
 }
-export const newAccount = (): AccountData => ({ credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [] });
+export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
+export const newAccount = (): AccountData => ({ credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign() });
 
 let account: AccountData = newAccount();
 export const getAccount = () => account;
@@ -172,8 +183,14 @@ export interface MissionOutcome {
   won: boolean;
   /** Deployed roster soldiers in deployment order. */
   deployed: { id: string; status: FinalStatus; downs: number }[];
-  /** Optional objectives this mission offers (none in Secure the Communications Outpost). */
-  optional: { total: number; completed: number };
+  /**
+   * Optional objectives this mission offers. `list` (v0.4) names them; an entry with
+   * replaces 'fullExtraction' IS the whole-squad-extracted achievement, so the global
+   * full-extraction bonus is not paid a second time for that mission (see below).
+   */
+  optional: { total: number; completed: number; list?: { id: string; label: string; completed: boolean; replaces?: 'fullExtraction' }[] };
+  /** Stars earned this run (0..3, v0.4). */
+  stars?: number;
 }
 export interface RewardLine { label: string; amount: number }
 export interface SoldierReward {
@@ -192,6 +209,14 @@ export interface MissionReward {
   missionId: string;
   won: boolean;
   firstClear: boolean;
+  /** First clear whose one-time Credit bonus was already paid by the v0.3 mission on this map. */
+  legacyFirstClearPaid: boolean;
+  /** v0.4 campaign: stars this run, best before / after, and what this clear unlocked NOW. */
+  stars: number;
+  prevBest: number;
+  bestStars: number;
+  unlockedSoldiers: string[];
+  unlockedMissions: string[];
   xpLines: RewardLine[];
   xpMul: number;
   xpEach: number;
@@ -205,23 +230,27 @@ export interface MissionReward {
  * Pure reward math (no state). XP rounding: the per-soldier total is multiplied by the
  * replay multiplier and rounded to the nearest integer, halves up (150 x 0.75 = 112.5 -> 113).
  */
-export function computeMissionRewards(o: MissionOutcome, firstClear: boolean) {
+export function computeMissionRewards(o: MissionOutcome, firstClear: boolean, firstClearBonusPaid = false) {
   const X = PROGRESSION.xp, C = PROGRESSION.credits;
   if (!o.won) return { xpLines: [] as RewardLine[], xpMul: 1, xpEach: 0, creditLines: [] as RewardLine[], credits: 0 };
   const full = o.deployed.length > 0 && o.deployed.every((d) => d.status === 'Standing');
   const flawless = full && o.deployed.every((d) => d.downs === 0); // nobody downed (and so nobody lost)
   const opt = Math.max(0, Math.min(o.optional.completed, o.optional.total));
+  // OVERLAP RULE: when an optional objective IS "whole squad extracted" (Mission 3), that
+  // achievement pays once, as the optional objective (+25 XP / +150 CR); the global
+  // whole-squad bonus line is left out for that mission.
+  const fullPaid = full && !(o.optional.list ?? []).some((x) => x.replaces === 'fullExtraction');
   const xpLines: RewardLine[] = [{ label: 'Victory', amount: X.victory }];
   if (o.optional.total > 0) xpLines.push({ label: `Optional objectives ${opt}/${o.optional.total}`, amount: X.perOptionalObjective * opt });
-  if (full) xpLines.push({ label: 'Whole squad extracted', amount: X.fullExtraction });
+  if (fullPaid) xpLines.push({ label: 'Whole squad extracted', amount: X.fullExtraction });
   if (flawless) xpLines.push({ label: 'Nobody downed', amount: X.flawless });
   const xpMul = firstClear ? 1 : X.replayMul;
   const xpEach = Math.floor(xpLines.reduce((a, l) => a + l.amount, 0) * xpMul + 0.5);
   const creditLines: RewardLine[] = [{ label: firstClear ? 'Victory' : 'Victory (replay)', amount: firstClear ? C.victory : C.replayVictory }];
   if (o.optional.total > 0) creditLines.push({ label: `Optional objectives ${opt}/${o.optional.total}`, amount: C.perOptionalObjective * opt });
-  if (full) creditLines.push({ label: 'Whole squad extracted', amount: C.fullExtraction });
+  if (fullPaid) creditLines.push({ label: 'Whole squad extracted', amount: C.fullExtraction });
   if (flawless) creditLines.push({ label: 'Nobody downed', amount: C.flawless });
-  if (firstClear) creditLines.push({ label: 'First-time completion', amount: C.firstClear });
+  if (firstClear && !firstClearBonusPaid) creditLines.push({ label: 'First-time completion', amount: C.firstClear });
   return { xpLines, xpMul, xpEach, creditLines, credits: creditLines.reduce((a, l) => a + l.amount, 0) };
 }
 

@@ -23,6 +23,8 @@ const SCENARIOS = [
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
+  // v0.4: this tool plays the comms-outpost map, now Mission 3 (Field Medicine); unlock all (debug) first
+  await page.evaluate(() => { window.__debugUnlockAll(); window.game.selectMission('field-medicine', true); });
   const summary = [];
   for (const sc of SCENARIOS) {
     const runs = [];

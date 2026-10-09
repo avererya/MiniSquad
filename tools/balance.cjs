@@ -20,6 +20,8 @@ const STYLE = process.env.STYLE || 'push';
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
+  // v0.4: this tool plays the comms-outpost map, now Mission 3 (Field Medicine); unlock all (debug) first
+  await page.evaluate(() => { window.__debugUnlockAll(); window.game.selectMission('field-medicine', true); });
   await page.click('[data-a="deploy"]');
   const out = await page.evaluate(async ({ MODE, CONFIG, RUNS, CLASSES, PRESETS, OLD_RATE, STYLE }) => {
     const g = window.game;

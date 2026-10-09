@@ -3,6 +3,7 @@ import { VERSION_LABEL } from './version';
 import { CFG, DEFAULTS, applyConfigJSON, getPath, resetConfig, setPath } from './config';
 import type { Game } from './game';
 import { CLASS_IDS, PRESETS } from './classes';
+import { CAMPAIGN } from './campaign';
 
 type S = [label: string, path: string, min: number, max: number, step: number];
 
@@ -72,6 +73,7 @@ const SECTIONS: [string, S[]][] = [
   ]],
   ['Downed / Revive', [
     ['Bleed-out (s)', 'revive.bleedOut', 3, 90, 1],
+    ['Critical warning (last s)', 'revive.criticalTime', 0, 15, 1],
     ['Revive radius', 'revive.radius', 20, 150, 5],
     ['Revive HP fraction', 'revive.hpFrac', 0.05, 1, 0.05],
   ]],
@@ -96,6 +98,7 @@ export class Tuning {
   private jsonBox!: HTMLTextAreaElement;
   private invulnBtn!: HTMLButtonElement;
   private presetSel!: HTMLSelectElement;
+  private missionSel!: HTMLSelectElement;
 
   constructor(private root: HTMLElement, private game: Game) {
     this.build();
@@ -128,8 +131,17 @@ export class Tuning {
         <button data-a="down">Down a soldier</button>
         <button data-a="invuln">Invulnerable: off</button>
         <button data-a="resetSave" class="danger">Reset save (roster, credits, training)…</button>
+        <button data-a="unlockAll" class="danger" title="Marks every playable mission and every soldier as unlocked IN YOUR SAVE (XP, credits, training untouched). Cannot be undone except by Reset save.">Unlock all missions + soldiers (modifies save)…</button>
+        <label title="Dev: start any mission (locked missions pay no rewards and unlock nothing)">Mission <select data-k="mission">${CAMPAIGN.filter((m) => m.playable).map((m) => `<option value="${m.id}">${m.number}. ${m.name}</option>`).join('')}</select></label>
       </div>`;
     this.presetSel = dbg.querySelector('select')!;
+    this.missionSel = dbg.querySelector('select[data-k="mission"]')!;
+    this.missionSel.addEventListener('change', () => {
+      const g = this.game;
+      g.selectMission(this.missionSel.value, true);
+      if (g.phase !== 'start') g.reset(); // same squad, chosen mission
+      this.refresh();
+    });
     // picking a preset restarts the mission right away with that squad
     this.presetSel.addEventListener('change', () => {
       const p = PRESETS.find((x) => x.id === this.presetSel.value);
@@ -150,6 +162,15 @@ export class Tuning {
           } else {
             b.dataset.armed = '1'; b.textContent = 'Tap again to reset ALL progress';
             window.setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Reset save (roster, credits, training)…'; } }, 4000);
+          }
+          break;
+        case 'unlockAll':
+          if (b.dataset.armed) {
+            delete b.dataset.armed; b.textContent = 'Unlock all missions + soldiers (modifies save)…';
+            g.debugUnlockAll?.();
+          } else {
+            b.dataset.armed = '1'; b.textContent = 'Tap again: unlock everything IN THE SAVE';
+            window.setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Unlock all missions + soldiers (modifies save)…'; } }, 4000);
           }
           break;
         case 'spawnF': if (g.phase === 'playing') g.spawnSoldier(); break;
@@ -234,6 +255,7 @@ export class Tuning {
       val.classList.toggle('changed', v !== def);
     }
     if (this.invulnBtn) this.invulnBtn.textContent = `Invulnerable: ${this.game.invuln ? 'ON' : 'off'}`;
+    if (this.missionSel) this.missionSel.value = this.game.missionId;
     if (this.presetSel) {
       const cur = this.game.composition.join(',');
       const p = this.game.deployment.kind === 'generic' ? PRESETS.find((x) => x.classes.join(',') === cur) : undefined;

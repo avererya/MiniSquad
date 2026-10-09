@@ -1,6 +1,9 @@
 // Full-viewport menu screens (outside the scaled 1280x720 stage, so text stays readable on
-// phones): the Barracks (tabs: Roster / Training / Squad Training, plus a details panel) and
-// the mission Results screen (stats, XP and level-ups, Credits).
+// phones): the Campaign screen (v0.4: mission list + details, launch screen), the Barracks
+// (tabs: Roster / Training / Squad Training, plus a details panel) and the mission Results
+// screen (stats, stars, optional objectives, XP and level-ups, Credits, unlocks).
+// Flow: Campaign -> Barracks (squad for the selected mission) -> Deploy -> Mission -> Results
+// -> Retry / Campaign / Barracks. Campaign can also deploy the saved squad directly.
 import type { Game } from './game';
 import { ABILITY_NAMES, CLASSES, CLASS_IDS, classStats, effectiveStats, type SoldierIdentity } from './classes';
 import { CFG } from './config';
@@ -8,8 +11,8 @@ import { TRAITS } from './traits';
 import { SQUAD_SLOTS } from './roster';
 import { drawClassPortrait } from './render';
 import { unlockAudio } from './audio';
-import { Mission } from './mission';
 import { VERSION_LABEL } from './version';
+import { CAMPAIGN, MISSION_TYPE_LABEL, STAR_TEXT, campaignMission, capacityFor, type CampaignMission } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, nextCost,
   type SquadTrainingStat, type TrainingStat,
@@ -22,7 +25,8 @@ const num = (v: number) => String(Math.round(v * 100) / 100);
 const cr = (v: number) => v.toLocaleString('en-US');
 const pct = (f: number) => (Math.abs(f) < 1e-9 ? '0%' : `${f > 0 ? '+' : '−'}${num(Math.abs(f * 100))}%`);
 
-type Screen = 'none' | 'barracks' | 'results';
+type Screen = 'none' | 'campaign' | 'barracks' | 'results';
+const stars = (n: number, of = 3) => `<span class="stars" title="${n}/${of} stars">${'★'.repeat(n)}<i>${'★'.repeat(Math.max(0, of - n))}</i></span>`;
 export type BarracksTab = 'roster' | 'training' | 'squad';
 const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING']];
 
@@ -48,6 +52,10 @@ export class Menus {
   private resizeTimer = 0;
   /** Double-tap guard for purchases (ms timestamp of the last accepted purchase tap). */
   private lastBuy = { key: '', t: -1e9 };
+  /** Mission highlighted on the Campaign screen. */
+  campaignSel = '';
+  /** Soldiers unlocked since the Barracks was last opened ("NEW" badge). */
+  newSoldiers = new Set<string>();
 
   constructor(private root: HTMLElement, private game: Game, private openSettings: () => void) {
     root.addEventListener('click', (e) => this.onClick(e));
@@ -66,8 +74,99 @@ export class Menus {
     this.root.innerHTML = '';
   }
 
+  // ---------------- Campaign ----------------
+  showCampaign(notice?: string) {
+    if (this.screen === 'barracks') this.newSoldiers.clear();
+    this.screen = 'campaign';
+    this.root.className = 'campaign';
+    const acc = getAccount();
+    const sel = acc.campaign.selectedMission;
+    this.game.selectMission(sel);
+    this.campaignSel = this.game.missionId;
+    this.renderCampaign();
+    if (notice) this.notice(notice);
+  }
+
+  private missionState(m: CampaignMission): 'locked' | 'available' | 'completed' | 'soon' {
+    if (!m.playable) return 'soon';
+    const acc = getAccount();
+    if (!acc.campaign.unlockedMissions.includes(m.id)) return 'locked';
+    return (acc.missions[m.id]?.completions ?? 0) > 0 ? 'completed' : 'available';
+  }
+
+  private renderCampaign() {
+    const acc = getAccount();
+    const total = CAMPAIGN.filter((m) => m.playable).length * 3;
+    const got = CAMPAIGN.reduce((a, m) => a + (acc.missions[m.id]?.bestStars ?? 0), 0);
+    const list = CAMPAIGN.map((m) => {
+      const st = this.missionState(m), best = acc.missions[m.id]?.bestStars ?? 0;
+      return `<button class="c-row ${st} ${m.id === this.campaignSel ? 'on' : ''}" data-a="csel" data-id="${m.id}">
+        <span class="c-num">${m.playable ? m.number : '…'}</span>
+        <span class="c-name"><b>${esc(m.name)}</b><small>${m.playable ? MISSION_TYPE_LABEL[m.type] : 'Future update'}</small></span>
+        <span class="c-state">${st === 'locked' ? '🔒' : st === 'soon' ? '' : stars(best)}</span>
+      </button>`;
+    }).join('');
+    const m = campaignMission(this.campaignSel) ?? CAMPAIGN[0];
+    this.root.innerHTML = `
+      <div class="m-wrap">
+        <header class="m-head">
+          <div class="m-title">CAMPAIGN</div>
+          <div class="c-total" title="Best stars, all missions">★ ${got}/${total}</div>
+          <div class="m-spacer"></div>
+          <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(acc.credits)}</b></div>
+          <button class="m-nav" data-a="to-barracks" title="Barracks: soldiers, training (B)">BARRACKS</button>
+          <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
+          <div class="m-notice"></div>
+        </header>
+        <div class="c-main">
+          <nav class="c-list">${list}<div class="m-ver">${VERSION_LABEL}</div></nav>
+          ${this.missionDetailHtml(m)}
+        </div>
+      </div>`;
+  }
+
+  private missionDetailHtml(m: CampaignMission) {
+    const acc = getAccount(), st = this.missionState(m), rec = acc.missions[m.id];
+    const cap = capacityFor(m.number), r = this.game.roster, n = r.count();
+    const chip = { locked: 'LOCKED', available: 'AVAILABLE', completed: `COMPLETED ×${rec?.completions ?? 0}`, soon: 'COMING SOON' }[st];
+    const prev = CAMPAIGN.find((x) => x.number === m.number - 1);
+    const unl = [
+      ...m.unlocks.missions.map((id) => `Mission ${campaignMission(id)!.number} unlocks`),
+      ...m.unlocks.soldiers.map((id) => `${esc(r.get(id)?.name ?? id)} joins (${CLASSES[r.get(id)!.classId].label})`),
+      ...(m.unlocks.capacityNote ? [m.unlocks.capacityNote] : []),
+    ];
+    const first = rec && rec.completions > 0 ? '<span class="dim">First-clear rewards collected</span>'
+      : m.legacyId && acc.missions[m.legacyId]?.firstClearRun
+        ? `<span class="dim">First-clear Credit bonus already earned on this map in v0.3</span>${unl.length ? ' · ' + unl.join(' · ') : ''}`
+        : `+${cr(PROGRESSION.credits.firstClear)} CR first-clear bonus${unl.length ? ' · ' + unl.join(' · ') : ''}`;
+    const best = rec?.bestStars ?? 0;
+    const starRows = [STAR_TEXT.one, STAR_TEXT[m.stars.two], STAR_TEXT[m.stars.three]]
+      .map((t, i) => `<li class="${best > i ? 'got' : ''}"><b>${'★'.repeat(i + 1)}</b> ${i ? '+ ' : ''}${t}</li>`).join('');
+    const squadNow = n === 0 ? 'none selected' : `${n} selected${n > cap ? ` <b class="warn">— over the limit, remove ${n - cap}</b>` : ''}`;
+    const block = st === 'locked' || st === 'soon' ? 'Mission locked' : this.game.roster.deployBlock(cap);
+    return `
+      <section class="c-detail ${st}">
+        <div class="c-kicker">MISSION ${m.playable ? m.number : '—'} · ${m.playable ? MISSION_TYPE_LABEL[m.type].toUpperCase() : 'FUTURE'} <span class="c-chip ${st}">${chip}</span></div>
+        <div class="c-title">${esc(m.name)} ${m.playable ? stars(best) : ''}</div>
+        <div class="c-brief">${esc(m.briefing)}</div>
+        <div class="c-grid">
+          <div><h4>OBJECTIVES</h4><ul>${m.primary.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+          <div><h4>OPTIONAL <small>+${PROGRESSION.xp.perOptionalObjective} XP · +${PROGRESSION.credits.perOptionalObjective} CR each</small></h4><ul>${m.optional.length ? m.optional.map((x) => `<li>${esc(x.label)}</li>`).join('') : '<li class="dim">None</li>'}</ul></div>
+          <div><h4>STARS</h4><ul class="c-stars">${starRows}</ul></div>
+          <div><h4>SQUAD</h4><ul><li>Up to <b>${cap}</b> soldiers</li><li>Selected: ${squadNow}</li><li class="dim">${esc(m.teaches)}</li></ul></div>
+        </div>
+        <div class="c-first"><b>FIRST CLEAR</b> ${first}</div>
+        ${st === 'locked' ? `<div class="c-lock">🔒 Clear Mission ${prev?.number ?? 1} (${esc(prev?.name ?? '')}) to unlock.</div>` : ''}
+        <div class="c-btns">
+          <button class="m-big alt" data-a="to-barracks" ${st === 'locked' || st === 'soon' ? 'disabled' : ''}>SQUAD ▸</button>
+          <button class="m-big" data-a="deploy" ${block ? 'disabled' : ''} title="${block ? esc(block) : 'Deploy the selected squad (Enter)'}">DEPLOY</button>
+        </div>
+      </section>`;
+  }
+
   // ---------------- Barracks ----------------
   showBarracks(notice?: string) {
+    if (this.screen === 'barracks') this.newSoldiers.clear(); // badges last for one Barracks visit
     this.screen = 'barracks';
     this.root.className = 'barracks';
     if (!this.game.roster.get(this.trainId)) this.trainId = this.game.roster.soldiers[0]?.id ?? 'ace';
@@ -83,10 +182,11 @@ export class Menus {
     this.root.innerHTML = `
       <div class="m-wrap">
         <header class="m-head">
+          <button class="m-nav back" data-a="to-campaign" title="Campaign (C)">◂ CAMPAIGN</button>
           <div class="m-title">BARRACKS</div>
           <nav class="m-tabs">${tabs}</nav>
           <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(acc.credits)}</b></div>
-          ${this.tab !== 'roster' ? `<button class="m-deploy" data-a="deploy" ${this.game.roster.canDeploy() ? '' : 'disabled'} title="Deploy the selected squad (Enter)">DEPLOY ▸</button>` : ''}
+          ${this.tab !== 'roster' ? `<button class="m-deploy" data-a="deploy" ${this.game.deployBlock() ? 'disabled' : ''} title="Deploy the selected squad (Enter)">DEPLOY ▸</button>` : ''}
           <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
           <div class="m-notice"></div>
         </header>
@@ -100,22 +200,27 @@ export class Menus {
 
   // ----- Roster tab (squad selection; unchanged flow) -----
   private rosterHtml() {
-    const r = this.game.roster;
+    const r = this.game.roster, g = this.game;
+    const cap = g.capacity;
     const cards = r.soldiers.map((s) => this.cardHtml(s)).join('');
-    const slots = r.slots.map((id, i) => this.slotHtml(id, i)).join('');
+    const n = r.count();
+    const shown = Math.min(SQUAD_SLOTS, Math.max(cap, n));
+    const slots = r.slots.slice(0, shown).map((id, i) => this.slotHtml(id, i, cap)).join('');
     const squad = r.squad();
+    const over = n > cap;
     const order = squad.length ? squad.map((s, i) => `${i + 1}. ${esc(s.name)}`).join(' · ') : 'No soldiers selected';
-    const hint = this.targetSlot !== null ? `Choose a soldier for slot ${this.targetSlot + 1}` : 'Tap a soldier for details · pick up to 3';
+    const hint = this.targetSlot !== null ? `Choose a soldier for slot ${this.targetSlot + 1}` : `Tap a soldier for details · pick up to ${cap}`;
+    const m = campaignMission(g.missionId)!;
     return `
         <div class="b-main">
           <section class="b-roster">${cards}</section>
           <aside class="b-squad">
-            <div class="b-squad-title">SQUAD <span>${squad.length}/${SQUAD_SLOTS}</span></div>
+            <div class="b-mission" data-a="to-campaign" title="${MISSION_TYPE_LABEL[m.type]} · tap to change mission"><b>M${m.number} ${esc(m.name)}</b><span>max ${cap}</span></div>
+            <div class="b-squad-title">SQUAD <span class="${over ? 'warn' : ''}">${n}/${cap}</span></div>
             <div class="m-hint ${this.targetSlot !== null ? 'tgt' : ''}">${hint}</div>
             ${slots}
-            <div class="b-order">Deploy order: ${order}</div>
-            <button class="m-big" data-a="deploy" ${r.canDeploy() ? '' : 'disabled'}>DEPLOY</button>
-            <div class="b-mission">Mission: ${Mission.NAME}</div>
+            ${over ? `<div class="b-over">Too many for this mission (max ${cap}). <button class="pick in" data-a="trim">KEEP FIRST ${cap}</button></div>` : `<div class="b-order">Deploy order: ${order}</div>`}
+            <button class="m-big" data-a="deploy" ${g.deployBlock() ? 'disabled' : ''}>DEPLOY</button>
             <div class="m-ver">${VERSION_LABEL}</div>
           </aside>
         </div>`;
@@ -133,14 +238,32 @@ export class Menus {
     const t = s.traitId ? TRAITS[s.traitId] : null;
     const st = effectiveStats(s);
     const lv = s.progression?.level ?? 1;
+    if (!r.isUnlocked(s.id)) {
+      return `
+      <div class="s-card locked" data-a="details" data-id="${s.id}" data-cls="${s.classId}">
+        <div class="s-top">
+          <canvas class="s-port" data-cls="${s.classId}"></canvas>
+          <div class="s-id">
+            <div class="s-name">${esc(s.name)}</div>
+            <div class="s-cls">${CLASSES[s.classId].label}</div>
+          </div>
+          <div class="s-lock">🔒</div>
+        </div>
+        <div class="s-trait"><b>LOCKED</b><span>${esc(r.unlockText(s.id))}</span></div>
+        <div class="s-bot"><span class="s-status">NOT IN YOUR SQUAD YET</span></div>
+        <button class="pick full" data-a="select" data-id="${s.id}">🔒 LOCKED</button>
+      </div>`;
+    }
+    const cap = this.game.capacity;
     let btn: string;
     if (slot >= 0) btn = `<button class="pick out" data-a="deselect" data-id="${s.id}">✕ REMOVE</button>`;
     else if (this.targetSlot !== null) btn = `<button class="pick in" data-a="select" data-id="${s.id}">→ SLOT ${this.targetSlot + 1}</button>`;
-    else if (r.slots.includes(null)) btn = `<button class="pick in" data-a="select" data-id="${s.id}">+ ADD</button>`;
+    else if (r.count() < cap) btn = `<button class="pick in" data-a="select" data-id="${s.id}">+ ADD</button>`;
     else btn = `<button class="pick full" data-a="select" data-id="${s.id}">SQUAD FULL</button>`;
     const trained = TRAINING_IDS.reduce((a, k) => a + s.training[k], 0);
+    const isNew = this.newSoldiers.has(s.id);
     return `
-      <div class="s-card ${slot >= 0 ? 'sel' : ''}" data-a="details" data-id="${s.id}" data-cls="${s.classId}">
+      <div class="s-card ${slot >= 0 ? 'sel' : ''} ${isNew ? 'new' : ''}" data-a="details" data-id="${s.id}" data-cls="${s.classId}">${isNew ? '<span class="s-new">NEW</span>' : ''}
         <div class="s-top">
           <canvas class="s-port" data-cls="${s.classId}"></canvas>
           <div class="s-id">
@@ -159,13 +282,14 @@ export class Menus {
       </div>`;
   }
 
-  private slotHtml(id: string | null, i: number) {
+  private slotHtml(id: string | null, i: number, cap: number) {
     const s = id ? this.game.roster.get(id)! : null;
     const tgt = this.targetSlot === i ? 'target' : '';
     if (!s) return `<div class="slot empty ${tgt}" data-a="slot" data-slot="${i}"><span class="slot-n">${i + 1}</span><span class="slot-empty">${tgt ? 'Pick a soldier' : 'Empty slot'}</span></div>`;
     const t = s.traitId ? TRAITS[s.traitId].name : '';
-    return `<div class="slot ${tgt}" data-a="slot" data-slot="${i}"><span class="slot-n">${i + 1}</span><canvas class="slot-port" data-cls="${s.classId}"></canvas>
-      <span class="slot-id"><b>${esc(s.name)} <small>LV ${s.progression?.level ?? 1}</small></b><span>${CLASSES[s.classId].short} · ${t}</span></span>
+    const over = i >= cap;
+    return `<div class="slot ${tgt} ${over ? 'over' : ''}" data-a="slot" data-slot="${i}"><span class="slot-n">${i + 1}</span><canvas class="slot-port" data-cls="${s.classId}"></canvas>
+      <span class="slot-id"><b>${esc(s.name)} <small>LV ${s.progression?.level ?? 1}</small></b><span>${over ? 'OVER LIMIT — remove to deploy' : `${CLASSES[s.classId].short} · ${t}`}</span></span>
       <button class="slot-x" data-a="clear" data-slot="${i}" title="Remove">✕</button></div>`;
   }
 
@@ -212,7 +336,8 @@ export class Menus {
     const p = s.progression;
     const lp = levelProgress(p?.xp ?? 0);
     const sel = this.game.roster.isSelected(s.id);
-    const full = !this.game.roster.slots.includes(null);
+    const locked = !this.game.roster.isUnlocked(s.id);
+    const full = this.game.roster.count() >= this.game.capacity;
     const ranks = TRAINING_IDS.map((k) => `${TRAINING[k].label} ${s.training[k]}/${maxRank(TRAINING[k])}`).join(' · ');
     return `
       <div class="m-modal" data-a="close-bg">
@@ -228,14 +353,15 @@ export class Menus {
           </div>
           <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${lp.max ? `LV ${lp.level} · MAX LEVEL` : `LV ${lp.level} · XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
           <table class="d-stats"><thead><tr><th>Stat</th><th>Class base</th><th>Effective</th></tr></thead><tbody>${tr}</tbody></table>
-          ${!sel && full && this.targetSlot === null ? '<div class="d-full">Squad full: remove someone, or tap a squad slot first to replace its soldier.</div>' : ''}
+          ${!locked && !sel && full && this.targetSlot === null ? '<div class="d-full">Squad full for this mission: remove someone, or tap a squad slot first to replace its soldier.</div>' : ''}
           <div class="d-prog">Training: ${ranks} · Missions ${s.service.missions} (won ${s.service.victories}) · Kills ${s.service.kills}</div>
+          ${locked ? `<div class="d-full">🔒 ${esc(this.game.roster.unlockText(s.id))}</div>` : ''}
           <div class="d-btns">
-            ${sel ? `<button class="m-big alt" data-a="deselect" data-id="${s.id}">REMOVE FROM SQUAD</button>`
+            ${locked ? '<button class="m-big" disabled>LOCKED</button>' : sel ? `<button class="m-big alt" data-a="deselect" data-id="${s.id}">REMOVE FROM SQUAD</button>`
               : this.targetSlot !== null ? `<button class="m-big" data-a="select" data-id="${s.id}">PUT IN SLOT ${this.targetSlot + 1}</button>`
               : full ? `<button class="m-big" disabled title="Squad full">SQUAD FULL</button>`
               : `<button class="m-big" data-a="select" data-id="${s.id}">ADD TO SQUAD</button>`}
-            <button class="m-big alt" data-a="train" data-id="${s.id}">TRAIN</button>
+            <button class="m-big alt" data-a="train" data-id="${s.id}" ${locked ? 'disabled' : ''}>TRAIN</button>
             <button class="m-big alt" data-a="close">CLOSE</button>
           </div>
         </div>
@@ -245,8 +371,9 @@ export class Menus {
   // ----- Individual Training tab -----
   private trainingHtml() {
     const r = this.game.roster, acc = getAccount();
-    const s = r.get(this.trainId) ?? r.soldiers[0];
-    const list = r.soldiers.map((x) => `
+    const owned = r.soldiers.filter((x) => r.isUnlocked(x.id));
+    const s = owned.find((x) => x.id === this.trainId) ?? owned[0] ?? r.soldiers[0];
+    const list = owned.map((x) => `
       <button class="t-pick ${x.id === s.id ? 'on' : ''}" data-a="tsel" data-id="${x.id}">
         <b>${esc(x.name)}</b><span>${CLASSES[x.classId].short} · LV ${x.progression?.level ?? 1}</span>${this.xpBar(x)}
       </button>`).join('');
@@ -342,8 +469,10 @@ export class Menus {
     const g = this.game;
     const won = g.phase === 'won';
     const rw = g.lastReward;
+    const m = g.mission;
     this.screen = 'results';
     this.root.className = 'results';
+    if (rw) rw.unlockedSoldiers.forEach((id) => this.newSoldiers.add(id));
     const xpOf = new Map(rw?.soldiers.map((x) => [x.id, x]) ?? []);
     const rows = g.stats.rows(g.soldiers).map((r) => {
       const x = xpOf.get(r.id);
@@ -362,8 +491,14 @@ export class Menus {
     }).join('');
     const levelUps = rw?.soldiers.filter((x) => x.levelsGained > 0).map((x) =>
       `<div class="r-lvl">▲ ${esc(x.name.toUpperCase())} — LV ${x.before.level} → LV ${x.after.level} — +${x.xp} XP</div>`).join('') ?? '';
+    const unlocks = rw ? [
+      ...rw.unlockedSoldiers.map((id) => { const s = g.roster.get(id)!; return `<div class="r-unl soldier">★ NEW SOLDIER JOINED: <b>${esc(s.name.toUpperCase())}</b> (${CLASSES[s.classId].label})</div>`; }),
+      ...rw.unlockedMissions.map((id) => { const c = campaignMission(id)!; return `<div class="r-unl">▶ MISSION ${c.number} UNLOCKED: <b>${esc(c.name)}</b>${capacityFor(c.number) > capacityFor(m.def.number) ? ` · squad size ${capacityFor(c.number)}` : ''}</div>`; }),
+      ...(rw.legacyFirstClearPaid ? ['<div class="r-unl dim">First-clear Credit bonus was already paid for this map in v0.3 (Comms Outpost)</div>'] : []),
+      ...(rw.firstClear && m.def.unlocks.capacityNote ? [`<div class="r-unl">▲ ${esc(m.def.unlocks.capacityNote.toUpperCase())}</div>`] : []),
+    ].join('') : '';
     let rewards: string;
-    if (g.deployment.kind !== 'roster') rewards = `<div class="r-none">${g.deployment.kind === 'generic' ? 'Dev preset squad (generic soldiers)' : 'Temporary dev squad'}: no XP or Credits.</div>`;
+    if (g.deployment.kind !== 'roster') rewards = `<div class="r-none">${g.deployment.kind === 'generic' ? 'Dev preset squad (generic soldiers)' : 'Temporary dev squad'}: no XP, Credits, stars or unlocks.</div>`;
     else if (!rw || !won) rewards = `<div class="r-none">No XP or Credits for a failed mission.</div><div class="r-total">Credits <b class="r-cr">${cr(getAccount().credits)}</b></div>`;
     else {
       const lines = rw.creditLines.map((l) => `<tr><td>${l.label}</td><td>+${cr(l.amount)}</td></tr>`).join('');
@@ -374,12 +509,22 @@ export class Menus {
         <div class="r-total">Total <b class="r-cr">${cr(rw.creditsAfter)}</b> CR</div>
         <div class="r-xpline" title="Same XP for every soldier who extracted; none for KIA">XP per survivor: ${rw.xpMul !== 1 ? '(' : ''}${xpl}${rw.xpMul !== 1 ? `) × ${rw.xpMul} replay` : ''} = <b>${rw.xpEach}</b></div>`;
     }
+    const st = g.lastStars;
+    const starN = st?.stars ?? 0;
+    const newBest = !!rw && won && rw.bestStars > rw.prevBest && rw.prevBest > 0;
+    const crit = st ? st.criteria.map((c) => `<span class="${c.met ? 'ok' : 'no'}">${c.met ? '✓' : '✗'} ${c.label}</span>`).join('') : '';
+    const opts = m.optionals.length ? m.optionals.map((o) => `<span class="${o.state === 'complete' ? 'ok' : 'no'}">${o.state === 'complete' ? '✓' : '✗'} ${esc(o.label)}${o.state === 'complete' ? ` <small>+${PROGRESSION.xp.perOptionalObjective} XP · +${PROGRESSION.credits.perOptionalObjective} CR</small>` : ''}</span>`).join('') : '';
     const tag = rw && won ? (rw.firstClear ? '<span class="r-tag first">FIRST CLEAR</span>' : '<span class="r-tag">REPLAY</span>') : '';
+    const why = won ? 'The squad made it out.' : m.failReason || 'The whole squad is down.';
     this.root.innerHTML = `
       <div class="m-wrap r-wrap">
         <div class="r-card ${won ? 'won' : 'lost'}">
+          <div class="r-mission">MISSION ${m.def.number} · ${esc(m.name.toUpperCase())}</div>
           <div class="r-title">${won ? 'MISSION COMPLETE' : 'MISSION FAILED'} ${tag}</div>
-          <div class="r-sub">${won ? 'The squad made it out.' : 'The whole squad is down.'} · Mission time <b>${fmtTime(g.time)}</b></div>
+          <div class="r-stars">${stars(starN)}${newBest ? '<span class="r-tag first">NEW BEST</span>' : ''}<div class="r-crit">${crit}</div></div>
+          <div class="r-sub">${why} · Mission time <b>${fmtTime(g.time)}</b></div>
+          ${opts ? `<div class="r-opts"><b>OPTIONAL</b> ${opts}</div>` : ''}
+          ${unlocks ? `<div class="r-unls">${unlocks}</div>` : ''}
           ${levelUps ? `<div class="r-lvls">${levelUps}</div>` : ''}
           <div class="r-body">
             <table class="r-table">
@@ -389,10 +534,11 @@ export class Menus {
             <aside class="r-rewards">${rewards}</aside>
           </div>
           <div class="r-btns">
-            <button class="m-big" data-a="retry">RETRY MISSION</button>
-            <button class="m-big alt" data-a="barracks">RETURN TO BARRACKS</button>
+            <button class="m-big ${won ? 'alt' : ''}" data-a="retry">RETRY</button>
+            <button class="m-big ${won ? '' : 'alt'}" data-a="campaign">CAMPAIGN</button>
+            <button class="m-big alt" data-a="barracks">BARRACKS</button>
           </div>
-          <div class="r-note">Enter retry · B barracks · KIA only lasts for the mission: everyone is back in the Barracks.</div>
+          <div class="r-note">Enter retry · C campaign · B barracks · KIA only lasts for the mission: everyone is back in the Barracks.</div>
         </div>
       </div>`;
   }
@@ -409,6 +555,17 @@ export class Menus {
       case 'deploy': this.deploy(); return;
       case 'retry': g.reset(); return;
       case 'barracks': g.toBarracks(); return;
+      case 'campaign': g.toCampaign(); return;
+      case 'to-barracks': this.showBarracks(); return;
+      case 'to-campaign': this.showCampaign(); return;
+      case 'csel': {
+        const m = campaignMission(id!);
+        this.campaignSel = id!;
+        if (m && this.missionState(m) !== 'locked' && m.playable) g.selectMission(id!);
+        this.renderCampaign();
+        return;
+      }
+      case 'trim': r.trimTo(g.capacity); break;
       case 'tab': this.tab = el.dataset.tab as BarracksTab; this.detailsId = null; this.targetSlot = null; break;
       case 'tsel': this.trainId = id!; break;
       case 'train': this.trainId = id!; this.tab = 'training'; this.detailsId = null; break;
@@ -421,7 +578,7 @@ export class Menus {
       case 'close': this.detailsId = null; break;
       case 'close-bg': if (e.target === el) this.detailsId = null; else return; break;
       case 'select': {
-        const res = r.select(id!, this.targetSlot ?? undefined);
+        const res = r.select(id!, this.targetSlot ?? undefined, g.capacity);
         if (!res.ok) { this.renderBarracks(); this.notice(res.reason); return; }
         this.targetSlot = null;
         break;
@@ -452,7 +609,9 @@ export class Menus {
   }
 
   private deploy() {
-    if (!this.game.deploySelected()) this.notice('Select at least one soldier to deploy.');
+    if (this.screen === 'campaign' && this.campaignSel !== this.game.missionId) { this.notice('This mission is locked.'); return; }
+    const res = this.game.deploySelected();
+    if (!res.ok) this.notice(res.reason);
   }
 
   private onKey(e: KeyboardEvent) {
@@ -460,10 +619,22 @@ export class Menus {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (this.screen === 'barracks') {
       if (e.code === 'Escape') {
-        if (this.detailsId) this.detailsId = null; else this.targetSlot = null;
+        if (this.detailsId) this.detailsId = null;
+        else if (this.targetSlot !== null) this.targetSlot = null;
+        else { this.showCampaign(); return; }
         this.renderBarracks();
       } else if (e.code === 'Enter' && !this.detailsId) { e.preventDefault(); this.deploy(); }
+      else if (e.code === 'KeyC' && !this.detailsId) this.showCampaign();
+    } else if (this.screen === 'campaign') {
+      if (e.code === 'Enter') { e.preventDefault(); this.deploy(); }
+      else if (e.code === 'KeyB') this.showBarracks();
+      else if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+        const open = CAMPAIGN.filter((m) => m.playable && this.missionState(m) !== 'locked');
+        const i = open.findIndex((m) => m.id === this.campaignSel);
+        const next = open[Math.max(0, Math.min(open.length - 1, i + (e.code === 'ArrowDown' ? 1 : -1)))];
+        if (next) { this.campaignSel = next.id; this.game.selectMission(next.id); this.renderCampaign(); }
+      }
     }
-    // Results keys (Enter retry, B/Esc barracks) are handled by Game.onKey
+    // Results keys (Enter retry, C campaign, B/Esc barracks) are handled by Game.onKey
   }
 }

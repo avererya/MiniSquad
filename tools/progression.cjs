@@ -29,7 +29,10 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       const clearEnemies = () => { g.enemies.forEach((e) => (e.state = 'dead')); g.enemies = []; g.mission.defenders = [{ active: true }]; };
       const deploy = (ids) => { g.deploy(ids.map(byId)); clearEnemies(); g.invuln = false; };
       const setXp = (id, xp) => { const p = byId(id).progression; p.xp = xp; p.level = P.levelForXp(xp); };
-      const resetAll = () => { window.__resetRosterSave(); R = g.roster; };
+      // v0.4: a fresh save only has Ace + Ranger and Mission 1; these v0.3 economy checks run on the
+      // comms-outpost map (now Mission 3) with every soldier, so unlock all (debug) after each reset
+      const resetAll = () => { window.__resetRosterSave(); window.__debugUnlockAll(); g.selectMission('field-medicine'); R = g.roster; };
+      window.__debugUnlockAll(); g.selectMission('field-medicine');
       const r3 = (x) => Math.round(x * 1000) / 1000;
 
       // ---- XP curve ----
@@ -58,7 +61,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       check('replay with a KIA: 75 XP, 400 CR (minimum win)', c5.xpEach === 75 && c5.credits === 400, `${c5.xpEach} XP, ${c5.credits} CR`);
       check('optional objectives (model): +25 XP / +150 CR each completed', c6.xpEach === 175 && c6.credits === 1150, `${c6.xpEach} XP, ${c6.credits} CR`);
       check('defeat: no XP, no Credits', c7.xpEach === 0 && c7.credits === 0 && c7.creditLines.length === 0, `${c7.xpEach} XP, ${c7.credits} CR`);
-      check('mission has no optional objectives (none invented)', g.mission.optional.length === 0 && g.mission.id === 'comms-outpost', `${g.mission.id}: ${g.mission.optional.length}`);
+      check('Mission 3 has exactly one optional objective (Extract every soldier)', g.mission.optional.length === 1 && g.mission.optional[0].id === 'all-extracted' && g.mission.id === 'field-medicine', `${g.mission.id}: ${g.mission.optional.map((o) => o.id)}`);
 
       // ---- settlement in a real mission ----
       resetAll();
@@ -74,10 +77,10 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       g.win();
       const xp1 = R.soldiers.map((s) => `${s.id}:${s.progression.xp}`).join(' ');
       check('equal XP for eligible survivors; revived+extracted gets XP; KIA gets 0', revived && byId('ace').progression.xp === 100 && byId('tank').progression.xp === 100 && byId('doc').progression.xp === 0 && doc.state === 'kia', xp1);
-      check('first clear credits with a KIA: 750 (no bonuses)', A().credits === 750 && A().missions['comms-outpost'].completions === 1 && A().missions['comms-outpost'].firstClearRun === run1, `credits ${A().credits}`);
+      check('first clear credits with a KIA: 750 (no bonuses)', A().credits === 750 && A().missions['field-medicine'].completions === 1 && A().missions['field-medicine'].firstClearRun === run1, `credits ${A().credits}`);
       const cr1 = A().credits;
       g.win(); g.ui.showEnd(); g.ui.showEnd(); // re-render / repeated end
-      const again = E.settleMission(R, A(), { missionId: 'comms-outpost', runId: run1, won: true, deployed: [{ id: 'ace', status: 'Standing', downs: 0 }], optional: { total: 0, completed: 0 } });
+      const again = E.settleMission(R, A(), { missionId: 'field-medicine', runId: run1, won: true, deployed: [{ id: 'ace', status: 'Standing', downs: 0 }], optional: { total: 0, completed: 0 } });
       check('no double award: win() again, Results re-render, same run id settled again', A().credits === cr1 && again === null && byId('ace').progression.xp === 100, `credits ${A().credits}, settle again -> ${again}`);
       const resultsText = document.getElementById('menu').textContent;
       check('Results show XP per soldier, credit breakdown and total', /\+100 XP/.test(resultsText) && /no XP/.test(resultsText) && /Victory\+500/.test(resultsText.replace(/\s+/g, '')) && /First-time completion/.test(resultsText) && /750/.test(resultsText), resultsText.replace(/\s+/g, ' ').slice(0, 160));
@@ -86,7 +89,8 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       const run2 = g.runId;
       g.win();
       check('Retry = new run id; replay perfect: +113 XP each, +650 CR', run2 !== run1 && byId('ace').progression.xp === 213 && byId('doc').progression.xp === 113 && A().credits === cr1 + 650 && g.lastReward.firstClear === false, `ace ${byId('ace').progression.xp}, doc ${byId('doc').progression.xp}, credits ${A().credits}`);
-      check('full-extraction + flawless bonuses listed', g.lastReward.xpLines.map((l) => l.label).join() === 'Victory,Whole squad extracted,Nobody downed', g.lastReward.xpLines.map((l) => `${l.label} ${l.amount}`).join(', '));
+      // OVERLAP RULE (Mission 3): the optional 'Extract every soldier' pays instead of the whole-squad line, same totals
+      check('M3: optional (= whole squad extracted) + flawless listed, no double whole-squad line', g.lastReward.xpLines.map((l) => l.label).join() === 'Victory,Optional objectives 1/1,Nobody downed' && g.lastReward.creditLines.map((l) => l.label).join() === 'Victory (replay),Optional objectives 1/1,Nobody downed', g.lastReward.xpLines.map((l) => `${l.label} ${l.amount}`).join(', '));
       check('level-up from the award (Ace 100 -> 213 XP = LV 1 -> LV 2)', byId('ace').progression.level === 2 && g.lastReward.soldiers[0].before.level === 1 && g.lastReward.soldiers[0].after.level === 2, JSON.stringify(g.lastReward.soldiers[0]));
       // defeat: nothing (service record only)
       const crBefore = A().credits, xpBefore = byId('ace').progression.xp;
@@ -176,7 +180,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
 
       // ---- save: migration + validation ----
       const mig = window.__parseSave(V022);
-      check('migration: real v0.2.2 save (custom squad Patch/Havoc/Ranger) -> v2 in place', mig.status === 'migrated' && mig.fromVersion === 1 && mig.roster.slots.join() === 'patch,havoc,ranger' && mig.roster.soldiers.length === 6 && mig.roster.soldiers.every((s) => s.progression.level === 1 && s.progression.xp === 0 && s.progression.tier === 'recruit' && s.status === 'active' && s.resurrections === 0) && mig.account.credits === 0, `${mig.status} ${mig.roster.slots.join()} notes ${mig.notes.length}`);
+      check('migration: real v0.2.2 save (custom squad Patch/Havoc/Ranger) -> v3 in place, all 6 unlocked, campaign at M1', mig.status === 'migrated' && mig.fromVersion === 1 && mig.roster.slots.join() === 'patch,havoc,ranger,,,' && mig.roster.unlocked.size === 6 && mig.account.campaign.unlockedMissions.join() === 'first-contact' && mig.roster.soldiers.length === 6 && mig.roster.soldiers.every((s) => s.progression.level === 1 && s.progression.xp === 0 && s.progression.tier === 'recruit' && s.status === 'active' && s.resurrections === 0) && mig.account.credits === 0, `${mig.status} ${mig.roster.slots.join()} notes ${mig.notes.length}`);
       const v1 = JSON.parse(V022);
       v1.roster[0].progression = { level: 4, upgrades: [], specialization: null }; // xp missing
       v1.roster[1].progression.xp = 99999;
@@ -217,8 +221,9 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     check('UI: first clear pays 1000 CR, shown on Results and saved at once', credUI === '1,000' && sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150, `results ${credUI}, saved ${sv.account.credits}`);
     await page.reload(); await page.waitForTimeout(200); // reload while on Results
     sv = await save();
-    check('UI: reload on Results: no duplicate reward, back in Barracks', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.barracks'), `credits ${sv.account.credits}`);
-    check('UI: Barracks header shows credits + version "MiniSquad v0.3 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.3 · [0-9a-f]{7,}$|^MiniSquad v0\.3 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
+    check('UI: Campaign header shows credits + version "MiniSquad v0.4 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.4 · [0-9a-f]{7,}$|^MiniSquad v0\.4 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    await page.click('[data-a="csel"][data-id="first-contact"]'); // the campaign moved on to M2: replay M1
     await page.click('[data-a="deploy"]');
     await page.evaluate(() => window.game.win());
     await page.keyboard.press('Enter'); // Retry from Results
@@ -226,7 +231,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.click('[data-a="retry"]');
     await page.evaluate(() => window.game.win());
     sv = await save();
-    check('UI: 3 replays via Enter / Retry button: exactly +650 each (1000 + 1950)', sv.account.credits === 2950 && sv.account.missions['comms-outpost'].completions === 4, `credits ${sv.account.credits}, completions ${sv.account.missions['comms-outpost'].completions}`);
+    check('UI: 3 replays via Enter / Retry button: exactly +650 each (1000 + 1950)', sv.account.credits === 2950 && sv.account.missions['first-contact'].completions === 4, `credits ${sv.account.credits}, completions ${sv.account.missions['first-contact'].completions}`);
     await page.click('[data-a="barracks"]');
     // training tab: rapid taps
     await page.click('[data-tab="training"]');
@@ -257,19 +262,26 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.reload(); await page.waitForTimeout(200);
     const after = await page.evaluate(() => ({ tank: window.game.roster.get('tank').training.damage, sq: window.__account().squadTraining.fireRate, cr: window.__account().credits, tankDmg: window.__effectiveStats(window.game.roster.get('tank')).damage }));
     check('UI: everything persists across reload (ranks, squad rank, credits)', after.tank === 2 && after.sq === 1 && after.cr === 2000, JSON.stringify(after));
-    // squad change keeps upgrades
+    // squad change keeps upgrades (v0.4: reload lands on the Campaign screen; squad is Ace + Ranger)
+    await page.click('[data-a="to-barracks"]');
     await page.click('[data-tab="roster"]');
     await page.click('.slot[data-slot="1"] .slot-x');
-    await page.click('.s-card[data-id="havoc"] .pick');
+    await page.click('.s-card[data-id="ranger"] .pick');
     await page.click('[data-a="deploy"]');
     const hasTank = await page.evaluate(() => window.game.soldiers.some((s) => s.identity.id === 'tank'));
     await page.evaluate(() => window.game.toBarracks());
     check('UI: squad change keeps Tank\'s training', !hasTank && (await page.evaluate(() => window.game.roster.get('tank').training.damage)) === 2);
     // migration through the real loader
-    await page.evaluate((raw) => localStorage.setItem('minisquad.save', raw), V022);
+    await page.evaluate((raw) => { localStorage.setItem('minisquad.save', raw); localStorage.removeItem('minisquad.save.pre-v0.4'); }, V022);
+    const V022raw = V022;
     await page.reload(); await page.waitForTimeout(250);
+    const onCampaign = await page.isVisible('#menu.campaign');
+    const notice = await page.textContent('.m-notice').catch(() => '');
+    await page.click('[data-a="to-barracks"]');
     const m = await page.evaluate(() => ({ status: window.__loadStatus.status, slots: window.game.roster.slots.join(), saved: JSON.parse(localStorage.getItem('minisquad.save')), notice: document.querySelector('.m-notice').textContent, cards: document.querySelectorAll('.s-card').length }));
-    check('UI: v0.2.2 save migrated in place on load (squad kept, v2 written, notice)', m.status === 'migrated' && m.slots === 'patch,havoc,ranger' && m.saved.version === 2 && m.saved.squad.join() === 'patch,havoc,ranger' && m.cards === 6 && /kept/.test(m.notice), `${m.status} ${m.slots} "${m.notice}"`);
+    check('UI: v0.2.2 save migrated in place on load (squad kept, v3 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 3 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
+    const backup = await page.evaluate(() => localStorage.getItem('minisquad.save.pre-v0.4'));
+    check('UI: the original v0.2.2 save text is kept once as a pre-v0.4 backup', backup === V022raw, `backup ${backup ? backup.length : 0} chars`);
     check('B: no page errors', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
@@ -287,24 +299,27 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(URL); await page.waitForTimeout(200);
-    await page.evaluate(() => { const a = window.__account(); a.credits = 4200; const r = window.game.roster; r.get('ace').progression.xp = 600; r.get('ace').progression.level = 4; r.get('ace').training.damage = 3; a.squadTraining.hp = 2; window.__persist(); });
+    await page.evaluate(() => { window.__debugUnlockAll(); const a = window.__account(); a.credits = 4200; const r = window.game.roster; r.get('ace').progression.xp = 600; r.get('ace').progression.level = 4; r.get('ace').training.damage = 3; a.squadTraining.hp = 2; window.__persist(); });
     await page.reload(); await page.waitForTimeout(200);
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
+    await page.tap('[data-a="to-barracks"]'); await page.waitForTimeout(100); // v0.4: launch lands on the Campaign screen
     const layout = (sel) => page.evaluate((sel) => {
       const vw = window.innerWidth, vh = window.innerHeight, m = document.getElementById('menu');
       const els = [...document.querySelectorAll(sel)];
       const boxes = els.map((el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { inside: r.left >= -0.5 && r.top >= -0.5 && r.right <= vw + 0.5 && r.bottom <= vh + 0.5, aligned: !!hit && (hit === el || el.contains(hit)), h: Math.round(r.height) }; });
       const texts = [...m.querySelectorAll('*')].filter((e) => e.offsetParent && [...e.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim()));
       const minFont = Math.min(...texts.map((e) => parseFloat(getComputedStyle(e).fontSize)));
+      const smallest = texts.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 11).slice(0, 3).map((e) => e.className + ':' + e.textContent.trim().slice(0, 20));
       const clipped = [...m.querySelectorAll('.slot-id span, .s-cls, .t-pick span, .m-tab')].filter((e) => e.scrollWidth > e.clientWidth + 1).length;
-      return { n: els.length, boxes, minFont, clipped, scroll: m.scrollHeight > m.clientHeight + 1, hOverflow: document.documentElement.scrollWidth > vw + 1 || m.scrollWidth > m.clientWidth + 1 };
+      return { n: els.length, boxes, minFont, smallest, clipped, scroll: m.scrollHeight > m.clientHeight + 1, hOverflow: document.documentElement.scrollWidth > vw + 1 || m.scrollWidth > m.clientWidth + 1 };
     }, sel);
     const tabCheck = async (tab, sel, n) => {
       const L = await layout(`.m-tab, .m-credits, ${sel}`);
       check(`${dev.name} ${tab}: tabs, credits and ${n} controls on screen + tappable`, L.n === 4 + n && L.boxes.every((b) => b.inside && b.aligned) && L.boxes.slice(4).every((b) => b.h >= 30) && !L.hOverflow && !L.scroll, `min font ${L.minFont}px, scroll ${L.scroll}, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}`);
-      check(`${dev.name} ${tab}: no text under 11px, no clipped labels`, L.minFont >= 11 && L.clipped === 0, `min ${L.minFont}px, clipped ${L.clipped}`);
+      check(`${dev.name} ${tab}: no text under 11px, no clipped labels`, L.minFont >= 11 && L.clipped === 0, `min ${L.minFont}px ${L.smallest.join(' | ')}, clipped ${L.clipped}`);
     };
-    await tabCheck('Roster', '.s-card .pick, .slot, [data-a="deploy"]', 6 + 3 + 1);
+    // Mission 1 allows 2 soldiers: 2 slots shown
+    await tabCheck('Roster', '.s-card .pick, .slot, [data-a="deploy"]', 6 + 2 + 1);
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-roster.png` });
     await page.tap('[data-tab="training"]'); await page.waitForTimeout(100);
     await tabCheck('Training', '.t-pick, .t-buy, [data-a="deploy"]', 6 + 5 + 1);

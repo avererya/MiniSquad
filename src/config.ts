@@ -114,8 +114,19 @@ function makeDefaults() {
     revive: {
       radius: 55,
       // revive duration is per class now: infantry/heavy/medic.reviveTime
-      bleedOut: 30,
-      hpFrac: 0.4,
+      // v0.4 rescue rules: bleed-out 20 s (v0.1-v0.3: 30 s); revived at 30% max HP (v0.1-v0.3: 40%).
+      // Bleed-out pauses only while a VALID revive runs (standing squadmate in radius with a
+      // clear line to the downed soldier, so revive progress is accruing).
+      bleedOut: 20,
+      hpFrac: 0.3,
+      criticalTime: 5, // last seconds of bleed-out shown as CRITICAL
+      assistRadius: 140, // squad anchor this close to a downed soldier: nearest soldier steps in to revive
+    },
+    escort: {
+      hp: 150, // rescued captive (Mission 5)
+      moveSpeed: 150, // px/s (+ catch-up when left behind)
+      followDist: 60, // keeps about this far behind the squad anchor
+      freeTime: 3, // s standing next to the captive to cut them loose
     },
     pickups: {
       medkitHealFrac: 0.2, // each living, standing soldier heals this fraction of max HP

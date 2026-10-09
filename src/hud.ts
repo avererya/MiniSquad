@@ -1,5 +1,9 @@
 // DOM HUD over the canvas (lives inside the scaled 1280x720 stage):
-// objective, timer, soldier panels with ability buttons, start/end screens.
+// objective (+ optional objectives), timer, soldier panels with ability buttons.
+// SCALING (v0.4): squads of 1-3 use the full panels (portrait button + name, class, HP,
+// state). Squads of 4-6 switch to compact tiles: the same 74 px ability button (tap target
+// unchanged) with the name, a thin HP bar and a short state under it, in one row of 4 or two
+// rows of 3, bottom right. Keys 1-6 map to the tiles in order.
 import type { Game, GameUI } from './game';
 import type { Unit } from './unit';
 import { CFG } from './config';
@@ -19,6 +23,8 @@ export class Hud implements GameUI {
   private objSub: HTMLElement;
   private objBar: HTMLElement;
   private objBarFill: HTMLElement;
+  private objOpt: HTMLElement;
+  private optKey = '';
   private timer: HTMLElement;
   private hint: HTMLElement;
   private panelsEl: HTMLElement;
@@ -30,7 +36,7 @@ export class Hud implements GameUI {
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
-      <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div></div>
+      <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div><div class="obj-opt"></div></div>
       <div id="timer"></div>
       <div id="topbtns"><button data-a="mute">🔊</button><button data-a="pause">⏸</button><button data-a="tune">⚙</button></div>
       <div id="hint"></div>
@@ -40,6 +46,7 @@ export class Hud implements GameUI {
     this.objSub = root.querySelector('.obj-sub')!;
     this.objBar = root.querySelector('.obj-bar')!;
     this.objBarFill = root.querySelector('.obj-bar div')!;
+    this.objOpt = root.querySelector('.obj-opt')!;
     this.timer = root.querySelector('#timer')!;
     this.hint = root.querySelector('#hint')!;
     this.panelsEl = root.querySelector('#panels')!;
@@ -64,6 +71,9 @@ export class Hud implements GameUI {
   rebuildPanels() {
     this.muteBtn.textContent = isMuted() ? '🔇' : '🔊';
     this.panelsEl.innerHTML = '';
+    const n = this.game.soldiers.length;
+    this.panelsEl.className = n >= 4 ? `compact rows${n >= 5 ? 2 : 1}` : '';
+    this.root.classList.toggle('hud-compact2', n >= 5);
     this.panels = this.game.soldiers.map((u, i) => {
       const root = document.createElement('div');
       const def = u.classDef!;
@@ -99,6 +109,15 @@ export class Hud implements GameUI {
     this.objBar.style.display = o.progress !== undefined ? '' : 'none';
     if (o.progress !== undefined) this.objBarFill.style.width = `${Math.min(100, o.progress * 100)}%`;
     this.timer.textContent = g.phase === 'start' ? '' : fmtTime(g.time) + (g.invuln ? '  [INVULN]' : '');
+    // optional objectives: one line each, re-rendered only when something changes
+    const m = g.mission;
+    const opt = g.phase === 'start' ? [] : m.optionals.map((o) => ({ s: o.state, t: `${o.state === 'complete' ? '✓' : o.state === 'failed' ? '✗' : '◇'} ${o.label}${o.status(m) && o.state === 'active' ? ` — ${o.status(m)}` : ''}` }));
+    const key = opt.map((x) => x.s + x.t).join('|');
+    if (key !== this.optKey) {
+      this.optKey = key;
+      this.objOpt.innerHTML = opt.map((x) => `<div class="${x.s}">${x.t.replace(/[<>&]/g, '')}</div>`).join('');
+      this.objOpt.style.display = opt.length ? '' : 'none';
+    }
 
     if (g.targeting) {
       this.hint.textContent = `${g.targeting.name}: GRENADE — click/tap the ground · right-click / Esc / tap button to cancel`;
@@ -110,6 +129,8 @@ export class Hud implements GameUI {
       this.hint.style.display = '';
     } else this.hint.style.display = 'none';
 
+    const compact = this.panels.length >= 4;
+    const crit = CFG.revive.criticalTime;
     for (const p of this.panels) {
       const u = p.unit;
       const ab = u.ability!;
@@ -117,17 +138,17 @@ export class Hud implements GameUI {
       p.fill.style.width = `${Math.max(0, (u.hp / u.maxHp) * 100)}%`;
       p.hpnum.textContent = `${Math.ceil(Math.max(0, u.hp))}/${Math.round(u.maxHp)}`;
       p.cls.textContent = u.rapidFire > 0 && u.active ? `${def.label} · RAPID ${Math.ceil(u.rapidFire)}s` : def.label;
-      const abName = SHORT_ABILITY[ab.id] ?? ab.name.toUpperCase();
+      const abName = compact ? '' : `${SHORT_ABILITY[ab.id] ?? ab.name.toUpperCase()} `;
       let state: string, cls = 'ok';
       if (u.state === 'downed') {
-        cls = 'downed';
+        cls = u.reviving ? 'downed reviving' : u.bleed <= crit ? 'downed critical' : 'downed';
         state = u.reviving
-          ? `REVIVING ${Math.floor(u.reviveProgress * 100)}%${u.reviver ? ` · ${u.reviver.name}` : ''}`
-          : `DOWN — ${Math.ceil(u.bleed)}s`;
+          ? compact ? `REV ${Math.floor(u.reviveProgress * 100)}%` : `REVIVING ${Math.floor(u.reviveProgress * 100)}%${u.reviver ? ` · ${u.reviver.name}` : ''}`
+          : u.bleed <= crit ? `CRITICAL ${Math.ceil(u.bleed)}s` : compact ? `DOWN ${Math.ceil(u.bleed)}s` : `DOWN — ${Math.ceil(u.bleed)}s`;
       } else if (u.state === 'kia') { cls = 'kia'; state = 'KIA'; }
-      else if (ab.activeLeft > 0) { cls = 'ok active'; state = `${abName} ON ${Math.ceil(ab.activeLeft)}s`; }
-      else if (ab.cooldownLeft > 0) { cls = 'ok cooling'; state = `${abName} ${Math.ceil(ab.cooldownLeft)}s`; }
-      else state = `${abName} READY`;
+      else if (ab.activeLeft > 0) { cls = 'ok active'; state = `${abName}ON ${Math.ceil(ab.activeLeft)}s`; }
+      else if (ab.cooldownLeft > 0) { cls = 'ok cooling'; state = `${abName}${Math.ceil(ab.cooldownLeft)}s`; }
+      else state = `${abName}READY`;
       p.state.textContent = state;
       p.root.className = `panel ${cls}`;
       const cdFrac = u.active ? ab.cooldownLeft / ab.cooldown() : 1;
@@ -144,14 +165,19 @@ export class Hud implements GameUI {
 
   hideOverlay() { this.overlay.style.display = 'none'; this.overlay.innerHTML = ''; this.menus.hide(); }
 
-  /** Barracks (launch screen and "Return to Barracks"). */
+  /** Barracks ("Return to Barracks", Campaign -> Squad). */
   showStart(notice?: string) { this.hideOverlay(); this.menus.showBarracks(notice); }
+  /** Campaign screen (launch screen, Results -> Campaign). */
+  showCampaign(notice?: string) { this.hideOverlay(); this.menus.showCampaign(notice); }
 
   /** Mission Results (victory or defeat). */
   showEnd() { this.menus.showResults(); }
 
   /** The roster object was replaced (dev save reset): redraw the Barracks if it is open. */
-  rosterChanged() { if (this.menus.screen === 'barracks') this.menus.showBarracks('Roster reset to defaults.'); }
+  rosterChanged(notice = 'Roster reset to defaults.') {
+    if (this.menus.screen === 'barracks') this.menus.showBarracks(notice);
+    else if (this.menus.screen === 'campaign') this.menus.showCampaign(notice);
+  }
 
   get rootEl() { return this.root; }
 }

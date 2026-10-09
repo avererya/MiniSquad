@@ -4,8 +4,7 @@
 import { CFG } from './config';
 import type { Game } from './game';
 import type { Unit } from './unit';
-import type { Obstacle } from './map';
-import { OBSTACLES, OUTPOST_ZONE, START_ZONE, WORLD_H, WORLD_W } from './map';
+import type { MapDef, Obstacle } from './map';
 import { grenadePos } from './abilities';
 import { VIEW_W, VIEW_H } from './view';
 import { DEG, clamp, type Rect } from './util';
@@ -19,41 +18,63 @@ const COL = {
   squadBullet: '#fff7a8', enemyBullet: '#ff6a3a',
 };
 
-let ground: HTMLCanvasElement | null = null;
-function buildGround(): HTMLCanvasElement {
+// Ground palettes per map theme (reused art, recoloured; no new assets).
+const THEMES = {
+  grass: { base: '#86a35f', patchA: 'rgba(110,140,70,0.35)', patchB: 'rgba(160,170,95,0.3)', dirt: 'rgba(170,140,95,0.35)', road: 'rgba(176,150,105,0.55)', blade: 'rgba(60,90,40,0.25)', tint: '' },
+  farm: { base: '#93a75e', patchA: 'rgba(150,150,70,0.35)', patchB: 'rgba(120,150,70,0.3)', dirt: 'rgba(160,125,80,0.4)', road: 'rgba(170,140,95,0.6)', blade: 'rgba(80,95,40,0.25)', tint: '' },
+  canyon: { base: '#b7764c', patchA: 'rgba(160,90,55,0.4)', patchB: 'rgba(205,140,95,0.3)', dirt: 'rgba(120,70,45,0.35)', road: 'rgba(215,170,120,0.45)', blade: 'rgba(110,60,35,0.25)', tint: '' },
+  dusk: { base: '#6f8a58', patchA: 'rgba(80,110,60,0.4)', patchB: 'rgba(120,130,80,0.3)', dirt: 'rgba(130,110,80,0.35)', road: 'rgba(150,130,95,0.55)', blade: 'rgba(40,60,30,0.3)', tint: 'rgba(40,30,80,0.18)' },
+} as const;
+
+const grounds = new Map<string, HTMLCanvasElement>();
+function buildGround(map: MapDef): HTMLCanvasElement {
+  const W = map.w, H = map.h, T = THEMES[map.theme];
   const c = document.createElement('canvas');
-  c.width = WORLD_W; c.height = WORLD_H;
+  c.width = W; c.height = H;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#86a35f';
-  g.fillRect(0, 0, WORLD_W, WORLD_H);
+  g.fillStyle = T.base;
+  g.fillRect(0, 0, W, H);
   // deterministic patchy grass / dirt
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 900; i++) {
-    const x = rnd() * WORLD_W, y = rnd() * WORLD_H, r = 20 + rnd() * 70;
-    g.fillStyle = rnd() < 0.5 ? 'rgba(110,140,70,0.35)' : 'rgba(160,170,95,0.3)';
+  const k = (W * H) / (3400 * 1500);
+  for (let i = 0; i < 900 * k; i++) {
+    const x = rnd() * W, y = rnd() * H, r = 20 + rnd() * 70;
+    g.fillStyle = rnd() < 0.5 ? T.patchA : T.patchB;
     g.beginPath(); g.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); g.fill();
   }
-  for (let i = 0; i < 120; i++) {
-    const x = rnd() * WORLD_W, y = rnd() * WORLD_H, r = 30 + rnd() * 60;
-    g.fillStyle = 'rgba(170,140,95,0.35)';
+  for (let i = 0; i < 120 * k; i++) {
+    const x = rnd() * W, y = rnd() * H, r = 30 + rnd() * 60;
+    g.fillStyle = T.dirt;
     g.beginPath(); g.ellipse(x, y, r, r * 0.5, rnd(), 0, Math.PI * 2); g.fill();
   }
-  // dirt road through the map
-  g.strokeStyle = 'rgba(176,150,105,0.55)'; g.lineWidth = 70; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(0, 760); g.bezierCurveTo(900, 820, 1500, 640, 2400, 780); g.lineTo(2900, 780); g.bezierCurveTo(3000, 500, 3100, 300, 3200, 250); g.stroke();
-  for (let i = 0; i < 2500; i++) {
-    g.fillStyle = 'rgba(60,90,40,0.25)';
-    g.fillRect(rnd() * WORLD_W, rnd() * WORLD_H, 2, 4);
+  // dirt roads (smoothed polylines)
+  g.strokeStyle = T.road; g.lineWidth = 70; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const road of map.roads) {
+    g.beginPath(); g.moveTo(road[0].x, road[0].y);
+    for (let i = 1; i < road.length - 1; i++) {
+      const mx = (road[i].x + road[i + 1].x) / 2, my = (road[i].y + road[i + 1].y) / 2;
+      g.quadraticCurveTo(road[i].x, road[i].y, mx, my);
+    }
+    const last = road[road.length - 1]; g.lineTo(last.x, last.y);
+    g.stroke();
   }
+  for (let i = 0; i < 2500 * k; i++) {
+    g.fillStyle = T.blade;
+    g.fillRect(rnd() * W, rnd() * H, 2, 4);
+  }
+  if (T.tint) { g.fillStyle = T.tint; g.fillRect(0, 0, W, H); }
   // obstacle contact shadows
   g.fillStyle = 'rgba(0,0,0,0.18)';
-  for (const o of OBSTACLES) g.fillRect(o.x + 4, o.y + 4, o.w, o.h + 6);
+  for (const o of map.obstacles) g.fillRect(o.x + 4, o.y + 4, o.w, o.h + 6);
   return c;
 }
 
 export function render(ctx: CanvasRenderingContext2D, game: Game) {
-  if (!ground) ground = buildGround();
+  const map = game.map;
+  let ground = grounds.get(map.id);
+  if (!ground) { ground = buildGround(map); grounds.set(map.id, ground); }
+  const OBSTACLES = map.obstacles;
   const shake = game.fx.shake;
   const ox = Math.round(-game.cam.x + VIEW_W / 2 + (shake ? (Math.random() - 0.5) * shake : 0));
   const oy = Math.round(-game.cam.y + VIEW_H / 2 + (shake ? (Math.random() - 0.5) * shake : 0));
@@ -78,7 +99,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   const items: Item[] = [];
   const inView = (r: Rect) => r.x + r.w > vx - 80 && r.x < vx + VIEW_W + 80 && r.y + r.h > vy - 80 && r.y - 80 < vy + VIEW_H + 80;
   for (const o of OBSTACLES) if (inView(o)) items.push({ y: o.y + o.h, draw: () => drawObstacle(ctx, o, game.clock) });
-  for (const u of [...game.soldiers, ...game.enemies]) items.push({ y: u.pos.y, draw: () => drawUnit(ctx, u, game) });
+  for (const u of [...game.soldiers, ...game.npcs, ...game.enemies]) items.push({ y: u.pos.y, draw: () => u.structure ? drawStructure(ctx, u, game) : u.npc ? drawCaptive(ctx, u, game) : drawUnit(ctx, u, game) });
   for (const g of game.grenades) {
     const p = grenadePos(g);
     items.push({ y: p.y, draw: () => drawGrenade(ctx, p.x, p.y, p.z, g.landed, game.clock) });
@@ -128,23 +149,15 @@ function drawZones(ctx: CanvasRenderingContext2D, game: Game) {
   const t = game.clock;
   const m = game.mission;
   // start
+  const sz = game.map.startZone;
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.setLineDash([10, 8]); ctx.lineWidth = 2;
-  ctx.strokeRect(START_ZONE.x, START_ZONE.y, START_ZONE.w, START_ZONE.h);
-  // outpost
-  const op = OUTPOST_ZONE;
-  const opActive = m.phase === 'outpost' || m.phase === 'hold';
-  ctx.fillStyle = opActive ? 'rgba(255,216,74,0.12)' : 'rgba(120,255,140,0.08)';
-  ctx.fillRect(op.x, op.y, op.w, op.h);
-  if (m.phase === 'hold') {
-    ctx.fillStyle = 'rgba(255,216,74,0.25)';
-    ctx.fillRect(op.x, op.y, op.w * clamp(m.holdProgress / CFG.mission.outpostHold, 0, 1), op.h);
-  }
-  ctx.strokeStyle = opActive ? '#ffd84a' : '#7dff8a'; ctx.lineWidth = 3;
-  ctx.strokeRect(op.x, op.y, op.w, op.h);
+  ctx.strokeRect(sz.x, sz.y, sz.w, sz.h);
   ctx.setLineDash([]);
-  // extraction (helipad)
+  // objective zones (outpost, advance line, captive ring), wrecks
+  m.draw(ctx, game);
+  // extraction (helipad): live only once every primary objective is complete
   const z = m.extraction.zone;
-  const live = m.phase === 'toExtraction' || m.phase === 'countdown' || m.phase === 'available';
+  const live = m.inExtraction;
   const pulse = live ? 0.5 + 0.5 * Math.sin(t * 5) : 0;
   ctx.fillStyle = live ? `rgba(120,255,140,${0.12 + pulse * 0.15})` : 'rgba(80,80,80,0.15)';
   ctx.fillRect(z.x, z.y, z.w, z.h);
@@ -160,6 +173,8 @@ function drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle, clock: number)
   const H = o.height;
   let roof = '#b9a68a', face = '#8a755b', edge = '#5d4c3a';
   if (o.kind === 'wall') { roof = '#b4b0a6'; face = '#86827a'; edge = '#5b5852'; }
+  else if (o.kind === 'rock') { roof = '#a8613d'; face = '#7b4026'; edge = '#4f2716'; }
+  else if (o.kind === 'sandbag') { roof = '#c8b27a'; face = '#9b8656'; edge = '#6b5a35'; }
   else if (o.kind === 'crate') { roof = '#c99a55'; face = '#94683a'; edge = '#5e4020'; }
   else if (o.kind === 'hut') { roof = '#7f8c6a'; face = '#5d6a4c'; edge = '#38412c'; }
   // front face: from roof bottom down to footprint bottom
@@ -185,6 +200,17 @@ function drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle, clock: number)
     for (let yy = o.y - H + 12; yy < o.y + o.h - H; yy += 12) {
       ctx.beginPath(); ctx.moveTo(o.x + 3, yy); ctx.lineTo(o.x + o.w - 3, yy); ctx.stroke();
     }
+  } else if (o.kind === 'rock') {
+    // strata lines + a few cracks
+    ctx.strokeStyle = 'rgba(60,25,10,0.35)'; ctx.lineWidth = 2;
+    for (let yy = o.y + o.h - H + 10; yy < o.y + o.h - 4; yy += 13) { ctx.beginPath(); ctx.moveTo(o.x + 3, yy); ctx.lineTo(o.x + o.w - 3, yy + 2); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(255,220,180,0.18)';
+    for (let xx = o.x + 14; xx < o.x + o.w - 8; xx += 37) { ctx.beginPath(); ctx.moveTo(xx, o.y - H + 6); ctx.lineTo(xx + 8, o.y - H + Math.min(o.h - 6, 30)); ctx.stroke(); }
+  } else if (o.kind === 'sandbag') {
+    ctx.strokeStyle = 'rgba(80,60,30,0.45)'; ctx.lineWidth = 1;
+    const vertical = o.h > o.w;
+    if (vertical) for (let yy = o.y - H + 10; yy < o.y + o.h - H; yy += 12) { ctx.beginPath(); ctx.moveTo(o.x + 2, yy); ctx.lineTo(o.x + o.w - 2, yy); ctx.stroke(); }
+    else for (let xx = o.x + 12; xx < o.x + o.w; xx += 14) { ctx.beginPath(); ctx.moveTo(xx, o.y - H + 2); ctx.lineTo(xx, o.y + o.h - 2); ctx.stroke(); }
   } else if (o.kind === 'crate') {
     ctx.strokeStyle = edge; ctx.lineWidth = 2;
     ctx.beginPath();
@@ -223,7 +249,7 @@ function drawPickups(ctx: CanvasRenderingContext2D, game: Game) {
 
 function drawReviveCircles(ctx: CanvasRenderingContext2D, game: Game) {
   const R = CFG.revive;
-  for (const s of game.soldiers) {
+  for (const s of [...game.soldiers, ...game.npcs]) {
     if (s.state !== 'downed') continue;
     const pulse = 0.5 + 0.5 * Math.sin(game.clock * 8);
     ctx.fillStyle = s.reviving ? 'rgba(120,255,140,0.15)' : `rgba(255,60,60,${0.08 + 0.1 * pulse})`;
@@ -505,12 +531,21 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const e of game.enemies) {
     if (!e.active) continue;
-    const w = 24, f = clamp(e.hp / e.maxHp, 0, 1);
-    const bx = e.pos.x - w / 2, byy = e.pos.y - 60;
+    const w = e.structure ? 64 : 24, f = clamp(e.hp / e.maxHp, 0, 1);
+    const bx = e.pos.x - w / 2, byy = e.pos.y - (e.structure ? 62 : 60);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx - 1, byy - 1, w + 2, 5);
     ctx.fillStyle = f > 0.5 ? '#ff5a4a' : '#ff9a3a'; ctx.fillRect(bx, byy, w * f, 3);
   }
   ctx.font = 'bold 10px sans-serif';
+  for (const n of game.npcs) {
+    if (n.state === 'downed') { drawDownedMarker(ctx, n, game); continue; }
+    if (n.state !== 'active') continue;
+    const w = 32, f = clamp(n.hp / n.maxHp, 0, 1), bx = n.pos.x - w / 2, byy = n.pos.y - 60;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 1, byy - 1, w + 2, 7);
+    ctx.fillStyle = '#7dd3ff'; ctx.fillRect(bx, byy, w * f, 5);
+    ctx.fillStyle = '#000'; ctx.fillText(n.escorting ? 'CAPTIVE' : 'CAPTIVE (HELD)', n.pos.x + 1, n.pos.y - 69);
+    ctx.fillStyle = '#7dd3ff'; ctx.fillText(n.escorting ? 'CAPTIVE' : 'CAPTIVE (HELD)', n.pos.x, n.pos.y - 70);
+  }
   for (const s of game.soldiers) {
     if (s.state === 'active') {
       // green health bar (enemies' bars are red), name tag just above it
@@ -527,36 +562,94 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(s.name, s.pos.x + 1, s.pos.y - 70 + 1);
       ctx.fillStyle = '#cfe6ff'; ctx.fillText(s.name, s.pos.x, s.pos.y - 70);
     } else if (s.state === 'downed') {
-      const cx = s.pos.x, cy = s.pos.y - 42;
-      // revive progress ring + bleed-out countdown
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.beginPath(); ctx.arc(cx, cy, 17, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.stroke();
-      if (s.reviveProgress > 0) {
-        ctx.strokeStyle = '#7dff8a';
-        ctx.beginPath(); ctx.arc(cx, cy, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, s.reviveProgress)); ctx.stroke();
-      }
-      ctx.font = 'bold 13px sans-serif';
-      ctx.fillStyle = s.reviving ? '#7dff8a' : '#ff6a6a';
-      ctx.fillText(s.reviving ? '+' : String(Math.ceil(s.bleed)), cx, cy + 1);
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillStyle = '#000'; ctx.fillText(`${s.name} DOWN`, cx + 1, cy - 26 + 1);
-      ctx.fillStyle = '#ff5050'; ctx.fillText(`${s.name} DOWN`, cx, cy - 26);
-      ctx.font = 'bold 10px sans-serif';
+      drawDownedMarker(ctx, s, game);
     } else if (s.state === 'kia') {
       ctx.fillStyle = '#bbb'; ctx.fillText(`${s.name} KIA`, s.pos.x, s.pos.y - 24);
     }
   }
 }
 
+/**
+ * Downed soldier / captive: bleed-out ring (shrinks as time runs out) with the seconds left,
+ * revive progress arc (green) while a valid revive runs, name + DOWN, and a flashing
+ * CRITICAL warning in the last CFG.revive.criticalTime seconds.
+ */
+function drawDownedMarker(ctx: CanvasRenderingContext2D, s: Unit, game: Game) {
+  const R = CFG.revive;
+  const cx = s.pos.x, cy = s.pos.y - 44;
+  const critical = !s.reviving && s.bleed <= R.criticalTime;
+  const blink = critical && Math.sin(game.clock * 16) > 0;
+  ctx.fillStyle = critical ? (blink ? 'rgba(160,0,0,0.85)' : 'rgba(0,0,0,0.7)') : 'rgba(0,0,0,0.62)';
+  ctx.beginPath(); ctx.arc(cx, cy, 19, 0, Math.PI * 2); ctx.fill();
+  // bleed-out remaining (red) and revive progress (green, inner)
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = critical ? '#ff2020' : '#ff6a6a';
+  ctx.beginPath(); ctx.arc(cx, cy, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(s.bleed / R.bleedOut, 0, 1)); ctx.stroke();
+  if (s.reviveProgress > 0) {
+    ctx.strokeStyle = '#7dff8a'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(cx, cy, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, s.reviveProgress)); ctx.stroke();
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillStyle = s.reviving ? '#7dff8a' : '#fff';
+  ctx.fillText(s.reviving ? `${Math.floor(s.reviveProgress * 100)}%` : String(Math.ceil(s.bleed)), cx, cy + 1);
+  const label = s.reviving ? `${s.name} — REVIVING` : critical ? `${s.name} — CRITICAL` : `${s.name} DOWN`;
+  ctx.font = `bold ${critical ? 14 : 12}px sans-serif`;
+  ctx.fillStyle = '#000'; ctx.fillText(label, cx + 1, cy - 29 + 1);
+  ctx.fillStyle = s.reviving ? '#7dff8a' : critical ? (blink ? '#ffffff' : '#ff3030') : '#ff5050';
+  ctx.fillText(label, cx, cy - 29);
+  ctx.font = 'bold 10px sans-serif';
+}
+
+/** Objective structure (supply depot): stacked crates under a tarp with a radio mast. */
+function drawStructure(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(x, y + 4, 34, 14, 0, 0, Math.PI * 2); ctx.fill();
+  const flash = u.hitFlash > 0;
+  ctx.fillStyle = flash ? '#fff' : '#6b5a3a'; ctx.fillRect(x - 30, y - 30, 60, 32);
+  ctx.fillStyle = flash ? '#eee' : '#8a7448'; ctx.fillRect(x - 30, y - 42, 60, 14);
+  ctx.fillStyle = flash ? '#ddd' : '#3f5a2c'; ctx.fillRect(x - 33, y - 48, 66, 10); // tarp
+  ctx.strokeStyle = '#2b2416'; ctx.lineWidth = 2; ctx.strokeRect(x - 30, y - 42, 60, 44);
+  ctx.beginPath(); ctx.moveTo(x - 30, y - 15); ctx.lineTo(x + 30, y - 15); ctx.stroke();
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x + 18, y - 48); ctx.lineTo(x + 18, y - 92); ctx.stroke();
+  ctx.fillStyle = Math.sin(game.clock * 6) > 0 ? '#ff3b3b' : '#661111';
+  ctx.beginPath(); ctx.arc(x + 18, y - 94, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffd84a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(u.label, x, y - 105);
+}
+
+/** Captive / escorted NPC: no helmet, orange jumpsuit; tied hands while held. */
+function drawCaptive(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos;
+  if (u.state !== 'active') { drawUnit(ctx, u, game); return; }
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath(); ctx.ellipse(x, y + 1, 11, 5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(CHAR_SCALE, CHAR_SCALE); ctx.translate(-x, -y);
+  const moving = u.moveFrac > 0.08, bob = moving ? Math.sin(u.walkPhase) : 0;
+  ctx.fillStyle = '#2c2c2c';
+  ctx.fillRect(x - 6, y - 7 + bob * 2.5, 4, 7 - bob * 2); ctx.fillRect(x + 2, y - 7 - bob * 2.5, 4, 7 + bob * 2);
+  ctx.fillStyle = u.hitFlash > 0 ? '#fff' : '#e8892b';
+  roundRect(ctx, x - 7, y - 20, 14, 13, 4); ctx.fill();
+  ctx.fillStyle = COL.skin;
+  ctx.beginPath(); ctx.arc(x, y - 28, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4a3020';
+  ctx.beginPath(); ctx.arc(x, y - 31, 9, Math.PI, Math.PI * 2); ctx.fill();
+  if (!u.escorting) { ctx.strokeStyle = '#ccc'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 6, y - 12); ctx.lineTo(x + 6, y - 12); ctx.stroke(); }
+  ctx.restore();
+}
+
 function drawOffscreenArrows(ctx: CanvasRenderingContext2D, game: Game) {
   if (game.phase !== 'playing') return;
   const targets: { x: number; y: number; label: string; color: string }[] = [];
-  for (const s of game.soldiers) {
+  for (const s of [...game.soldiers, ...game.npcs]) {
     if (s.state === 'downed') targets.push({ ...s.pos, label: `${s.name} ${Math.ceil(s.bleed)}s`, color: '#ff4040' });
   }
-  const obj = game.mission.objectivePoint();
+  const obj = game.mission.objectivePoint(game);
   if (obj) targets.push({ ...obj.pos, label: obj.label, color: obj.color });
   const m = 46;
   for (const t of targets) {

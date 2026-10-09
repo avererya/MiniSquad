@@ -14,7 +14,7 @@ export interface TargetingStrategy {
 /** Nearest hostile within weapon range with clear line of sight. */
 export const NearestVisible: TargetingStrategy = {
   isValid(shooter, target, game) {
-    if (!target.active) return false;
+    if (!target.targetable) return false;
     const r = shooter.stats.range;
     if (dist2(shooter.pos, target.pos) > r * r) return false;
     return game.world.clear(shooter.pos, target.pos);
@@ -22,11 +22,18 @@ export const NearestVisible: TargetingStrategy = {
   select(shooter, candidates, game) {
     const r2 = shooter.stats.range ** 2;
     const sorted = candidates
-      .filter((c) => c.active)
+      .filter((c) => c.targetable)
       .map((c) => ({ c, d: dist2(shooter.pos, c.pos) }))
       .filter((e) => e.d <= r2)
+      // an escorted captive is a lower-priority target than the soldiers guarding them (v0.4)
+      .map((e) => (e.c.npc ? { c: e.c, d: e.d * 2.5 } : e))
       .sort((a, b) => a.d - b.d);
-    for (const e of sorted) if (game.world.clear(shooter.pos, e.c.pos)) return e.c;
-    return null;
+    let structure: Unit | null = null; // objective structures (depot) only when no enemy soldier is visible
+    for (const e of sorted) {
+      if (!game.world.clear(shooter.pos, e.c.pos)) continue;
+      if (!e.c.structure) return e.c;
+      structure ??= e.c;
+    }
+    return structure;
   },
 };

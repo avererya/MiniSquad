@@ -11,6 +11,8 @@ import { getAccount, setAccount } from './progression';
 import * as economy from './economy';
 import { Roster } from './roster';
 import { TRAITS } from './traits';
+import * as campaign from './campaign';
+import { CAMPAIGN } from './campaign';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -28,9 +30,22 @@ game.roster = loaded.roster;
 const persist = () => writeSave(game.roster, getAccount());
 game.persist = persist;
 loaded.roster.onChange = () => { persist(); };
-function useRoster(r: Roster) { r.onChange = () => { persist(); }; game.replaceRoster(r); }
-/** Dev: wipe the save back to the six default soldiers, 0 credits (tuning panel, two-step confirm). */
-function resetRosterSave() { const fresh = resetSave(); setAccount(fresh.account); useRoster(fresh.roster); }
+game.selectMission(loaded.account.campaign.selectedMission);
+function useRoster(r: Roster, notice?: string) { r.onChange = () => { persist(); }; game.replaceRoster(r, notice); }
+/** Dev: wipe the save back to a new player (Ace + Ranger, Mission 1, 0 credits) (tuning panel, two-step confirm). */
+function resetRosterSave() { const fresh = resetSave(); setAccount(fresh.account); game.selectMission(fresh.account.campaign.selectedMission); useRoster(fresh.roster); }
+/**
+ * Dev: unlock every playable mission and every soldier, and SAVE it (tuning panel, two-step
+ * confirm, clearly labelled). XP, training, credits and mission records are not touched.
+ */
+function debugUnlockAll() {
+  const a = getAccount();
+  a.campaign.unlockedMissions = CAMPAIGN.filter((m) => m.playable).map((m) => m.id);
+  for (const s of game.roster.soldiers) game.roster.unlock(s.id);
+  persist();
+  useRoster(game.roster, 'DEBUG: all missions and soldiers unlocked (saved).');
+}
+game.debugUnlockAll = debugUnlockAll;
 
 // Fit the 1280x720 stage into the visible viewport, minus safe areas (notch, home bar).
 // Mobile browsers often report stale sizes right after a rotation and may leave the
@@ -89,8 +104,9 @@ const preset = findPreset(sq);
 const tempIds = sq ? sq.split(/[,+ ]/).map((x) => game.roster.get(x.toLowerCase())).filter((x) => !!x) : [];
 hud.rebuildPanels();
 if (preset) game.reset(preset.classes);
-else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 3), 'temp');
-else hud.showStart(loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.' : loaded.status === 'migrated' ? 'Save updated for v0.3: your soldiers and squad were kept.' : undefined);
+else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 6), 'temp');
+else hud.showCampaign(loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.'
+  : loaded.status === 'migrated' ? 'Save updated for v0.4: all your soldiers, XP, training and credits were kept. The new campaign starts at Mission 1.' : undefined);
 
 // fixed-step simulation, render every frame
 const STEP = 1 / 60;
@@ -113,5 +129,5 @@ requestAnimationFrame(frame);
 Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, __resetConfig: resetConfig });
 // roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
 Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded,
-  __progression: progression, __economy: economy, __account: getAccount, __persist: persist });
+  __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll });
 game.resetRosterSave = resetRosterSave;

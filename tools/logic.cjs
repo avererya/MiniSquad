@@ -9,6 +9,10 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
   await page.click('[data-a="deploy"]');
   const res = await page.evaluate(() => {
     const g = window.game; const out = [];
+    // v0.4: these rule checks use the comms-outpost map, which is now Mission 3 (Field Medicine)
+    // (fresh browser profile: unlock everything first so roster checks can use all six soldiers)
+    window.__debugUnlockAll();
+    g.selectMission('field-medicine', true);
     const check = (name, ok, detail) => out.push({ name, ok: !!ok, detail: String(detail) });
     const step = (sec) => { for (let i = 0; i < Math.round(sec * 60); i++) g.update(1 / 60); };
     const clearEnemies = () => { g.enemies.forEach(e => e.state = 'dead'); g.enemies = []; g.mission.defenders = [{ active: true }]; };
@@ -36,7 +40,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     g.downSoldier(g.soldiers[0]);
     g.soldiers[1].pos = { ...g.soldiers[0].pos }; g.anchor = { ...g.soldiers[0].pos };
     step(9.5); const mid = g.soldiers[0].state; step(0.7);
-    check('revive by Infantry takes 10 s', mid === 'downed' && g.soldiers[0].state === 'active' && Math.round(g.soldiers[0].hp) === 40, `9.5s ${mid}, 10.2s ${g.soldiers[0].state} hp ${Math.round(g.soldiers[0].hp)}`);
+    check('revive by Infantry takes 10 s, restores 30% HP (v0.4; was 40%)', mid === 'downed' && g.soldiers[0].state === 'active' && Math.round(g.soldiers[0].hp) === 30, `9.5s ${mid}, 10.2s ${g.soldiers[0].state} hp ${Math.round(g.soldiers[0].hp)}`);
     // bleed-out -> KIA, progress kept when reviver leaves
     fresh();
     let d = g.soldiers[0]; g.downSoldier(d);
@@ -77,7 +81,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
       `targeting=${tm}, explosions ${g.scorches.length - sc0}, enemy ${en.state}, friendly ${g.soldiers.map(x => Math.round(x.hp))}, cd ${t.ability.cooldownLeft.toFixed(2)}`);
     // extraction with a downed soldier -> KIA
     fresh();
-    g.mission.phase = 'available'; g.mission.extraction.begin(g); g.mission.extraction.update(g, 999);
+    g.mission.debugReadyExtraction(g);
     g.downSoldier(g.soldiers[1]); g.soldiers[1].pos = { x: 2000, y: 700 };
     g.soldiers[0].pos = { x: 3200, y: 250 }; g.anchor = { x: 3200, y: 250 };
     step(0.2);
@@ -239,8 +243,8 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     check('two revivers: fastest (Medic) counts, no stacking', Math.abs(t2 - 5) < 0.1, `${t2.toFixed(2)}s`);
     // downed Medic bleeds out normally
     fresh(['medic', 'infantry']); g.invuln = true; const dm = g.soldiers[0]; g.downSoldier(dm); g.soldiers[1].pos = { x: dm.pos.x + 600, y: dm.pos.y }; g.anchor = { ...g.soldiers[1].pos };
-    step(29.5); const stillDown = dm.state; step(0.6);
-    check('downed Medic bleeds out at 30 s -> KIA', stillDown === 'downed' && dm.state === 'kia', `${stillDown} -> ${dm.state}`);
+    step(19.5); const stillDown = dm.state; step(0.6);
+    check('downed Medic bleeds out at 20 s -> KIA (v0.4; was 30 s)', stillDown === 'downed' && dm.state === 'kia', `${stillDown} -> ${dm.state}`);
 
     // ============ movement ============
     const run = (squad) => {
@@ -337,22 +341,23 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     check('deployed units copy identities (mission never shares roster objects)', g.soldiers[0].identity !== byId('tank') && g.soldiers[0].identity.id === 'tank', `same object: ${g.soldiers[0].identity === byId('tank')}`);
 
     // selection rules (on the live roster; restored afterwards)
-    R.slots = [null, null, null];
-    const sel = [R.select('ace'), R.select('ranger'), R.select('ace'), R.select('tank'), R.select('doc')];
-    check('selection: up to 3, 4th refused, duplicates impossible', sel[0].ok && sel[1].ok && sel[2].ok && sel[2].slot === 0 && sel[3].ok && !sel[4].ok && R.slots.join() === 'ace,ranger,tank',
+    R.slots = Array(6).fill(null);
+    const sel = [R.select('ace', undefined, 3), R.select('ranger', undefined, 3), R.select('ace', undefined, 3), R.select('tank', undefined, 3), R.select('doc', undefined, 3)];
+    check('selection: up to the cap (3), 4th refused, duplicates impossible', sel[0].ok && sel[1].ok && sel[2].ok && sel[2].slot === 0 && sel[3].ok && !sel[4].ok && R.slots.join() === 'ace,ranger,tank,,,',
       `results ${sel.map(x => x.ok ? 'ok@' + x.slot : 'refused').join(' ')}, slots ${R.slots.join()}`);
     R.select('doc', 1); // replace slot 2
     const afterReplace = R.slots.join();
     R.select('doc', 2); // move doc to slot 3: never in two slots
-    check('selection: replace a slot; moving never duplicates', afterReplace === 'ace,doc,tank' && R.slots.join() === 'ace,,doc' && R.slots.filter(x => x === 'doc').length === 1, `${afterReplace} -> ${R.slots.join()}`);
+    // v0.4: the selection is a packed list, so moving Doc onto Tank's slot leaves 'ace,doc'
+    check('selection: replace a slot; moving never duplicates', afterReplace === 'ace,doc,tank,,,' && R.slots.join() === 'ace,doc,,,,' && R.slots.filter(x => x === 'doc').length === 1, `${afterReplace} -> ${R.slots.join()}`);
     g.roster.slots = ['ace', 'ranger', null]; g.deploySelected(); clearEnemies();
     const [sa, sr] = g.soldiers;
     check('deploy: two Infantry with their own identity + traits', g.soldiers.length === 2 && sa.identity.id === 'ace' && sr.identity.id === 'ranger' && sa.cone === 10.8 && sr.cone === 12 && sa.ability !== sr.ability && sr.stats.moveSpeed === 157.5 && sa.stats.moveSpeed === 150,
       `${g.soldiers.map(s => `${s.name}/${s.identity.traitId} cone ${s.cone} speed ${s.stats.moveSpeed}`).join(', ')}`);
-    R.slots = [null, null, null];
+    R.slots = Array(6).fill(null);
     const ph = g.phase, n0 = g.soldiers.length;
     const deployedEmpty = g.deploySelected();
-    check('deploy needs at least one soldier', !deployedEmpty && g.phase === ph && g.soldiers.length === n0, `deploySelected() -> ${deployedEmpty}`);
+    check('deploy needs at least one soldier', !deployedEmpty.ok && g.phase === ph && g.soldiers.length === n0, `deploySelected() -> ${JSON.stringify(deployedEmpty)}`);
     R.slots = ['havoc', null, 'patch'];
     g.deploySelected(); clearEnemies();
     check('deploy uses exactly the selected soldiers, in slot order (no generic fallback)', g.soldiers.map(s => s.identity.id).join() === 'havoc,patch' && g.soldiers.every(s => s.identity.traitId && !/^G/.test(s.identity.id)) && g.deployment.kind === 'roster',

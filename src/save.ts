@@ -6,26 +6,38 @@
 // records, recently settled mission-run ids). NOT stored: HP, cooldowns, mission state or
 // effective stats (always recomputed, so nothing can stack).
 //
-// MIGRATION: a v1 save (v0.2.2) is upgraded IN PLACE: soldiers, traits and the squad are kept,
-// new fields get their defaults (0 XP / level 1, no training, 0 credits). Formats are never
-// reset just because they are old. Each field is repaired on its own (bad XP -> derived from
-// level, bad ranks -> clamped, negative credits -> 0) instead of throwing a soldier away.
+// v3 (v0.4) adds: which soldiers are unlocked, campaign progress (unlocked missions, selected
+// mission) and best stars per mission record. The squad selection holds up to 6 slots.
+//
+// MIGRATION: v1 (v0.2.2) and v2 (v0.3) saves are upgraded IN PLACE: soldiers, traits, XP,
+// training, credits, squad training and the squad are kept; new fields get their defaults.
+// Legacy players owned all six soldiers, so all six stay unlocked; the campaign starts at
+// Mission 1. The v0.3 'comms-outpost' mission record is kept as history (it is not a
+// campaign mission id, so it never counts as a campaign first clear). The raw legacy save is
+// also copied once to SAVE_LEGACY_KEY before the upgraded save is written.
+// Formats are never reset just because they are old. Each field is repaired on its own (bad
+// XP -> derived from level, bad ranks -> clamped, negative credits -> 0, unknown mission ids
+// in the campaign lists dropped) instead of throwing a soldier away.
 import { CLASSES, newProgression, newService, type ProgressionRecord, type ServiceRecord, type SoldierIdentity } from './classes';
 import { MODIFIER_KEYS, TRAITS, type StatModifiers } from './traits';
-import { DEFAULT_SQUAD, Roster, defaultRoster } from './roster';
+import { ALL_SOLDIER_IDS, DEFAULT_SQUAD, LEGACY_DEFAULT_SQUAD, Roster, defaultRoster } from './roster';
 import {
   LEVEL_CAP, MAX_XP, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, cleanRank, levelForXp, newAccount,
-  newSquadTraining, newTraining, xpForLevel, type AccountData, type MissionRecord, type SquadTrainingRanks, type TrainingRanks,
+  newCampaign, newSquadTraining, newTraining, xpForLevel, type AccountData, type CampaignProgress, type MissionRecord, type SquadTrainingRanks, type TrainingRanks,
 } from './progression';
+import { CAMPAIGN, FIRST_MISSION, derivedMissionUnlocks, derivedSoldierUnlocks } from './campaign';
 
 export const SAVE_KEY = 'minisquad.save';
 export const SAVE_BACKUP_KEY = 'minisquad.save.invalid';
-export const SAVE_VERSION = 2;
+/** One-time copy of a v1/v2 save, taken before it is upgraded to v3. */
+export const SAVE_LEGACY_KEY = 'minisquad.save.pre-v0.4';
+export const SAVE_VERSION = 3;
 
-export interface SaveFileV2 {
-  version: 2;
+export interface SaveFileV3 {
+  version: 3;
   roster: SoldierIdentity[];
   squad: (string | null)[];
+  unlockedSoldiers: string[];
   account: AccountData;
 }
 
@@ -113,7 +125,29 @@ export function mergeSoldier(def: SoldierIdentity, v: Record<string, unknown>, n
   return s;
 }
 
-function cleanAccount(v: unknown, notes: string[]): AccountData {
+const PLAYABLE_IDS = new Set(CAMPAIGN.filter((m) => m.playable).map((m) => m.id));
+
+/** Campaign lists: known playable ids only, plus whatever the completed missions unlock (repair). */
+function cleanCampaign(v: unknown, missions: Record<string, MissionRecord>, notes: string[], legacy: boolean): CampaignProgress {
+  const c = newCampaign();
+  const done = (id: string) => (missions[id]?.completions ?? 0) > 0;
+  const derived = derivedMissionUnlocks(done);
+  if (legacy || v === undefined) { c.unlockedMissions = derived; return c; }
+  if (!isObj(v)) { notes.push('Campaign progress invalid: rebuilt from mission records.'); c.unlockedMissions = derived; return c; }
+  const listed = Array.isArray(v.unlockedMissions) ? v.unlockedMissions.filter((x): x is string => typeof x === 'string') : [];
+  if (!Array.isArray(v.unlockedMissions)) notes.push('Unlocked missions missing: rebuilt from mission records.');
+  const bad = listed.filter((x) => !PLAYABLE_IDS.has(x));
+  if (bad.length) notes.push(`Unknown missions ${bad.join(', ')} removed from the campaign.`);
+  const merged = [...new Set([...listed.filter((x) => PLAYABLE_IDS.has(x)), ...derived])];
+  const missing = derived.filter((x) => !listed.includes(x));
+  if (missing.length && Array.isArray(v.unlockedMissions)) notes.push(`Missions ${missing.join(', ')} re-unlocked from mission records.`);
+  c.unlockedMissions = CAMPAIGN.map((m) => m.id).filter((id) => merged.includes(id)); // campaign order
+  if (typeof v.selectedMission === 'string' && c.unlockedMissions.includes(v.selectedMission)) c.selectedMission = v.selectedMission;
+  else { if (v.selectedMission !== undefined) notes.push('Selected mission invalid: Mission 1 selected.'); c.selectedMission = FIRST_MISSION; }
+  return c;
+}
+
+function cleanAccount(v: unknown, notes: string[], legacy: boolean): AccountData {
   const a = newAccount();
   if (v === undefined) return a;
   if (!isObj(v)) { notes.push('Account invalid: credits and squad training reset.'); return a; }
@@ -125,14 +159,21 @@ function cleanAccount(v: unknown, notes: string[]): AccountData {
   if (isObj(v.missions)) {
     for (const [id, r] of Object.entries(v.missions)) {
       if (!/^[a-z0-9_-]{1,40}$/.test(id) || !isObj(r)) { notes.push(`Mission record ${id} dropped.`); continue; }
-      const rec: MissionRecord = { completions: isInt(r.completions) && r.completions >= 0 ? r.completions : 0, firstClearRun: typeof r.firstClearRun === 'string' ? r.firstClearRun : null };
+      const rec: MissionRecord = { completions: isInt(r.completions) && r.completions >= 0 ? r.completions : 0, firstClearRun: typeof r.firstClearRun === 'string' ? r.firstClearRun : null, bestStars: 0 };
       if (rec.completions === 0 && rec.firstClearRun) rec.completions = 1;
+      if (r.bestStars !== undefined) {
+        const b = cleanRank(r.bestStars, 3);
+        if (b !== r.bestStars) notes.push(`Mission ${id}: best stars ${String(r.bestStars)} -> ${b}.`);
+        rec.bestStars = b;
+      }
+      if (rec.completions > 0 && rec.bestStars === 0 && PLAYABLE_IDS.has(id) && !legacy) rec.bestStars = 1; // a clear is at least 1 star
       a.missions[id] = rec;
     }
   }
   if (Array.isArray(v.settledRuns)) {
     a.settledRuns = [...new Set(v.settledRuns.filter((x): x is string => typeof x === 'string' && x.length <= 64))].slice(-PROGRESSION.rememberRuns);
   }
+  a.campaign = cleanCampaign(v.campaign, a.missions, notes, legacy);
   return a;
 }
 
@@ -140,12 +181,16 @@ function storage(): Storage | null {
   try { return window.localStorage; } catch { return null; }
 }
 
-export function serialize(r: Roster, a: AccountData): SaveFileV2 {
+export function serialize(r: Roster, a: AccountData): SaveFileV3 {
   return {
     version: SAVE_VERSION,
     roster: r.soldiers.map((s) => ({ ...s, progression: s.progression ?? newProgression() })),
     squad: [...r.slots],
-    account: { ...a, squadTraining: { ...a.squadTraining }, missions: { ...a.missions }, settledRuns: [...a.settledRuns] },
+    unlockedSoldiers: ALL_SOLDIER_IDS.filter((id) => r.unlocked.has(id)),
+    account: {
+      ...a, squadTraining: { ...a.squadTraining }, missions: Object.fromEntries(Object.entries(a.missions).map(([k, m]) => [k, { ...m }])), settledRuns: [...a.settledRuns],
+      campaign: { unlockedMissions: [...a.campaign.unlockedMissions], selectedMission: a.campaign.selectedMission },
+    },
   };
 }
 
@@ -159,13 +204,14 @@ export function writeSave(r: Roster, a: AccountData): WriteResult {
 
 /**
  * Parse + validate + migrate.
- *  - no save -> defaults ('new')
+ *  - no save -> defaults ('new'): Ace + Ranger, Mission 1
  *  - unparseable JSON / not an object / no roster array -> raw text backed up under
  *    SAVE_BACKUP_KEY, defaults restored ('reset'). This is the ONLY reset path.
- *  - version 1 -> migrated in place ('migrated', or 'repaired' if something was also wrong)
- *  - version 2 -> loaded, every field validated ('loaded' / 'repaired')
+ *  - version 1 / 2 -> migrated in place ('migrated', or 'repaired' if something was also wrong):
+ *    all six soldiers unlocked (legacy players owned them), campaign at Mission 1
+ *  - version 3 -> loaded, every field validated ('loaded' / 'repaired')
  *  - unknown version (e.g. a newer build's save) -> raw text backed up, then read best-effort
- *    as v2 ('repaired'), so progress is kept wherever it can be understood
+ *    as v3 ('repaired'), so progress is kept wherever it can be understood
  * Unknown soldier ids are dropped (no recruitment yet); missing soldiers are restored.
  */
 export function parseSave(raw: string | null): LoadResult {
@@ -178,7 +224,8 @@ export function parseSave(raw: string | null): LoadResult {
     return { roster: new Roster(), account: newAccount(), notes, status: 'reset', fromVersion: null };
   }
   const version = typeof data.version === 'number' ? data.version : null;
-  const known = version === 1 || version === 2;
+  const known = version === 1 || version === 2 || version === 3;
+  const legacy = version === 1 || version === 2;
   if (!known) notes.push(`Save version ${String(data.version)} not recognised: read best-effort (backup kept).`);
 
   const saved = new Map<string, Record<string, unknown>>();
@@ -193,14 +240,30 @@ export function parseSave(raw: string | null): LoadResult {
     return mergeSoldier(d, v, notes);
   });
   for (const id of saved.keys()) if (!soldiers.some((s) => s.id === id)) notes.push(`Unknown soldier "${id}" dropped.`);
-  const rawSquad = Array.isArray(data.squad) ? data.squad : DEFAULT_SQUAD;
-  const roster = new Roster(soldiers, rawSquad);
+  const account = cleanAccount(version === 1 ? undefined : data.account, notes, legacy);
+
+  // unlocked soldiers: legacy saves owned everyone; v3 lists them (repaired from mission records)
+  const done = (id: string) => (account.missions[id]?.completions ?? 0) > 0;
+  let unlocked: string[];
+  if (legacy || (!known && !Array.isArray(data.unlockedSoldiers))) unlocked = [...ALL_SOLDIER_IDS];
+  else {
+    const derived = derivedSoldierUnlocks(done);
+    if (!Array.isArray(data.unlockedSoldiers)) { notes.push('Unlocked soldiers missing: rebuilt from mission records.'); unlocked = derived; }
+    else {
+      const listed = data.unlockedSoldiers.filter((x): x is string => typeof x === 'string' && ALL_SOLDIER_IDS.includes(x));
+      if (listed.length !== data.unlockedSoldiers.length) notes.push('Unknown entries removed from unlocked soldiers.');
+      const missing = derived.filter((x) => !listed.includes(x));
+      if (missing.length) notes.push(`Soldiers ${missing.join(', ')} re-unlocked from mission records.`);
+      unlocked = [...new Set([...listed, ...derived])];
+    }
+  }
+  const rawSquad = Array.isArray(data.squad) ? data.squad : legacy ? LEGACY_DEFAULT_SQUAD : DEFAULT_SQUAD;
+  const roster = new Roster(soldiers, rawSquad, unlocked);
   const kept = roster.slots.filter(Boolean).length, asked = Array.isArray(data.squad) ? data.squad.filter((x) => x !== null).length : 0;
   if (!Array.isArray(data.squad)) notes.push('Squad selection missing: default squad selected.');
-  else if (kept !== asked) notes.push('Invalid squad entries removed.');
-  const account = cleanAccount(version === 1 ? undefined : data.account, notes);
+  else if (kept !== asked) notes.push('Invalid or locked squad entries removed.');
 
-  const status: LoadStatus = !known || notes.length ? 'repaired' : version === 1 ? 'migrated' : 'loaded';
+  const status: LoadStatus = !known || notes.length ? 'repaired' : legacy ? 'migrated' : 'loaded';
   return { roster, account, notes, status, fromVersion: version };
 }
 
@@ -210,15 +273,18 @@ export function loadSave(): LoadResult {
   let raw: string | null = null;
   try { raw = ls ? ls.getItem(SAVE_KEY) : null; } catch { raw = null; }
   const res = parseSave(raw);
-  const backup = res.status === 'reset' || (res.fromVersion !== null && res.fromVersion !== 1 && res.fromVersion !== SAVE_VERSION)
-    || (res.status === 'repaired' && res.fromVersion === null);
+  const v = res.fromVersion;
+  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== SAVE_VERSION)
+    || (res.status === 'repaired' && v === null);
   if (backup && ls && raw !== null) { try { ls.setItem(SAVE_BACKUP_KEY, raw); } catch { /* full */ } }
+  // never lose a legacy roster: keep the original v1/v2 text once, before the v3 write
+  if ((v === 1 || v === 2) && ls && raw !== null) { try { if (ls.getItem(SAVE_LEGACY_KEY) === null) ls.setItem(SAVE_LEGACY_KEY, raw); } catch { /* full */ } }
   if (res.notes.length) console.warn('[MiniSquad save]', res.notes.join(' '));
   writeSave(res.roster, res.account);
   return res;
 }
 
-/** Dev (two-tap confirm in the tuning panel): wipe the save -> default roster, 0 credits. */
+/** Dev (two-tap confirm in the tuning panel): wipe the save -> new player (Ace + Ranger, Mission 1, 0 credits). */
 export function resetSave(): { roster: Roster; account: AccountData } {
   const ls = storage();
   try { ls?.removeItem(SAVE_KEY); } catch { /* ignore */ }

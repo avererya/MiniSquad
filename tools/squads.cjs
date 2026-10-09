@@ -12,6 +12,8 @@ const RUNS = +(process.env.RUNS || 3);
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
+  // v0.4: this tool plays the comms-outpost map, now Mission 3 (Field Medicine); unlock all (debug) first
+  await page.evaluate(() => { window.__debugUnlockAll(); window.game.selectMission('field-medicine', true); });
   let ledgerFails = 0;
   for (const ids of SQUADS) {
     for (let run = 1; run <= RUNS; run++) {

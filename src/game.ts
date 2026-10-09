@@ -1,7 +1,7 @@
 // Game state + fixed-step update. Rendering lives in render.ts, DOM HUD in hud.ts.
 import { CFG } from './config';
 import { World } from './world';
-import { OBSTACLES, SQUAD_START, MEDKITS, RAPIDFIRE, WORLD_W, WORLD_H } from './map';
+import type { MapDef } from './map';
 import { Unit } from './unit';
 import { NearestVisible } from './targeting';
 import { Effects, updateProjectiles, updateWeapon, type Projectile } from './combat';
@@ -10,9 +10,12 @@ import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, cloneIdentity, createGe
 import { MissionStats } from './missionstats';
 import { Roster } from './roster';
 import { Medkit, RapidFire, updatePickups, type Pickup } from './pickups';
-import { updateSquad, squadCentre } from './squad';
+import { updateSquad, updateEscort, squadCentre } from './squad';
 import { updateEnemyMovement } from './enemy';
 import { Mission } from './mission';
+import { scriptFor } from './missions';
+import type { MissionEvent } from './objectives';
+import { FIRST_MISSION, campaignMission, capacityOf, computeStars, type StarResult } from './campaign';
 import { Input, type InputHandler } from './input';
 import { VIEW_W, VIEW_H } from './view';
 import { clamp, dist, rand, type Vec } from './util';
@@ -37,29 +40,44 @@ export interface GameUI {
   rebuildPanels(): void;
   /** Mission ended (won/failed): show the Results screen. */
   showEnd(): void;
-  /** Show the Barracks (launch, Return to Barracks). */
+  /** Show the Barracks (squad selection for the selected mission). */
   showStart(notice?: string): void;
-  /** The roster object was replaced (dev save reset). */
-  rosterChanged(): void;
+  /** Show the Campaign screen (launch, Results -> Campaign). */
+  showCampaign(notice?: string): void;
+  /** The roster object was replaced (dev save reset / unlock all). */
+  rosterChanged(notice?: string): void;
   hideOverlay(): void;
   toggleTuning(): void;
   refreshTuning(): void;
 }
 
+export type DeployResult = { ok: true } | { ok: false; reason: string };
+
 export class Game implements InputHandler {
-  world = new World(OBSTACLES);
+  private static worlds = new Map<string, World>();
+  /** Nav grid / collision for a map (built once per map). */
+  static worldFor(map: MapDef): World {
+    let w = Game.worlds.get(map.id);
+    if (!w) { w = new World(map.obstacles, map.w, map.h); Game.worlds.set(map.id, w); }
+    return w;
+  }
+  /** Campaign mission the next deployment plays (Campaign screen selection; saved). */
+  missionId = FIRST_MISSION;
+  mission = new Mission(scriptFor(FIRST_MISSION)!);
+  world = Game.worldFor(this.mission.map);
   soldiers: Unit[] = [];
+  /** Escort NPCs (Mission 5 captive). Team 'squad' but not soldiers: no panel, no rewards. */
+  npcs: Unit[] = [];
   enemies: Unit[] = [];
   projectiles: Projectile[] = [];
   grenades: Grenade[] = [];
   pickups: Pickup[] = [];
   scorches: { x: number; y: number; r: number }[] = [];
   fx = new Effects();
-  anchor: Vec = { ...SQUAD_START };
+  anchor: Vec = { ...this.mission.map.start };
   spread = 1;
   squadMoving = false;
-  cam: Vec = { ...SQUAD_START };
-  mission = new Mission();
+  cam: Vec = { ...this.mission.map.start };
   phase: GamePhase = 'start';
   time = 0; // mission time
   clock = 0; // real animation clock
@@ -75,14 +93,20 @@ export class Game implements InputHandler {
   deployment: Deployment = Game.generic(PRESETS[0].classes);
   /** Dev hook (set by main.ts): wipe the save back to the default roster. */
   resetRosterSave: (() => void) | null = null;
+  /** Dev hook (set by main.ts): unlock every mission + soldier and SAVE it (two-tap in the tuning panel). */
+  debugUnlockAll: (() => void) | null = null;
   /** Per-soldier mission statistics (Results screen). */
   stats = new MissionStats();
   /** Id of the current mission run (new on every deploy / retry). Rewards are settled once per id. */
   runId = '';
   /** Rewards of the mission that just ended (null: defeat, dev deployment, or nothing yet). */
   lastReward: MissionReward | null = null;
+  /** Stars of the mission that just ended (also for dev deployments, which are never saved). */
+  lastStars: StarResult | null = null;
   /** Save hook (set by main.ts): writes roster + account. */
   persist: PersistFn | null = null;
+  /** Times the escort safety net had to move a stuck captive (should stay 0; reported by tools). */
+  escortRescues = 0;
   /** Short feedback line (e.g. why an ability can't be used). */
   notice: { text: string; life: number } | null = null;
   input: Input;
@@ -95,26 +119,61 @@ export class Game implements InputHandler {
 
   /** Class mix of the current deployment (tuning panel preset display, tests). */
   get composition(): SoldierClassId[] { return this.deployment.classes; }
+  get map(): MapDef { return this.mission.map; }
+  /** Max soldiers the selected mission allows. */
+  get capacity() { return capacityOf(this.missionId); }
+
+  /**
+   * Choose the mission for the next deployment (Campaign screen). Only unlocked, playable
+   * missions unless `force` (dev tools / tests). Persists the selection via onMissionSelected.
+   */
+  selectMission(id: string, force = false): boolean {
+    const def = campaignMission(id), script = scriptFor(id);
+    if (!def || !script || !def.playable) return false;
+    if (!force && !getAccount().campaign.unlockedMissions.includes(id)) return false;
+    this.missionId = id;
+    if (getAccount().campaign.selectedMission !== id) { getAccount().campaign.selectedMission = id; this.persist?.(); }
+    if (this.phase === 'start') { this.mission = new Mission(script); this.world = Game.worldFor(script.map); }
+    return true;
+  }
 
   static generic(classes: SoldierClassId[]): Deployment {
     return { kind: 'generic', identities: [], classes: [...classes] };
   }
 
   // ---------------- lifecycle ----------------
-  /** Deploy the Barracks selection (exactly those soldiers, in slot order). */
-  deploySelected(): boolean {
-    const squad = this.roster.squad();
-    if (!squad.length) return false;
-    this.deploy(squad, 'roster');
-    return true;
+  /** Why the Barracks selection can't deploy into the selected mission (null = it can). */
+  deployBlock(): string | null {
+    const def = campaignMission(this.missionId);
+    if (!def || !scriptFor(this.missionId)) return 'No mission selected';
+    if (!getAccount().campaign.unlockedMissions.includes(this.missionId)) return `Mission ${def.number} is locked`;
+    return this.roster.deployBlock(this.capacity);
   }
 
-  /** Start a mission with these roster identities (copied, so the mission never touches the roster). */
-  deploy(identities: SoldierIdentity[], kind: 'roster' | 'temp' = 'roster') {
+  /** Deploy the Barracks selection (exactly those soldiers, in slot order) into the selected mission. */
+  deploySelected(): DeployResult {
+    const why = this.deployBlock();
+    if (why) return { ok: false, reason: why };
+    return this.deploy(this.roster.squad(), 'roster');
+  }
+
+  /**
+   * Start the selected mission with these roster identities (copied, so the mission never
+   * touches the roster). Roster deployments must respect the mission's capacity and use
+   * unlocked soldiers only; 'temp' (dev ?squad=) deployments may use up to 6 of anyone.
+   */
+  deploy(identities: SoldierIdentity[], kind: 'roster' | 'temp' = 'roster'): DeployResult {
+    if (!identities.length) return { ok: false, reason: 'Select at least one soldier to deploy.' };
+    if (kind === 'roster') {
+      if (identities.length > this.capacity) return { ok: false, reason: `This mission allows ${this.capacity} soldiers` };
+      const locked = identities.find((i) => !this.roster.isUnlocked(i.id));
+      if (locked) return { ok: false, reason: `${locked.name} is not unlocked yet` };
+      if (new Set(identities.map((i) => i.id)).size !== identities.length) return { ok: false, reason: 'A soldier can only deploy once' };
+    }
     const ids = identities.slice(0, CFG.squad.maxSize).map(cloneIdentity);
-    if (!ids.length) throw new Error('deploy needs at least one soldier');
     this.deployment = { kind, identities: ids, classes: ids.map((i) => i.classId) };
     this.startMission();
+    return { ok: true };
   }
 
   /**
@@ -133,30 +192,36 @@ export class Game implements InputHandler {
   }
 
   /** Leave the mission screen and go back to the Barracks. Mission state is dropped; KIA is not permanent. */
-  toBarracks() {
+  toBarracks() { this.leaveMission(); this.ui.showStart(); }
+  /** Leave the mission screen for the Campaign screen. */
+  toCampaign() { this.leaveMission(); this.ui.showCampaign(); }
+  private leaveMission() {
     this.phase = 'start';
     this.paused = false; this.targeting = null;
-    this.soldiers = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.ui.rebuildPanels();
-    this.ui.showStart();
   }
 
   /** Dev: swap in a new roster (save reset). Never called by gameplay. */
-  replaceRoster(r: Roster) { this.roster = r; this.ui.rosterChanged(); }
+  replaceRoster(r: Roster, notice?: string) { this.roster = r; this.ui.rosterChanged(notice); }
 
   private startMission() {
     const dep = this.deployment;
+    const script = scriptFor(this.missionId)!;
+    this.mission = new Mission(script);
+    this.world = Game.worldFor(script.map);
+    this.phase = 'start';
     this.stats = new MissionStats();
     this.runId = newRunId();
-    this.lastReward = null;
-    this.soldiers = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.lastReward = null; this.lastStars = null; this.escortRescues = 0;
+    this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.scorches = []; this.fx = new Effects(); this.banners = [];
-    this.anchor = { ...SQUAD_START }; this.cam = { ...SQUAD_START }; this.spread = 1;
-    this.mission = new Mission();
+    const start = script.map.start;
+    this.anchor = { ...start }; this.cam = { ...start }; this.spread = 1;
     this.time = 0; this.targeting = null; this.paused = false;
     this.pickups = [
-      ...MEDKITS.map((p) => ({ type: Medkit, pos: { ...p }, bob: Math.random() * 6 })),
-      ...RAPIDFIRE.map((p) => ({ type: RapidFire, pos: { ...p }, bob: 0 })),
+      ...script.map.medkits.map((p) => ({ type: Medkit, pos: { ...p }, bob: Math.random() * 6 })),
+      ...script.map.rapidFire.map((p) => ({ type: RapidFire, pos: { ...p }, bob: 0 })),
     ];
     this.notice = null;
     if (dep.kind === 'generic') for (const c of dep.classes) this.spawnSoldier(c);
@@ -168,8 +233,20 @@ export class Game implements InputHandler {
     this.ui.rebuildPanels();
   }
 
-  win() { if (this.phase !== 'playing') return; this.phase = 'won'; this.targeting = null; this.settle(); this.ui.showEnd(); }
-  fail() { if (this.phase !== 'playing') return; this.phase = 'failed'; this.targeting = null; this.settle(); this.ui.showEnd(); }
+  win() { if (this.phase !== 'playing') return; this.phase = 'won'; this.end(true); }
+  fail() { if (this.phase !== 'playing') return; this.phase = 'failed'; this.end(false); }
+  private end(won: boolean) {
+    this.targeting = null;
+    this.mission.finalize(this, won);
+    const rows = this.stats.rows(this.soldiers);
+    const opt = this.mission.optional;
+    this.lastStars = computeStars(this.mission.def.stars, {
+      won, optionalTotal: opt.length, optionalCompleted: opt.filter((o) => o.completed).length,
+      statuses: rows.map((r) => r.status), downs: rows.map((r) => r.downs),
+    });
+    this.settle();
+    this.ui.showEnd();
+  }
 
   /**
    * Mission over: settle XP + Credits for ROSTER deployments (Barracks Deploy / Retry), once
@@ -177,14 +254,23 @@ export class Game implements InputHandler {
    */
   private settle() {
     if (this.deployment.kind !== 'roster') { this.lastReward = null; return; }
+    // a mission force-started by dev tools while still locked never pays or unlocks anything
+    if (!getAccount().campaign.unlockedMissions.includes(this.mission.id)) { this.lastReward = null; return; }
     const won = this.phase === 'won';
     const rows = this.stats.rows(this.soldiers);
+    const opt = this.mission.optional;
     const reward = settleMission(this.roster, getAccount(), {
       missionId: this.mission.id, runId: this.runId, won,
       deployed: rows.map((r) => ({ id: r.id, status: r.status, downs: r.downs })),
-      optional: { total: this.mission.optional.length, completed: this.mission.optional.filter((x) => x.completed).length },
+      optional: { total: opt.length, completed: opt.filter((x) => x.completed).length, list: opt },
+      stars: this.lastStars?.stars ?? 0,
     }, Object.fromEntries(rows.map((r) => [r.id, r.kills])));
-    if (reward) { this.lastReward = reward; this.persist?.(); }
+    if (reward) {
+      this.lastReward = reward;
+      // the Campaign screen moves on to a newly unlocked mission (Retry still replays this one)
+      if (reward.unlockedMissions.length) getAccount().campaign.selectedMission = reward.unlockedMissions[0];
+      this.persist?.();
+    }
   }
 
   // ---------------- spawning ----------------
@@ -198,7 +284,7 @@ export class Game implements InputHandler {
     const i = this.soldiers.length;
     const r = CFG.squad.roster[i % CFG.squad.roster.length];
     const cls = identity?.classId ?? classId ?? CLASS_IDS[i % CLASS_IDS.length];
-    const base = this.phase === 'playing' && this.soldiers.length ? this.anchor : SQUAD_START;
+    const base = this.phase === 'playing' && this.soldiers.length ? this.anchor : this.map.start;
     const pos = this.findOpenNear({ x: base.x + r.offset[0] * 34, y: base.y + r.offset[1] * 34 }, 40);
     const s = new Unit('squad', pos, NearestVisible, identity ?? createGeneric(r.name, cls));
     s.speedMul = r.speedMul; s.slot = r.offset;
@@ -208,6 +294,19 @@ export class Game implements InputHandler {
     this.ui?.rebuildPanels();
     return s;
   }
+
+  /** Escort NPC (held captive until an objective frees it). */
+  spawnNpc(pos: Vec, label: string): Unit {
+    const n = new Unit('squad', pos, NearestVisible);
+    n.npc = true; n.escorting = false; n.label = label; n.name = label;
+    n.setMaxHp(CFG.escort.hp);
+    n.aim = Math.PI / 2;
+    this.npcs.push(n);
+    return n;
+  }
+
+  /** What enemy riflemen can shoot at: soldiers and an escorted (freed) captive. */
+  enemyVictims(): Unit[] { return this.npcs.length ? [...this.soldiers, ...this.npcs.filter((n) => n.escorting)] : this.soldiers; }
 
   spawnEnemy(pos: Vec): Unit {
     const E = CFG.enemy;
@@ -223,7 +322,7 @@ export class Game implements InputHandler {
   findOpenNear(p: Vec, radius: number): Vec {
     for (let i = 0; i < 40; i++) {
       const q = { x: p.x + rand(-radius, radius), y: p.y + rand(-radius, radius) };
-      if (q.x > 20 && q.y > 20 && q.x < WORLD_W - 20 && q.y < WORLD_H - 20 && this.world.isOpen(q.x, q.y)) return q;
+      if (q.x > 20 && q.y > 20 && q.x < this.map.w - 20 && q.y < this.map.h - 20 && this.world.isOpen(q.x, q.y)) return q;
     }
     return this.world.center(this.world.nearestOpen(this.world.idx(p.x, p.y)));
   }
@@ -233,12 +332,14 @@ export class Game implements InputHandler {
   }
 
   /** Spawn n riflemen at the nearest candidate point that is outside the camera view. */
-  spawnGroupOffscreen(candidates: Vec[], n: number, second = false) {
-    if (n <= 0) return;
+  spawnGroupOffscreen(candidates: Vec[], n: number, second = false): Unit[] {
+    if (n <= 0 || !candidates.length) return [];
     const c = squadCentre(this.soldiers) ?? this.cam;
     const off = candidates.filter((p) => !this.isOnScreen(p, 80)).sort((a, b) => dist(a, c) - dist(b, c));
     const pt = (second ? off[1] : undefined) ?? off[0] ?? [...candidates].sort((a, b) => dist(b, c) - dist(a, c))[0];
-    for (let i = 0; i < n; i++) this.spawnEnemy(this.findOpenNear(pt, 70));
+    const out: Unit[] = [];
+    for (let i = 0; i < n; i++) out.push(this.spawnEnemy(this.findOpenNear(pt, 70)));
+    return out;
   }
 
   /** Debug: a group of 4 from a random off-screen direction around the squad. */
@@ -248,7 +349,7 @@ export class Game implements InputHandler {
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * Math.PI * 2;
       const p = { x: c.x + Math.cos(a) * 760, y: c.y + Math.sin(a) * 480 };
-      if (p.x > 40 && p.y > 40 && p.x < WORLD_W - 40 && p.y < WORLD_H - 40 && this.world.isOpen(p.x, p.y)) cands.push(p);
+      if (p.x > 40 && p.y > 40 && p.x < this.map.w - 40 && p.y < this.map.h - 40 && this.world.isOpen(p.x, p.y)) cands.push(p);
     }
     const off = cands.filter((p) => !this.isOnScreen(p, 40));
     const pt = off[Math.floor(Math.random() * off.length)] ?? cands[0];
@@ -277,14 +378,19 @@ export class Game implements InputHandler {
     u.hp -= amount;
     if (source) {
       source.dealt += removed;
-      if (u.team === 'enemy') this.stats.damage(source, removed);
+      if (u.team === 'enemy' && !u.structure) this.stats.damage(source, removed); // structures aren't enemy soldiers
     }
+    if (u.npc && removed > 0) this.mission.emit(this, { type: 'npcDamaged', unit: u, amount: removed });
     sfx('hit');
     if (u.hp > 0) return;
     if (u.team === 'squad') this.downSoldier(u);
-    else {
+    else if (u.structure) {
+      u.state = 'dead';
+      this.mission.emit(this, { type: 'structureDestroyed', unit: u });
+    } else {
       this.stats.kill(source);
       u.state = 'dead';
+      this.mission.emit(this, { type: 'enemyKilled', unit: u });
       this.fx.burst(u.pos, 14, '#e0453a', 200, 0.4, 4);
       this.fx.burst(u.pos, 8, '#ffffff', 140, 0.3, 3);
       this.fx.ring(u.pos, 28, 'rgba(255,255,255,0.8)', 0.25, 3);
@@ -294,7 +400,7 @@ export class Game implements InputHandler {
   downSoldier(s: Unit) {
     if (!s.active) return;
     s.state = 'downed';
-    this.stats.down(s);
+    if (!s.npc) this.stats.down(s);
     s.hp = 0;
     s.bleed = CFG.revive.bleedOut;
     s.reviveProgress = 0;
@@ -305,6 +411,17 @@ export class Game implements InputHandler {
     if (this.targeting === s) this.targeting = null;
     this.banner(`${s.name} DOWN!`, '#ff4040', 2.8);
     sfx('down');
+    this.mission.emit(this, s.npc ? { type: 'npcDowned', unit: s } : { type: 'soldierDowned', unit: s });
+  }
+
+  /** Bleed-out ran out (or left behind): KIA for this mission only. */
+  private kia(s: Unit) {
+    s.state = 'kia';
+    s.bleed = 0;
+    s.reviving = false; s.reviver = null;
+    this.banner(`${s.name} KIA`, '#ff4040', 3);
+    const ev: MissionEvent = s.npc ? { type: 'npcKia', unit: s } : { type: 'soldierKia', unit: s };
+    this.mission.emit(this, ev);
   }
 
   banner(text: string, color: string, dur: number) {
@@ -361,10 +478,11 @@ export class Game implements InputHandler {
   onKey(code: string, e: KeyboardEvent) {
     if (code === 'Backquote') { this.ui.toggleTuning(); return; }
     if (code === 'KeyM') { setMuted(!isMuted()); this.ui.rebuildPanels(); return; }
-    if (this.phase === 'start') return; // Barracks keys are handled by the menu
+    if (this.phase === 'start') return; // Campaign / Barracks keys are handled by the menu
     if (this.phase === 'won' || this.phase === 'failed') {
       if (code === 'Enter' || code === 'KeyR') this.reset(); // Retry
       else if (code === 'KeyB' || code === 'Escape') this.toBarracks();
+      else if (code === 'KeyC') this.toCampaign();
       return;
     }
     if (code === 'Escape') { this.targeting = null; return; }
@@ -404,16 +522,17 @@ export class Game implements InputHandler {
 
     // movement intents
     updateSquad(this, this.input.move(), dt);
+    for (const n of this.npcs) updateEscort(this, n, dt);
     this.flowTimer -= dt;
     if (this.flowTimer <= 0) {
       const src = this.soldiers.filter((s) => s.active).map((s) => s.pos);
       if (src.length) this.world.computeFlow(src);
       this.flowTimer = 0.3;
     }
-    for (const e of this.enemies) if (e.active) updateEnemyMovement(this, e, dt);
+    for (const e of this.enemies) if (e.active && !e.structure) updateEnemyMovement(this, e, dt);
 
-    // integrate + collide
-    const movers = [...this.soldiers, ...this.enemies].filter((u) => u.active);
+    // integrate + collide (structures never move; they push others out)
+    const movers = [...this.soldiers, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure);
     for (const u of movers) { u.pos.x += u.vel.x * dt; u.pos.y += u.vel.y * dt; }
     for (let i = 0; i < movers.length; i++) {
       for (let j = i + 1; j < movers.length; j++) {
@@ -428,6 +547,13 @@ export class Game implements InputHandler {
         }
       }
     }
+    for (const st of this.enemies) {
+      if (!st.active || !st.structure) continue;
+      for (const u of movers) {
+        const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y, min = u.radius + st.radius, d2 = dx * dx + dy * dy;
+        if (d2 < min * min && d2 > 1e-6) { const d = Math.sqrt(d2); u.pos.x = st.pos.x + (dx / d) * min; u.pos.y = st.pos.y + (dy / d) * min; }
+      }
+    }
     for (const u of movers) {
       this.world.resolveCircle(u.pos, u.radius);
       const sp = Math.hypot(u.vel.x, u.vel.y);
@@ -439,12 +565,13 @@ export class Game implements InputHandler {
 
     // weapons
     for (const s of this.soldiers) if (s.active) updateWeapon(s, this, dt, this.enemies);
-    for (const e of this.enemies) if (e.active) updateWeapon(e, this, dt, this.soldiers);
+    const victims = this.enemyVictims();
+    for (const e of this.enemies) if (e.active && !e.structure) updateWeapon(e, this, dt, victims);
     updateProjectiles(this, dt);
     updateGrenades(this, dt);
     updatePickups(this, dt);
 
-    for (const u of [...this.soldiers, ...this.enemies]) {
+    for (const u of [...this.soldiers, ...this.npcs, ...this.enemies]) {
       u.hitFlash = Math.max(0, u.hitFlash - dt);
       u.rapidFire = Math.max(0, u.rapidFire - dt);
       u.healFlash = Math.max(0, u.healFlash - dt);
@@ -468,23 +595,27 @@ export class Game implements InputHandler {
       this.cam.x += (c.x - this.cam.x) * k;
       this.cam.y += (c.y - this.cam.y) * k;
     }
-    this.cam.x = clamp(this.cam.x, VIEW_W / 2, WORLD_W - VIEW_W / 2);
-    this.cam.y = clamp(this.cam.y, VIEW_H / 2, WORLD_H - VIEW_H / 2);
+    this.cam.x = clamp(this.cam.x, VIEW_W / 2, this.map.w - VIEW_W / 2);
+    this.cam.y = clamp(this.cam.y, VIEW_H / 2, this.map.h - VIEW_H / 2);
   }
 
   /**
-   * Revive: progress is a FRACTION (0..1) so it survives a change of reviver. Each
-   * second adds 1 / reviveTime of the reviver's class. With several standing soldiers
-   * in range the fastest one counts (revivers don't stack, as in v0.1). Leaving the
-   * radius pauses (keeps) progress; bleed-out runs only while nobody is reviving.
+   * RESCUE RULES (v0.4, game-wide). A downed soldier (or escorted captive) bleeds out in
+   * CFG.revive.bleedOut (20 s) -> KIA for this mission. A VALID revive pauses the bleed-out:
+   * a standing squad soldier inside the revive radius with a clear line to the downed one,
+   * i.e. exactly when revive progress is accruing. Progress is a FRACTION (0..1), so it
+   * survives a change of reviver: each second adds 1 / reviveTime of the reviver's class (as
+   * modified by traits). Several revivers don't stack (the fastest counts). Interrupting
+   * keeps the progress and resumes the remaining bleed-out. A finished revive restores
+   * CFG.revive.hpFrac (30%) of max HP.
    */
   private updateDowned(dt: number) {
     const R = CFG.revive;
-    for (const s of this.soldiers) {
+    for (const s of [...this.soldiers, ...this.npcs]) {
       if (s.state !== 'downed') continue;
       let best: Unit | null = null;
       for (const o of this.soldiers) {
-        if (o === s || !o.active || dist(o.pos, s.pos) > R.radius) continue;
+        if (o === s || !o.active || dist(o.pos, s.pos) > R.radius || !this.world.clear(o.pos, s.pos)) continue;
         if (!best || o.soldierStats.reviveTime < best.soldierStats.reviveTime) best = o;
       }
       s.reviver = best;
@@ -503,11 +634,7 @@ export class Game implements InputHandler {
         }
       } else {
         s.bleed -= dt; // progress is kept, not reset
-        if (s.bleed <= 0) {
-          s.state = 'kia';
-          s.bleed = 0;
-          this.banner(`${s.name} KIA`, '#ff4040', 3);
-        }
+        if (s.bleed <= 0) this.kia(s);
       }
     }
   }

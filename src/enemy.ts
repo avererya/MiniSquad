@@ -10,7 +10,7 @@ import { dist } from './util';
 export function updateEnemyMovement(game: Game, e: Unit, dt: number) {
   const E = CFG.enemy;
   if (e.guard) {
-    const near = game.soldiers.some((s) => s.active && dist(s.pos, e.pos) < E.aggroRadius);
+    const near = game.soldiers.some((s) => s.active && dist(s.pos, e.pos) < (e.aggro ?? E.aggroRadius));
     if (near || e.hp < e.maxHp) e.guard = false;
   }
 

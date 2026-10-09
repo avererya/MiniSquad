@@ -10,6 +10,7 @@
 //  - Purchases carry the rank the button was drawn for (expectedRank): a stale or repeated event
 //    for an already-bought rank is refused. The UI also ignores taps within purchaseLockMs.
 import type { Roster } from './roster';
+import { campaignMission } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, TRAINING, addXp, computeMissionRewards, nextCost,
   type AccountData, type MissionOutcome, type MissionReward, type SoldierReward, type SquadTrainingStat, type TrainingStat,
@@ -28,9 +29,14 @@ export function newRunId(): string {
  */
 export function settleMission(roster: Roster, account: AccountData, o: MissionOutcome, kills: Record<string, number> = {}): MissionReward | null {
   if (account.settledRuns.includes(o.runId)) return null;
-  const rec = account.missions[o.missionId] ?? { completions: 0, firstClearRun: null };
+  const rec = account.missions[o.missionId] ?? { completions: 0, firstClearRun: null, bestStars: 0 };
+  const prevBest = rec.bestStars;
   const firstClear = o.won && rec.completions === 0;
-  const calc = computeMissionRewards(o, firstClear);
+  // no double grant: a v0.3 first clear of the same map (legacy 'comms-outpost' record) already
+  // paid the first-clear Credit bonus, so Mission 3's first clear skips that one line
+  const def = campaignMission(o.missionId);
+  const legacyPaid = !!def?.legacyId && (account.missions[def.legacyId]?.firstClearRun ?? null) !== null;
+  const calc = computeMissionRewards(o, firstClear, legacyPaid);
   const soldiers: SoldierReward[] = [];
   for (const d of o.deployed) {
     const s = roster.get(d.id);
@@ -47,15 +53,23 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
     soldiers.push({ id: s.id, name: s.name, status: d.status, eligible, xp, gained: res.gained, before, after: { level: p.level, xp: p.xp }, levelsGained: p.level - before.level, capped: res.gained < xp });
   }
   account.credits += calc.credits;
+  const unlockedSoldiers: string[] = [], unlockedMissions: string[] = [];
   if (o.won) {
     rec.completions++;
     if (firstClear) rec.firstClearRun = o.runId;
+    rec.bestStars = Math.max(rec.bestStars, Math.max(0, Math.min(3, Math.floor(o.stars ?? 1)))); // never lowered
     account.missions[o.missionId] = rec;
+    // campaign unlocks (idempotent: only what is new is reported)
+    if (def) {
+      for (const m of def.unlocks.missions) if (!account.campaign.unlockedMissions.includes(m)) { account.campaign.unlockedMissions.push(m); unlockedMissions.push(m); }
+      for (const id of def.unlocks.soldiers) if (roster.unlock(id)) unlockedSoldiers.push(id);
+    }
   }
   account.settledRuns.push(o.runId);
   if (account.settledRuns.length > PROGRESSION.rememberRuns) account.settledRuns.splice(0, account.settledRuns.length - PROGRESSION.rememberRuns);
   return {
-    runId: o.runId, missionId: o.missionId, won: o.won, firstClear,
+    runId: o.runId, missionId: o.missionId, won: o.won, firstClear, legacyFirstClearPaid: firstClear && legacyPaid,
+    stars: o.won ? Math.max(0, Math.min(3, o.stars ?? 1)) : 0, prevBest, bestStars: rec.bestStars, unlockedSoldiers, unlockedMissions,
     xpLines: calc.xpLines, xpMul: calc.xpMul, xpEach: calc.xpEach,
     creditLines: calc.creditLines, credits: calc.credits, creditsAfter: account.credits, soldiers,
   };

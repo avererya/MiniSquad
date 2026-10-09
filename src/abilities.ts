@@ -88,7 +88,7 @@ export class FieldTreatmentAbility extends BaseAbility implements Ability {
   /** Standing soldiers inside the heal radius. */
   affected(game: Game, owner: Unit) {
     const r = CFG.fieldTreatment.radius;
-    return game.soldiers.filter((s) => s.active && dist(s.pos, owner.pos) <= r);
+    return [...game.soldiers, ...game.npcs.filter((n) => n.escorting)].filter((s) => s.active && dist(s.pos, owner.pos) <= r);
   }
   blockReason(game: Game, owner: Unit): string | null {
     const base = super.blockReason(game, owner);

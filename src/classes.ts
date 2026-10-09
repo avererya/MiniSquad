@@ -161,6 +161,12 @@ export const PRESETS: SquadPreset[] = [
   // legacy squad-size options from v0.1
   { id: 'i', label: '1 Infantry', classes: ['infantry'] },
   { id: 'iii', label: '3 Infantry', classes: ['infantry', 'infantry', 'infantry'] },
+  // v0.4 squad-scaling checks (engine supports 6; the campaign allows up to 4 so far)
+  { id: 'ihmi', label: '4: Inf + Heavy + Medic + Inf', classes: ['infantry', 'heavy', 'medic', 'infantry'] },
+  { id: 'ihmih', label: '5: Inf + Heavy + Medic + Inf + Heavy', classes: ['infantry', 'heavy', 'medic', 'infantry', 'heavy'] },
+  { id: 'ihmihm', label: '6: two of each class', classes: ['infantry', 'heavy', 'medic', 'infantry', 'heavy', 'medic'] },
+  { id: 'iiiiii', label: '6 Infantry', classes: ['infantry', 'infantry', 'infantry', 'infantry', 'infantry', 'infantry'] },
+  { id: 'mmmm', label: '4 Medic', classes: ['medic', 'medic', 'medic', 'medic'] },
 ];
 
 export function findPreset(id: string | null | undefined): SquadPreset | undefined {

@@ -65,6 +65,11 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   u.reactionLeft -= dt;
   u.muzzle -= dt;
   if (u.target && !u.targeting.isValid(u, u.target, game)) u.target = null;
+  // an objective structure is only shot when no enemy soldier is in sight: re-check each step
+  if (u.target?.structure) {
+    const t = u.targeting.select(u, hostiles, game);
+    if (t && t !== u.target && !t.structure) { u.target = t; u.reactionLeft = 0.08; }
+  }
   if (!u.target) {
     const t = u.targeting.select(u, hostiles, game);
     if (t) {
@@ -118,9 +123,9 @@ export function updateProjectiles(game: Game, dt: number) {
     let hitWall = bestT < 1;
     let hitUnit: Unit | null = null;
     // first hostile character along the path; allies and downed soldiers are passed through
-    const victims = p.team === 'squad' ? game.enemies : game.soldiers;
+    const victims = p.team === 'squad' ? game.enemies : game.enemyVictims();
     for (const u of victims) {
-      if (!u.active) continue;
+      if (!u.targetable) continue;
       const t = segCircle(x1, y1, x2, y2, u.pos.x, u.pos.y, u.radius + 2);
       if (t >= 0 && t < bestT) { bestT = t; hitUnit = u; hitWall = false; }
     }

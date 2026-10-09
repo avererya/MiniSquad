@@ -1,7 +1,6 @@
 // World geometry: obstacles, line of sight, collision and a nav grid with
 // A* (for squad soldiers) and a multi-source flow field (for enemy riflemen).
 import type { Obstacle } from './map';
-import { WORLD_H, WORLD_W } from './map';
 import { pushOutOfRect, segRect, clamp, type Vec } from './util';
 
 const CELL = 16;
@@ -50,12 +49,15 @@ class Heap {
 }
 
 export class World {
-  readonly cols = Math.ceil(WORLD_W / CELL);
-  readonly rows = Math.ceil(WORLD_H / CELL);
+  readonly cols: number;
+  readonly rows: number;
   readonly blocked: Uint8Array;
   readonly flow: Float32Array;
 
-  constructor(public obstacles: Obstacle[]) {
+  constructor(public obstacles: Obstacle[], readonly w: number, readonly h: number) {
+    const WORLD_W = w, WORLD_H = h;
+    this.cols = Math.ceil(w / CELL);
+    this.rows = Math.ceil(h / CELL);
     this.blocked = new Uint8Array(this.cols * this.rows);
     this.flow = new Float32Array(this.cols * this.rows).fill(Infinity);
     for (let r = 0; r < this.rows; r++) {
@@ -100,8 +102,8 @@ export class World {
     for (let iter = 0; iter < 2; iter++) {
       for (const o of this.obstacles) pushOutOfRect(p, r, o);
     }
-    p.x = clamp(p.x, r, WORLD_W - r);
-    p.y = clamp(p.y, r, WORLD_H - r);
+    p.x = clamp(p.x, r, this.w - r);
+    p.y = clamp(p.y, r, this.h - r);
   }
 
   // ---------- grid ----------

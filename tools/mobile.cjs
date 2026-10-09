@@ -1,7 +1,9 @@
-// Mobile checks (touch emulation) for the full loop: Barracks (portrait + landscape, rotation,
-// details panel, squad selection by tap) -> Deploy -> HUD rotation/hitboxes, joystick, every
-// ability via touch -> Results (victory + defeat) -> Retry / Return to Barracks.
-// Squad: Ace (Infantry) + Havoc (Heavy, Trigger Happy) + Doc (Medic), picked by tapping.
+// Mobile checks (touch emulation) for the full v0.4 loop: Campaign (portrait + landscape,
+// rotation, mission select by tap) -> Barracks (details panel, squad selection by tap) -> Deploy
+// -> HUD rotation/hitboxes, joystick, every ability via touch -> Results (victory + defeat) ->
+// Retry / Campaign / Barracks, plus the compact HUD with 4 and 6 soldiers (downed markers).
+// Squad: Ace (Infantry) + Havoc (Heavy, Trigger Happy) + Doc (Medic) for Mission 3 (cap 3),
+// picked by tapping after the debug "unlock all".
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const OUT = process.env.OUT || '.';
 const DEVICES = [
@@ -21,7 +23,6 @@ const DEVICES = [
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(process.env.URL || 'http://localhost:4173/'); // opens in portrait
     await page.waitForTimeout(300);
-    // ---------- Barracks ----------
     const menuLayout = async (sel) => page.evaluate((sel) => {
       const vw = window.innerWidth, vh = window.innerHeight;
       const els = [...document.querySelectorAll(sel)];
@@ -32,8 +33,36 @@ const DEVICES = [
       });
       const de = document.documentElement, m = document.getElementById('menu');
       const fontPx = parseFloat(getComputedStyle(m).fontSize);
-      return { vw, vh, n: els.length, boxes, fontPx, menuScroll: m.scrollHeight > m.clientHeight + 1, hOverflow: de.scrollWidth > vw + 1 || m.scrollWidth > m.clientWidth + 1 };
+      const texts = [...m.querySelectorAll('*')].filter((e) => e.offsetParent && [...e.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim()));
+      const minFont = Math.min(...texts.map((e) => parseFloat(getComputedStyle(e).fontSize)));
+      return { vw, vh, n: els.length, boxes, fontPx, minFont, menuScroll: m.scrollHeight > m.clientHeight + 1, hOverflow: de.scrollWidth > vw + 1 || m.scrollWidth > m.clientWidth + 1 };
     }, sel);
+    // ---------- Campaign ----------
+    const CAMPAIGN_SEL = '.c-row, .c-btns [data-a="deploy"], .c-btns [data-a="to-barracks"]';
+    let C = await menuLayout(CAMPAIGN_SEL);
+    check(`${dev.name} portrait: Campaign usable (6 rows, no sideways scroll)`, C.n === 8 && !C.hOverflow && C.minFont >= 11, `min font ${C.minFont}px, vertical scroll ${C.menuScroll}`);
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-portrait-campaign.png` });
+    const campaignChecks = async (tag) => {
+      const L = await menuLayout(CAMPAIGN_SEL);
+      check(`${dev.name} ${tag}: Campaign rows + Deploy/Squad on screen, tappable`, L.n === 8 && L.boxes.every((b) => b.inside && b.aligned) && !L.hOverflow && !L.menuScroll && L.boxes.slice(-2).every((b) => b.h >= 30), `min font ${L.minFont}px, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}, scroll ${L.menuScroll}`);
+      check(`${dev.name} ${tag}: Campaign text >= 11px`, L.minFont >= 11, `${L.minFont}px`);
+    };
+    await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
+    await campaignChecks('landscape');
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-campaign.png` });
+    await page.evaluate(() => window.__debugUnlockAll());
+    await page.tap('[data-a="csel"][data-id="field-medicine"]');
+    await page.waitForTimeout(100);
+    const det3 = await page.textContent('.c-detail');
+    check(`${dev.name}: tap Mission 3 shows its briefing (cap 3, optional)`, /Field Medicine/.test(det3) && /Up to 3 soldiers/.test(det3) && /Extract every soldier/.test(det3), det3.replace(/\s+/g, ' ').slice(0, 90));
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-campaign-m3.png` });
+    await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(450);
+    await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
+    await campaignChecks('landscape after rotation');
+    await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(450);
+    await page.tap('.c-btns [data-a="to-barracks"]');
+    await page.waitForTimeout(150);
+    // ---------- Barracks ----------
     const BARRACKS_SEL = '.s-card, .slot, [data-a="deploy"], .s-card .pick';
     let P = await menuLayout(BARRACKS_SEL);
     check(`${dev.name} portrait: Barracks usable (6 cards, no sideways scroll)`, P.n === 6 + 3 + 1 + 6 && !P.hOverflow && P.fontPx >= 11, `font ${P.fontPx}px, vertical scroll ${P.menuScroll}`);
@@ -56,10 +85,11 @@ const DEVICES = [
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(450);
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
     await barracksChecks('landscape after rotation');
-    // pick Havoc instead of Tank by tapping: remove slot 2, then Havoc's button
+    // pick Havoc instead of Ranger by tapping (remove slot 2), then add Doc
     await page.tap('.slot[data-slot="1"] .slot-x');
     await page.tap('.s-card[data-id="havoc"] .pick');
-    const picked = await page.evaluate(() => window.game.roster.slots.join());
+    await page.tap('.s-card[data-id="doc"] .pick');
+    const picked = await page.evaluate(() => window.game.roster.slots.filter(Boolean).join());
     check(`${dev.name}: squad picked by tapping (Ace, Havoc, Doc)`, picked === 'ace,havoc,doc', picked);
     await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-selection.png` });
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(300); // deploy in portrait, then rotate
@@ -128,15 +158,15 @@ const DEVICES = [
     const hint = await page.evaluate(() => { const h = document.getElementById('hint'); return h.style.display !== 'none' ? h.textContent : ''; });
     check(`${dev.name}: unavailable ability shows feedback`, /RECHARGING/.test(hint), hint);
     // ---------- Results ----------
-    const RESULT_SEL = '#menu .r-card, #menu [data-a="retry"], #menu [data-a="barracks"]';
+    const RESULT_SEL = '#menu .r-card, #menu [data-a="retry"], #menu [data-a="campaign"], #menu [data-a="barracks"]';
     await page.evaluate(() => { const g = window.game; g.soldiers[2].state = 'kia'; g.win(); });
     await page.waitForTimeout(150);
     let Rl = await menuLayout(RESULT_SEL);
-    check(`${dev.name} landscape: victory Results fit, buttons tappable`, Rl.n === 3 && Rl.boxes.every((b) => b.inside && b.aligned) && !Rl.menuScroll, `font ${Rl.fontPx}px ${JSON.stringify(Rl.boxes.map((b) => `${b.w}x${b.h}`))}`);
+    check(`${dev.name} landscape: victory Results fit, buttons tappable`, Rl.n === 4 && Rl.boxes.every((b) => b.inside && b.aligned) && !Rl.menuScroll && Rl.minFont >= 10, `font ${Rl.fontPx}px ${JSON.stringify(Rl.boxes.map((b) => `${b.w}x${b.h}`))}`);
     await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-results-victory.png` });
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(450);
     Rl = await menuLayout(RESULT_SEL);
-    check(`${dev.name} portrait: Results usable`, Rl.n === 3 && !Rl.hOverflow && Rl.boxes.slice(1).every((b) => b.aligned), `scroll ${Rl.menuScroll}`);
+    check(`${dev.name} portrait: Results usable`, Rl.n === 4 && !Rl.hOverflow && Rl.boxes.slice(1).every((b) => b.aligned), `scroll ${Rl.menuScroll}`);
     await page.screenshot({ path: `${OUT}/m-${dev.name}-portrait-results.png` });
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
     await page.tap('[data-a="retry"]');
@@ -146,11 +176,34 @@ const DEVICES = [
     await page.evaluate(() => { const g = window.game; g.invuln = false; g.soldiers.forEach((s) => g.downSoldier(s)); g.soldiers[1].state = 'kia'; });
     await page.waitForTimeout(150);
     Rl = await menuLayout(RESULT_SEL);
-    check(`${dev.name} landscape: defeat Results fit`, Rl.n === 3 && Rl.boxes.every((b) => b.inside && b.aligned), '');
+    check(`${dev.name} landscape: defeat Results fit`, Rl.n === 4 && Rl.boxes.every((b) => b.inside && b.aligned), '');
     await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-results-defeat.png` });
     await page.tap('#menu [data-a="barracks"]');
     await page.waitForTimeout(150);
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-barracks-after.png` });
     await barracksChecks('back in Barracks');
+    // ---------- compact HUD: 4 and 6 soldiers (dev temp deploys), downed markers ----------
+    for (const ids of [['ace', 'tank', 'doc', 'havoc'], ['ace', 'ranger', 'tank', 'havoc', 'doc', 'patch'], ['ace', 'ace', 'ace', 'ace', 'ace', 'ace']]) {
+      await page.evaluate((ids) => { const g = window.game; g.selectMission('red-canyon'); g.deploy(ids.map((id) => g.roster.get(id)), 'temp'); g.invuln = true; g.downSoldier(g.soldiers[1]); g.soldiers[1].bleed = 4; }, ids);
+      await page.waitForTimeout(250);
+      const L = await page.evaluate(() => {
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const rect = (el) => el.getBoundingClientRect();
+        const panels = [...document.querySelectorAll('.panel')].map(rect);
+        const btns = [...document.querySelectorAll('.panel .ability')].map((b) => { const r = rect(b); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { r, aligned: !!hit && hit.closest('.ability') === b }; });
+        const overlap = panels.some((a, i) => panels.some((b, j) => j > i && a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1));
+        const obj = rect(document.getElementById('objective') || document.body);
+        const coversObj = panels.some((a) => a.left < obj.right && obj.left < a.right && a.top < obj.bottom && obj.top < a.bottom);
+        const names = [...document.querySelectorAll('.panel .name, .panel .p-name')].map((e) => e.textContent.trim());
+        return { n: panels.length, inside: panels.every((r) => r.left >= 0 && r.top >= 0 && r.right <= vw + 0.5 && r.bottom <= vh + 0.5), aligned: btns.every((b) => b.aligned), minBtn: Math.min(...btns.map((b) => Math.min(b.r.width, b.r.height))), overlap, coversObj, crit: !!document.querySelector('.panel.critical, .panel.reviving') && /CRITICAL|REV/.test(document.querySelector('.panel.downed')?.textContent || ''), compact: document.getElementById('panels')?.className || '' };
+      });
+      const k = ids.length;
+      check(`${dev.name} HUD with ${k}${k === 6 && ids[1] === 'ace' ? ' (6x same class)' : ''}: ${k} tiles on screen, no overlap, abilities tappable`, L.n === k && L.inside && !L.overlap && L.aligned && L.minBtn >= 26 && !L.coversObj, `tiles ${L.n}, min button ${Math.round(L.minBtn)}px, overlap ${L.overlap}, covers objective ${L.coversObj}, ${L.compact}`);
+      check(`${dev.name} HUD with ${k}: downed soldier tile shows CRITICAL / REV state`, L.crit, '');
+      await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-hud-${k}${ids[1] === 'ace' ? '-same' : ''}.png` });
+      await page.evaluate(() => window.game.toCampaign());
+    }
+    check(`${dev.name}: back on Campaign`, await page.isVisible('#menu.campaign'), '');
     check(`${dev.name}: no page errors`, errors.length === 0, errors.join(' | '));
     await ctx.close();
   }

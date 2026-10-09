@@ -68,6 +68,21 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
   const loose = clamp(S.looseness, 0, 1);
   const accel = S.followAccel * (1 - 0.55 * loose);
 
+  // --- revive assist: with the squad anchor near a downed soldier (or captive), the nearest
+  // standing soldier steps up to them so the revive starts reliably (still player-driven:
+  // the player has to bring the squad there; leaving the area cancels the assist) ---
+  const assist = new Map<Unit, Vec>();
+  const R = CFG.revive;
+  for (const d of [...game.soldiers, ...game.npcs]) {
+    if (d.state !== 'downed' || dist(a, d.pos) > R.assistRadius) continue;
+    let best: Unit | null = null;
+    for (const s of active) if (!assist.has(s) && (!best || dist(s.pos, d.pos) < dist(best.pos, d.pos))) best = s;
+    if (!best) break;
+    const dd = dist(best.pos, d.pos);
+    const k = dd > 1 ? Math.min(1, (R.radius * 0.45) / dd) : 0;
+    assist.set(best, { x: d.pos.x + (best.pos.x - d.pos.x) * k, y: d.pos.y + (best.pos.y - d.pos.y) * k });
+  }
+
   for (const s of active) {
     // --- goal: slot around anchor, plus a little organic wander ---
     s.wander += dt;
@@ -80,6 +95,8 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
       y: a.y + oy + Math.cos(s.wander * 0.9 + s.id * 2.3) * wob,
     };
     if (game.world.insideObstacle(goal, s.radius) || !game.world.isOpen(goal.x, goal.y)) goal = { x: a.x, y: a.y };
+    const rv = assist.get(s);
+    if (rv) goal = rv;
 
     // --- catch-up: a soldier well behind his slot hurries a little (ramped, never a snap) ---
     const behind = dist(s.pos, goal) - S.catchUpDist;
@@ -129,5 +146,58 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
     else { s.vel.x = vx; s.vel.y = vy; }
     const sp = Math.hypot(s.vel.x, s.vel.y), cap = s.maxSpeed * 1.1;
     if (sp > cap) { s.vel.x *= cap / sp; s.vel.y *= cap / sp; }
+  }
+}
+
+/**
+ * Escorted captive: trails the squad anchor at CFG.escort.followDist, pathing around
+ * obstacles with the same A* as the soldiers, hurrying when left behind. Safety net: if it
+ * makes no progress toward a far goal for 4 s it is moved next to the squad (counted in
+ * game.escortRescues, reported by tools/campaign.cjs). A held or downed captive stays put.
+ */
+export function updateEscort(game: Game, n: Unit, dt: number) {
+  if (!n.escorting || !n.active) { n.vel.x = 0; n.vel.y = 0; return; }
+  const E = CFG.escort, a = game.anchor;
+  const away = dist(n.pos, a);
+  let goal: Vec = away > 1 ? { x: a.x + ((n.pos.x - a.x) / away) * E.followDist, y: a.y + ((n.pos.y - a.y) / away) * E.followDist } : { ...n.pos };
+  if (!game.world.isOpen(goal.x, goal.y) || game.world.insideObstacle(goal, n.radius)) goal = { ...a };
+  const want = 1 + 0.4 * clamp((away - 160) / 160, 0, 1);
+  n.catchUp += (want - n.catchUp) * (1 - Math.exp(-4 * dt));
+
+  let steer = goal;
+  let isFinal = true;
+  if (game.world.clear(n.pos, goal, n.radius - 1)) n.path = null;
+  else {
+    n.pathTimer -= dt;
+    if (!n.path || n.pathTimer <= 0) { n.path = game.world.findPath(n.pos, goal, n.radius); n.pathTimer = 0.3; }
+    if (n.path && n.path.length) {
+      while (n.path.length > 1 && dist(n.pos, n.path[0]) < 10) n.path.shift();
+      steer = n.path[0];
+      isFinal = n.path.length === 1;
+    }
+  }
+  const dx = steer.x - n.pos.x, dy = steer.y - n.pos.y, dd = Math.hypot(dx, dy);
+  let speed = n.maxSpeed;
+  if (isFinal) speed *= clamp((dd - 6) / 40, 0, 1);
+  let vx = dd > 0.01 ? (dx / dd) * speed : 0, vy = dd > 0.01 ? (dy / dd) * speed : 0;
+  for (const o of game.soldiers) {
+    if (!o.active) continue;
+    const sx = n.pos.x - o.pos.x, sy = n.pos.y - o.pos.y, sd = Math.hypot(sx, sy);
+    if (sd < CFG.squad.separationRadius && sd > 0.01) { const k = (1 - sd / CFG.squad.separationRadius) * CFG.squad.separationStrength * 0.25; vx += (sx / sd) * k; vy += (sy / sd) * k; }
+  }
+  const ex = vx - n.vel.x, ey = vy - n.vel.y, el = Math.hypot(ex, ey), maxDv = 1200 * dt;
+  if (el > maxDv) { n.vel.x += (ex / el) * maxDv; n.vel.y += (ey / el) * maxDv; } else { n.vel.x = vx; n.vel.y = vy; }
+
+  // stuck safety net
+  // (actual displacement since the last step, so pushing against a wall counts as stuck)
+  const far = dist(n.pos, goal) > 90;
+  const moved = n.prevPos ? dist(n.pos, n.prevPos) / Math.max(1e-6, dt) : 999;
+  n.prevPos = { ...n.pos };
+  n.stuckT = far && moved < 20 ? n.stuckT + dt : Math.max(0, n.stuckT - dt * 2);
+  if (n.stuckT > 1.5 && n.path) n.pathTimer = 0;
+  if (n.stuckT > 4) {
+    const p = game.findOpenNear(a, 50);
+    n.pos.x = p.x; n.pos.y = p.y; n.vel.x = 0; n.vel.y = 0; n.path = null; n.stuckT = 0;
+    game.escortRescues++;
   }
 }
