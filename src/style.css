@@ -16,14 +16,20 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 #topbtns { position: absolute; top: 10px; right: 12px; display: flex; gap: 8px; }
 #topbtns button { width: 44px; height: 44px; border-radius: 10px; border: none; background: rgba(0,0,0,0.55); color: #fff; font-size: 20px; cursor: pointer; }
 #hint { position: absolute; bottom: 108px; right: 16px; background: rgba(0,0,0,0.65); padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; color: #ffb070; }
+#hint.deny { color: #ff8a8a; border: 1px solid rgba(255,120,120,0.6); }
 
 #panels { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 10px; }
 .panel { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); padding: 6px 10px 6px 6px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); min-width: 190px; }
 .panel .info { flex: 1; }
-.panel .name { font-weight: 900; font-size: 15px; color: #cfe6ff; }
-.panel .hp { height: 9px; background: rgba(255,255,255,0.15); border-radius: 5px; overflow: hidden; margin: 4px 0; }
+.panel .info { min-width: 104px; }
+.panel .name { font-weight: 900; font-size: 15px; color: #cfe6ff; line-height: 1.1; }
+.panel .cls { font-size: 10px; font-weight: 800; color: #9fb6d0; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+.panel .hp { position: relative; height: 11px; background: rgba(255,255,255,0.15); border-radius: 5px; overflow: hidden; margin: 3px 0; }
 .panel .hp .fill { height: 100%; background: #48d65c; transition: width 0.1s; }
-.panel .state { font-size: 12px; font-weight: 800; color: #9be7a5; }
+.panel .hp .hpnum { position: absolute; inset: 0; font-size: 9px; font-weight: 900; line-height: 11px; text-align: center; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.panel .state { font-size: 12px; font-weight: 800; color: #9be7a5; white-space: nowrap; }
+.panel.cooling .state { color: #c8c8c8; }
+.panel.active .state { color: #ffb347; }
 .panel.downed { border-color: #ff3b3b; animation: pulse 0.6s infinite alternate; }
 .panel.downed .state { color: #ff6060; font-size: 14px; }
 .panel.downed .hp .fill { background: #ff3b3b; }
@@ -41,6 +47,18 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 .ability .cd { position: absolute; left: 0; right: 0; top: 0; background: rgba(0,0,0,0.65); }
 .ability .key { position: absolute; left: 5px; top: 2px; font-size: 13px; font-weight: 900; color: #fff; text-shadow: 0 1px 2px #000; }
 .ability .icon { position: absolute; right: 4px; bottom: 0; font-size: 22px; color: #3d4a2a; text-shadow: 0 0 2px #cfe; }
+.ability .act { position: absolute; left: 0; bottom: 0; height: 6px; width: 0; background: #ffb347; }
+.ability.running { border-color: #ffb347; box-shadow: 0 0 14px #ff9a30; }
+.ability[data-ability="suppressive"] .icon { color: #ffb347; text-shadow: 0 0 2px #000; font-weight: 900; }
+.ability[data-ability="fieldTreatment"] .icon { color: #49d16a; text-shadow: 0 0 2px #fff; }
+/* class portraits: silhouette cues, not just colour */
+.ability .badge { display: none; position: absolute; }
+.cls-heavy .helmet { left: -6px; right: -6px; top: -4px; height: 22px; border-radius: 14px 14px 3px 3px; background: #24508f; border-bottom: 4px solid #1a2f4f; }
+.cls-heavy .face { border-radius: 45% 45% 40% 40%; }
+.cls-heavy .badge { display: block; left: -12px; right: -12px; bottom: -7px; height: 8px; border-radius: 3px; background: repeating-linear-gradient(90deg, #d9b23a 0 4px, #6b5420 4px 6px); }
+.cls-medic .helmet { background: #2f7ff0; border-bottom: 4px solid #f2f2f2; }
+.cls-medic .badge { display: block; left: 50%; top: -1px; width: 12px; height: 12px; transform: translateX(-50%); background:
+  linear-gradient(#2fb158, #2fb158) center / 4px 10px no-repeat, linear-gradient(#2fb158, #2fb158) center / 10px 4px no-repeat, #fff; border-radius: 3px; }
 
 #overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); pointer-events: auto; }
 .card { background: rgba(20,24,30,0.95); border-radius: 16px; padding: 26px 34px; min-width: 460px; text-align: center; border: 2px solid rgba(255,255,255,0.15); }

@@ -306,10 +306,27 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
     return;
   }
 
+  if (u.suppressing) {
+    // Suppressive Fire: pulsing orange ring on the ground
+    const p = 0.5 + 0.5 * Math.sin(game.clock * 14);
+    ctx.strokeStyle = `rgba(255,160,50,${0.55 + 0.4 * p})`; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(x, y, 22 + p * 4, 10 + p * 2, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  const sc = CHAR_SCALE * (u.classDef?.id === 'heavy' ? 1.06 : 1);
   ctx.save();
-  ctx.translate(x, y); ctx.scale(CHAR_SCALE, CHAR_SCALE); ctx.translate(-x, -y);
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
   drawStanding(ctx, u, x, y, helmet, body);
   ctx.restore();
+}
+
+const GREEN_CROSS = '#2fb158';
+/** Generic first-aid mark: green cross on white (deliberately not the red-on-white emblem). */
+function medMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number) {
+  ctx.fillStyle = '#f4f4f4';
+  roundRect(ctx, cx - s, cy - s, s * 2, s * 2, s * 0.4); ctx.fill();
+  ctx.fillStyle = GREEN_CROSS;
+  ctx.fillRect(cx - s * 0.28, cy - s * 0.75, s * 0.56, s * 1.5);
+  ctx.fillRect(cx - s * 0.75, cy - s * 0.28, s * 1.5, s * 0.56);
 }
 
 function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: number, helmet: string, body: string) {
@@ -323,23 +340,80 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
 
   const by = y - 8 - lift;
   const ax = Math.cos(u.aim), ay = Math.sin(u.aim);
+  const vis = u.classDef?.visual;
+  const weapon = vis?.weapon ?? 'rifle';
+  const bw = vis?.bodyW ?? 14;
   const gunBehind = ay < -0.2;
+  const muzzle = (dist: number, big: number) => {
+    if (u.muzzle <= 0) return;
+    const gx = x + ax * 4, gy = by - 6 + ay * 2;
+    const mx = gx + ax * dist, my = gy + ay * dist * 0.77;
+    ctx.fillStyle = '#fff3b0';
+    ctx.beginPath(); ctx.arc(mx, my, 6 * big, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = u.suppressing ? '#ff7a20' : '#ffb030';
+    ctx.beginPath(); ctx.arc(mx + ax * 3, my + ay * 3, 4 * big, 0, Math.PI * 2); ctx.fill();
+  };
   const drawGun = () => {
     const gx = x + ax * 4, gy = by - 6 + ay * 2;
-    ctx.strokeStyle = COL.gun; ctx.lineWidth = 4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + ax * 17, gy + ay * 13); ctx.stroke();
-    if (u.muzzle > 0) {
-      const mx = gx + ax * 22, my = gy + ay * 17;
-      ctx.fillStyle = '#fff3b0';
-      ctx.beginPath(); ctx.arc(mx, my, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffb030';
-      ctx.beginPath(); ctx.arc(mx + ax * 3, my + ay * 3, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.lineCap = 'round';
+    if (weapon === 'mg') {
+      // big machine gun: chunky receiver, long barrel, drum/box magazine
+      ctx.strokeStyle = '#1f1f1f'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(gx - ax * 3, gy - ay * 2); ctx.lineTo(gx + ax * 13, gy + ay * 10); ctx.stroke();
+      ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.moveTo(gx + ax * 13, gy + ay * 10); ctx.lineTo(gx + ax * 27, gy + ay * 21); ctx.stroke();
+      ctx.fillStyle = '#4a5a32';
+      ctx.fillRect(gx + ax * 6 - 4, gy + ay * 5 + 1, 8, 7);
+      ctx.strokeStyle = '#d9b23a'; ctx.lineWidth = 2; // ammo belt feeding the gun
+      ctx.beginPath(); ctx.moveTo(gx + ax * 6, gy + ay * 5 + 4); ctx.quadraticCurveTo(x - 2, by - 2, x - ax * 6, by - 8); ctx.stroke();
+      muzzle(31, u.suppressing ? 1.35 : 1.1);
+    } else if (weapon === 'smg') {
+      // compact SMG
+      ctx.strokeStyle = COL.gun; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + ax * 12, gy + ay * 9); ctx.stroke();
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(gx + ax * 5, gy + ay * 4); ctx.lineTo(gx + ax * 5, gy + ay * 4 + 5); ctx.stroke();
+      muzzle(16, 0.8);
+    } else {
+      ctx.strokeStyle = COL.gun; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + ax * 17, gy + ay * 13); ctx.stroke();
+      muzzle(22, 1);
     }
   };
+  const drawPack = () => {
+    if (!vis || vis.pack === 'none') return;
+    const px = x - ax * 7, py = by - 6;
+    if (vis.pack === 'ammo') {
+      ctx.fillStyle = '#3f4a2c';
+      roundRect(ctx, px - 8, py - 8, 16, 14, 3); ctx.fill();
+      ctx.fillStyle = '#2c3420'; ctx.fillRect(px - 8, py - 3, 16, 3);
+    } else {
+      ctx.fillStyle = '#e9e9e4';
+      roundRect(ctx, px - 7, py - 7, 14, 12, 3); ctx.fill();
+      ctx.strokeStyle = '#9a9a92'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = GREEN_CROSS;
+      ctx.fillRect(px - 1.5, py - 5, 3, 8); ctx.fillRect(px - 4, py - 2.5, 8, 3);
+    }
+  };
+  const packInFront = ay < -0.2; // facing away: the backpack is the nearest thing to the camera
+  if (!packInFront) drawPack();
   if (gunBehind) drawGun();
   // body
   ctx.fillStyle = body;
-  roundRect(ctx, x - 7, by - 12, 14, 13, 4); ctx.fill();
+  roundRect(ctx, x - bw / 2, by - 12, bw, 13, 4); ctx.fill();
+  if (vis?.pack === 'ammo') {
+    // armour plate + ammo bandolier across the chest
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    roundRect(ctx, x - bw / 2 + 3, by - 10, bw - 6, 8, 2); ctx.fill();
+    ctx.strokeStyle = '#d9b23a'; ctx.lineWidth = 2.5; ctx.setLineDash([2.5, 1.5]);
+    ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, by - 11); ctx.lineTo(x + bw / 2 - 1, by); ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (vis?.pack === 'medical') {
+    // white armband + hip pouch with the green cross
+    ctx.fillStyle = '#f4f4f4'; ctx.fillRect(x - bw / 2 - 1, by - 9, 3, 4);
+    medMark(ctx, x + bw / 2 - 1, by - 2, 3.2);
+  }
+  if (packInFront) drawPack();
   if (!gunBehind) drawGun();
   // head (oversized)
   const hx = x, hy = by - 20;
@@ -354,8 +428,20 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
   }
   // helmet
   ctx.fillStyle = helmet;
-  ctx.beginPath(); ctx.arc(hx, hy - 1, 11, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();
-  ctx.fillRect(hx - 11, hy - 3, 22, 3);
+  const hs = vis?.helmet ?? 'standard';
+  if (hs === 'heavy') {
+    // heavier, wider helmet with a dark brim and side flaps
+    ctx.beginPath(); ctx.arc(hx, hy - 1, 12, Math.PI * 1.0, Math.PI * 2.0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#1a3a6e'; ctx.fillRect(hx - 14, hy - 2, 28, 4);
+    ctx.fillRect(hx - 13, hy - 2, 3, 8); ctx.fillRect(hx + 10, hy - 2, 3, 8);
+  } else {
+    ctx.beginPath(); ctx.arc(hx, hy - 1, 11, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();
+    ctx.fillRect(hx - 11, hy - 3, 22, 3);
+    if (hs === 'medic') {
+      ctx.fillStyle = '#f4f4f4'; ctx.fillRect(hx - 11, hy - 6, 22, 3); // white band
+      if (ay > -0.6) medMark(ctx, hx + ax * 3, hy - 7, 3.4);
+    }
+  }
   if (u.rapidFire > 0) {
     ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(hx, hy, 13, 0, Math.PI * 2); ctx.stroke();
@@ -376,15 +462,23 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game) {
   for (const p of game.projectiles) {
     const sq = p.team === 'squad';
     const sp = Math.hypot(p.vel.x, p.vel.y) || 1;
-    const L = sq ? 20 : 16;
+    const L = p.len ?? (sq ? 20 : 16);
     const tx = p.pos.x - (p.vel.x / sp) * L, ty = p.pos.y - (p.vel.y / sp) * L;
-    ctx.strokeStyle = sq ? COL.squadBullet : COL.enemyBullet;
-    ctx.lineWidth = sq ? 3.5 : 4;
+    ctx.strokeStyle = sq ? (p.hot ? '#ffc070' : COL.squadBullet) : COL.enemyBullet;
+    ctx.lineWidth = (p.width ?? (sq ? 3.5 : 4)) + (p.hot ? 0.5 : 0);
     ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
   }
 }
 
 function drawFx(ctx: CanvasRenderingContext2D, game: Game) {
+  for (const p of game.fx.pulses) {
+    const k = clamp(p.life / p.maxLife, 0, 1);
+    // true circle: exactly the heal radius on the ground
+    const r = p.r * (0.85 + 0.15 * (1 - k));
+    ctx.fillStyle = `rgba(110,255,150,${0.25 * k})`;
+    ctx.strokeStyle = `rgba(140,255,170,${0.9 * k})`; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
   for (const p of game.fx.particles) {
     ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
     ctx.fillStyle = p.color;
@@ -432,7 +526,6 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(s.name, s.pos.x + 1, s.pos.y - 70 + 1);
       ctx.fillStyle = '#cfe6ff'; ctx.fillText(s.name, s.pos.x, s.pos.y - 70);
     } else if (s.state === 'downed') {
-      const R = CFG.revive;
       const cx = s.pos.x, cy = s.pos.y - 42;
       // revive progress ring + bleed-out countdown
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -441,7 +534,7 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
       ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.stroke();
       if (s.reviveProgress > 0) {
         ctx.strokeStyle = '#7dff8a';
-        ctx.beginPath(); ctx.arc(cx, cy, 15, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * s.reviveProgress) / R.time); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, s.reviveProgress)); ctx.stroke();
       }
       ctx.font = 'bold 13px sans-serif';
       ctx.fillStyle = s.reviving ? '#7dff8a' : '#ff6a6a';

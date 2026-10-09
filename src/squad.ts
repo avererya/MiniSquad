@@ -46,8 +46,12 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
   if (!active.length) return;
 
   // --- anchor ---
-  const slowest = Math.min(...active.map((s) => s.maxSpeed));
-  const anchorSpeed = slowest * S.anchorSpeedFactor;
+  // Reference speed blends slowest soldier and squad average (class speeds, without
+  // catch-up), so one slow Heavy Gunner doesn't drag the whole squad down to his pace.
+  const base = active.map((s) => s.stats.moveSpeed * s.speedMul);
+  const slowest = Math.min(...base);
+  const avg = base.reduce((a, b) => a + b, 0) / base.length;
+  const anchorSpeed = lerp(slowest, avg, clamp(S.anchorSpeedBlend, 0, 1)) * S.anchorSpeedFactor;
   const a = game.anchor;
   moveAnchor(game, a, mv.x * anchorSpeed * dt, mv.y * anchorSpeed * dt);
   const c = squadCentre(game.soldiers)!;
@@ -76,6 +80,11 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
       y: a.y + oy + Math.cos(s.wander * 0.9 + s.id * 2.3) * wob,
     };
     if (game.world.insideObstacle(goal, s.radius) || !game.world.isOpen(goal.x, goal.y)) goal = { x: a.x, y: a.y };
+
+    // --- catch-up: a soldier well behind his slot hurries a little (ramped, never a snap) ---
+    const behind = dist(s.pos, goal) - S.catchUpDist;
+    const want = 1 + Math.max(0, S.catchUpBoost) * clamp(behind / Math.max(1, S.catchUpRange), 0, 1);
+    s.catchUp += (want - s.catchUp) * (1 - Math.exp(-4 * dt));
 
     // --- direct steer, or follow an A* path when the straight line is blocked ---
     let steerTo = goal;

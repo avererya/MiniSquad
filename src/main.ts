@@ -3,6 +3,8 @@ import { Hud } from './hud';
 import { render } from './render';
 import { VIEW_W, VIEW_H } from './view';
 import { unlockAudio } from './audio';
+import { findPreset } from './classes';
+import { CFG, applyConfigJSON, resetConfig } from './config';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -60,6 +62,10 @@ scheduleResize();
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
+// dev shortcut: ?squad=ihm (preset ids: ii, ih, im, ihm, hh, mm, i, iii)
+const preset = findPreset(new URLSearchParams(location.search).get('squad'));
+if (preset) game.composition = [...preset.classes];
+
 hud.showStart();
 hud.rebuildPanels();
 
@@ -80,3 +86,5 @@ requestAnimationFrame(frame);
 
 // handy in the console while tuning
 (window as any).game = game;
+// config hooks for the headless checks in tools/ (same functions the tuning panel uses)
+Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, __resetConfig: resetConfig });

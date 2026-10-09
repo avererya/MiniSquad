@@ -1,22 +1,27 @@
 // In-game tuning panel: live sliders on CFG, JSON export/import, reset, debug actions.
 import { CFG, DEFAULTS, applyConfigJSON, getPath, resetConfig, setPath } from './config';
 import type { Game } from './game';
+import { CLASS_IDS, PRESETS } from './classes';
 
 type S = [label: string, path: string, min: number, max: number, step: number];
 
+const classSliders = (c: string): S[] => [
+  ['HP', `${c}.hp`, 20, 400, 5],
+  ['Damage', `${c}.damage`, 1, 60, 1],
+  ['Fire rate (/s)', `${c}.fireRate`, 0.5, 15, 0.1],
+  ['Spread still (° full cone)', `${c}.accuracy`, 0, 45, 0.5],
+  ['Moving penalty (+° at full speed)', `${c}.movePenalty`, 0, 60, 0.5],
+  ['Move speed (px/s; 150 = 100%)', `${c}.moveSpeed`, 40, 350, 2.5],
+  ['Projectile speed', `${c}.projectileSpeed`, 200, 2000, 10],
+  ['Revive time (s, as reviver)', `${c}.reviveTime`, 0.5, 30, 0.5],
+  ['Range', `${c}.range`, 100, 640, 5],
+  ['Aim turn rate', `${c}.turnRate`, 1, 40, 0.5],
+];
+
 const SECTIONS: [string, S[]][] = [
-  ['Infantry', [
-    ['HP', 'infantry.hp', 20, 400, 5],
-    ['Damage', 'infantry.damage', 1, 60, 1],
-    ['Bullet spread, still (°)', 'infantry.accuracy', 0, 45, 0.5],
-    ['Moving spread penalty (°)', 'infantry.movePenalty', 0, 60, 0.5],
-    ['Fire rate (/s)', 'infantry.fireRate', 0.5, 15, 0.1],
-    ['Range', 'infantry.range', 100, 640, 5],
-    ['Move speed', 'infantry.moveSpeed', 40, 350, 5],
-    ['Projectile speed', 'infantry.projectileSpeed', 200, 2000, 10],
-    ['Grenade cooldown', 'infantry.abilityCooldown', 0.5, 30, 0.5],
-    ['Aim turn rate', 'infantry.turnRate', 1, 40, 0.5],
-  ]],
+  ['Infantry', classSliders('infantry')],
+  ['Heavy Gunner', classSliders('heavy')],
+  ['Medic', classSliders('medic')],
   ['Enemy Rifleman', [
     ['HP', 'enemy.hp', 5, 300, 5],
     ['Damage', 'enemy.damage', 1, 60, 1],
@@ -39,8 +44,14 @@ const SECTIONS: [string, S[]][] = [
     ['Separation radius', 'squad.separationRadius', 10, 80, 1],
     ['Separation strength', 'squad.separationStrength', 0, 3000, 50],
     ['Leash', 'squad.leash', 40, 300, 5],
+    ['Anchor speed: slowest→average', 'squad.anchorSpeedBlend', 0, 1, 0.05],
+    ['Anchor speed factor', 'squad.anchorSpeedFactor', 0.5, 1.2, 0.01],
+    ['Catch-up starts (px behind)', 'squad.catchUpDist', 0, 300, 5],
+    ['Catch-up ramp (px)', 'squad.catchUpRange', 10, 400, 5],
+    ['Catch-up max boost (×)', 'squad.catchUpBoost', 0, 1, 0.05],
   ]],
-  ['Grenade', [
+  ['Grenade (Infantry)', [
+    ['Cooldown (s)', 'grenade.cooldown', 0.5, 30, 0.5],
     ['Range', 'grenade.range', 80, 600, 5],
     ['Blast radius', 'grenade.radius', 20, 250, 5],
     ['Damage', 'grenade.damage', 5, 300, 5],
@@ -48,8 +59,17 @@ const SECTIONS: [string, S[]][] = [
     ['Flight time (s)', 'grenade.flightTime', 0.1, 2, 0.05],
     ['Screen shake', 'grenade.shake', 0, 40, 1],
   ]],
+  ['Suppressive Fire (Heavy)', [
+    ['Fire-rate multiplier', 'suppressive.fireRateMul', 1, 4, 0.05],
+    ['Duration (s)', 'suppressive.duration', 0.5, 20, 0.5],
+    ['Cooldown (s)', 'suppressive.cooldown', 1, 60, 0.5],
+  ]],
+  ['Field Treatment (Medic)', [
+    ['Heal (× max HP)', 'fieldTreatment.healFrac', 0, 1, 0.05],
+    ['Radius (px)', 'fieldTreatment.radius', 20, 400, 5],
+    ['Cooldown (s)', 'fieldTreatment.cooldown', 1, 60, 0.5],
+  ]],
   ['Downed / Revive', [
-    ['Revive time (s)', 'revive.time', 0.5, 30, 0.5],
     ['Bleed-out (s)', 'revive.bleedOut', 3, 90, 1],
     ['Revive radius', 'revive.radius', 20, 150, 5],
     ['Revive HP fraction', 'revive.hpFrac', 0.05, 1, 0.05],
@@ -74,7 +94,7 @@ export class Tuning {
   private inputs: { path: string; input: HTMLInputElement; val: HTMLElement }[] = [];
   private jsonBox!: HTMLTextAreaElement;
   private invulnBtn!: HTMLButtonElement;
-  private sizeSel!: HTMLSelectElement;
+  private presetSel!: HTMLSelectElement;
 
   constructor(private root: HTMLElement, private game: Game) {
     this.build();
@@ -99,21 +119,25 @@ export class Tuning {
     dbg.className = 'tune-sec';
     dbg.innerHTML = `<div class="tune-title">Debug</div>
       <div class="tune-btns">
-        <label>Squad size <select><option>1</option><option>2</option><option>3</option></select></label>
+        <label>Squad preset <select>${PRESETS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('')}</select></label>
         <button data-a="restart">Restart mission</button>
         <button data-a="spawnF">Spawn friendly</button>
         <button data-a="spawnE">Spawn enemy group</button>
         <button data-a="down">Down a soldier</button>
         <button data-a="invuln">Invulnerable: off</button>
       </div>`;
-    this.sizeSel = dbg.querySelector('select')!;
-    this.sizeSel.value = String(CFG.squad.startSize);
-    this.sizeSel.addEventListener('change', () => { CFG.squad.startSize = +this.sizeSel.value; });
+    this.presetSel = dbg.querySelector('select')!;
+    // picking a preset restarts the mission right away with that squad
+    this.presetSel.addEventListener('change', () => {
+      const p = PRESETS.find((x) => x.id === this.presetSel.value);
+      if (p) this.game.reset(p.classes);
+      this.refresh();
+    });
     this.invulnBtn = dbg.querySelector('[data-a="invuln"]')!;
     dbg.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
       const g = this.game;
       switch (b.dataset.a) {
-        case 'restart': g.reset(+this.sizeSel.value); break;
+        case 'restart': g.reset(); break;
         case 'spawnF': if (g.phase === 'playing') g.spawnSoldier(); break;
         case 'spawnE': if (g.phase === 'playing') g.debugSpawnGroup(); break;
         case 'down': if (g.phase === 'playing') g.debugDownSoldier(); break;
@@ -137,8 +161,9 @@ export class Tuning {
         const val = row.querySelector<HTMLElement>('.val')!;
         input.addEventListener('input', () => {
           setPath(path, +input.value);
-          if (path === 'enemy.range' && CFG.enemy.range > CFG.infantry.range) CFG.enemy.range = CFG.infantry.range;
-          if (path === 'infantry.range' && CFG.enemy.range > CFG.infantry.range) CFG.enemy.range = CFG.infantry.range;
+          // enemies must never out-range the squad (they'd fire from off screen)
+          const minRange = Math.min(...CLASS_IDS.map((c) => CFG[c].range));
+          if (CFG.enemy.range > minRange) CFG.enemy.range = minRange;
           this.refresh();
         });
         this.inputs.push({ path, input, val });
@@ -168,7 +193,10 @@ export class Tuning {
           navigator.clipboard?.writeText(json).then(() => (note.textContent = 'Copied to clipboard.'), () => (note.textContent = 'Select the text above to copy.'));
           break;
         case 'import':
-          try { applyConfigJSON(this.jsonBox.value); note.textContent = 'Applied.'; } catch (e) { note.textContent = `Invalid JSON: ${(e as Error).message}`; }
+          try {
+            const notes = applyConfigJSON(this.jsonBox.value);
+            note.textContent = `Applied.${notes.length ? ' ' + notes.join('; ') + '.' : ''}`;
+          } catch (e) { note.textContent = `Invalid JSON: ${(e as Error).message}`; }
           break;
         case 'reset': resetConfig(); note.textContent = 'Defaults restored.'; break;
       }
@@ -192,7 +220,11 @@ export class Tuning {
       val.classList.toggle('changed', v !== def);
     }
     if (this.invulnBtn) this.invulnBtn.textContent = `Invulnerable: ${this.game.invuln ? 'ON' : 'off'}`;
-    if (this.sizeSel) this.sizeSel.value = String(CFG.squad.startSize);
+    if (this.presetSel) {
+      const cur = this.game.composition.join(',');
+      const p = PRESETS.find((x) => x.classes.join(',') === cur);
+      if (p) this.presetSel.value = p.id;
+    }
   }
 }
 

@@ -3,10 +3,13 @@
 import type { Game, GameUI } from './game';
 import type { Unit } from './unit';
 import { CFG } from './config';
+import { CLASSES } from './classes';
 import { isMuted, setMuted, unlockAudio } from './audio';
 import { Tuning } from './tuning';
 
-interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; fill: HTMLElement; state: HTMLElement; unit: Unit }
+interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
+
+const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT' };
 
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
@@ -60,20 +63,26 @@ export class Hud implements GameUI {
     this.panelsEl.innerHTML = '';
     this.panels = this.game.soldiers.map((u, i) => {
       const root = document.createElement('div');
+      const def = u.classDef!;
+      const ab = u.ability!;
       root.className = 'panel';
+      root.dataset.cls = def.id;
       root.innerHTML = `
-        <button class="ability" title="Grenade (${i + 1})">
-          <div class="portrait"><div class="face"></div><div class="helmet"></div></div>
-          <div class="cd"></div><span class="key">${i + 1}</span><span class="icon">●</span>
+        <button class="ability cls-${def.id}" title="${ab.name} (${i + 1})" data-ability="${ab.id}">
+          <div class="portrait"><div class="face"></div><div class="helmet"></div><div class="badge"></div></div>
+          <div class="cd"></div><div class="act"></div><span class="key">${i + 1}</span><span class="icon">${ab.icon}</span>
         </button>
-        <div class="info"><div class="name">${u.name}</div><div class="hp"><div class="fill"></div></div><div class="state"></div></div>`;
+        <div class="info"><div class="name">${u.name}</div><div class="cls">${def.label}</div><div class="hp"><div class="fill"></div><span class="hpnum"></span></div><div class="state"></div></div>`;
       const btn = root.querySelector<HTMLElement>('.ability')!;
       btn.addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation(); unlockAudio();
-        this.game.beginTargeting(u);
+        this.game.useAbility(u);
       });
       this.panelsEl.appendChild(root);
-      return { root, btn, unit: u, cd: root.querySelector('.cd')!, fill: root.querySelector('.fill')!, state: root.querySelector('.state')! };
+      return {
+        root, btn, unit: u, cd: root.querySelector('.cd')!, act: root.querySelector('.act')!, fill: root.querySelector('.fill')!,
+        hpnum: root.querySelector('.hpnum')!, cls: root.querySelector('.cls')!, state: root.querySelector('.state')!,
+      };
     });
   }
 
@@ -89,27 +98,42 @@ export class Hud implements GameUI {
 
     if (g.targeting) {
       this.hint.textContent = `${g.targeting.name}: GRENADE — click/tap the ground · right-click / Esc / tap button to cancel`;
+      this.hint.className = '';
+      this.hint.style.display = '';
+    } else if (g.notice) {
+      this.hint.textContent = g.notice.text;
+      this.hint.className = 'deny';
       this.hint.style.display = '';
     } else this.hint.style.display = 'none';
 
     for (const p of this.panels) {
       const u = p.unit;
       const ab = u.ability!;
+      const def = u.classDef!;
       p.fill.style.width = `${Math.max(0, (u.hp / u.maxHp) * 100)}%`;
-      let state = 'OK', cls = 'ok';
+      p.hpnum.textContent = `${Math.ceil(Math.max(0, u.hp))}/${u.maxHp}`;
+      p.cls.textContent = u.rapidFire > 0 && u.active ? `${def.label} · RAPID ${Math.ceil(u.rapidFire)}s` : def.label;
+      const abName = SHORT_ABILITY[ab.id] ?? ab.name.toUpperCase();
+      let state: string, cls = 'ok';
       if (u.state === 'downed') {
         cls = 'downed';
         state = u.reviving
-          ? `REVIVING ${Math.floor((u.reviveProgress / CFG.revive.time) * 100)}%`
+          ? `REVIVING ${Math.floor(u.reviveProgress * 100)}%${u.reviver ? ` · ${u.reviver.name}` : ''}`
           : `DOWN — ${Math.ceil(u.bleed)}s`;
       } else if (u.state === 'kia') { cls = 'kia'; state = 'KIA'; }
-      else if (u.rapidFire > 0) state = `RAPID FIRE ${Math.ceil(u.rapidFire)}s`;
+      else if (ab.activeLeft > 0) { cls = 'ok active'; state = `${abName} ON ${Math.ceil(ab.activeLeft)}s`; }
+      else if (ab.cooldownLeft > 0) { cls = 'ok cooling'; state = `${abName} ${Math.ceil(ab.cooldownLeft)}s`; }
+      else state = `${abName} READY`;
       p.state.textContent = state;
       p.root.className = `panel ${cls}`;
       const cdFrac = u.active ? ab.cooldownLeft / ab.cooldown() : 1;
-      p.cd.style.height = `${Math.min(100, cdFrac * 100)}%`;
+      // while an effect runs, the button shows its remaining duration instead of the cooldown
+      const running = u.active && ab.activeLeft > 0;
+      p.cd.style.height = running ? '0%' : `${Math.min(100, cdFrac * 100)}%`;
+      p.act.style.width = running ? `${Math.min(100, (ab.activeLeft / CFG.suppressive.duration) * 100)}%` : '0%';
       p.btn.classList.toggle('disabled', !u.active);
       p.btn.classList.toggle('ready', ab.ready(u));
+      p.btn.classList.toggle('running', running);
       p.btn.classList.toggle('targeting', g.targeting === u);
     }
   }
@@ -121,10 +145,11 @@ export class Hud implements GameUI {
     this.overlay.innerHTML = `
       <div class="card">
         <h1>MINISQUAD</h1>
-        <div class="sub">Combat Prototype v0.1 — Secure the Communications Outpost</div>
+        <div class="sub">Combat Prototype v${__APP_VERSION__} — Secure the Communications Outpost</div>
         <div class="controls">
           <div><b>Move</b> WASD / arrows · touch: drag left side</div>
-          <div><b>Grenade</b> 1 / 2 / 3 or tap portrait, then click/tap ground · right-click / Esc cancels</div>
+          <div><b>Abilities</b> 1 / 2 / 3 or tap a portrait · Grenade: then click/tap the ground (right-click / Esc cancels) · Suppressive Fire &amp; Field Treatment: instant</div>
+          <div><b>Squad</b> ${this.game.composition.map((c) => CLASSES[c].label).join(' + ')} · change it under ⚙ → Squad preset</div>
           <div><b>Tuning panel</b> \` (backtick) or ⚙ · <b>Mute</b> M · <b>Pause</b> P</div>
           <div class="dim">Debug keys: F spawn friendly · G spawn enemies · K down a soldier · I invulnerable · Shift+R restart</div>
         </div>
@@ -138,7 +163,7 @@ export class Hud implements GameUI {
     const won = g.phase === 'won';
     const rows = g.soldiers.map((s) => {
       const st = s.state === 'active' ? 'OK' : s.state === 'downed' ? 'DOWNED' : 'KIA';
-      return `<div class="row"><span>${s.name}</span><span class="${st === 'OK' ? 'okc' : 'kiac'}">${st}</span></div>`;
+      return `<div class="row"><span>${s.name} <span class="dim">${s.classDef?.label ?? ''}</span></span><span class="${st === 'OK' ? 'okc' : 'kiac'}">${st}</span></div>`;
     }).join('');
     this.overlay.style.display = 'flex';
     this.overlay.innerHTML = `

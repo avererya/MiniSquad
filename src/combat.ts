@@ -12,16 +12,22 @@ export interface Projectile {
   damage: number;
   life: number;
   trail: Vec; // previous position, for drawing a streak
+  owner?: Unit; // shooter, for hit statistics
+  width?: number; // tracer width (class visual)
+  len?: number; // tracer length
+  hot?: boolean; // fired under Suppressive Fire (drawn hotter)
 }
 
 export interface Particle { pos: Vec; vel: Vec; life: number; maxLife: number; color: string; size: number; z?: number; vz?: number }
 export interface Ring { pos: Vec; r: number; maxR: number; life: number; maxLife: number; color: string; width: number }
 export interface FloatText { pos: Vec; text: string; life: number; color: string }
+export interface Pulse { pos: Vec; r: number; life: number; maxLife: number }
 
 export class Effects {
   particles: Particle[] = [];
   rings: Ring[] = [];
   texts: FloatText[] = [];
+  pulses: Pulse[] = []; // filled area flashes (Field Treatment)
   shake = 0;
 
   burst(pos: Vec, n: number, color: string, speed: number, life = 0.35, size = 3) {
@@ -47,6 +53,8 @@ export class Effects {
     this.rings = this.rings.filter((r) => r.life > 0);
     for (const t of this.texts) { t.life -= dt; t.pos.y -= 40 * dt; }
     this.texts = this.texts.filter((t) => t.life > 0);
+    for (const p of this.pulses) p.life -= dt;
+    this.pulses = this.pulses.filter((p) => p.life > 0);
     this.shake = Math.max(0, this.shake - CFG.feel.shakeDecay * dt);
   }
 }
@@ -80,6 +88,7 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   const a = u.aim + rand(-half, half);
   const dx = Math.cos(a), dy = Math.sin(a);
   const speed = st.projectileSpeed;
+  const vis = u.classDef?.visual;
   game.projectiles.push({
     pos: { x: u.pos.x + dx * 6, y: u.pos.y + dy * 6 },
     vel: { x: dx * speed, y: dy * speed },
@@ -87,7 +96,12 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
     damage: st.damage,
     life: (st.range * 1.25) / speed,
     trail: { x: u.pos.x, y: u.pos.y },
+    owner: u,
+    width: vis?.tracerWidth,
+    len: vis?.tracerLen,
+    hot: u.suppressing,
   });
+  u.shots++;
   u.fireCooldown = (1 / u.fireRate) * (u.team === 'enemy' ? rand(0.85, 1.2) : rand(0.95, 1.05));
   u.muzzle = CFG.feel.muzzleFlash;
   if (u.team === 'squad') sfx('shot'); else sfx('eshot');
@@ -112,6 +126,7 @@ export function updateProjectiles(game: Game, dt: number) {
     }
     const hx = x1 + (x2 - x1) * bestT, hy = y1 + (y2 - y1) * bestT;
     if (hitUnit) {
+      if (p.owner) { p.owner.hits++; p.owner.dealt += Math.min(p.damage, Math.max(0, hitUnit.hp)); }
       game.damage(hitUnit, p.damage);
       game.fx.burst({ x: hx, y: hy }, 4, hitUnit.team === 'squad' ? '#ffd1a0' : '#ffe08a', 120, 0.2, 2.5);
       continue;

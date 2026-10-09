@@ -5,7 +5,8 @@ import { OBSTACLES, SQUAD_START, MEDKITS, RAPIDFIRE, WORLD_W, WORLD_H } from './
 import { Unit } from './unit';
 import { NearestVisible } from './targeting';
 import { Effects, updateProjectiles, updateWeapon, type Projectile } from './combat';
-import { GrenadeAbility, updateGrenades, type Grenade } from './abilities';
+import { updateGrenades, type Grenade } from './abilities';
+import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, createIdentity, type SoldierClassId } from './classes';
 import { Medkit, RapidFire, updatePickups, type Pickup } from './pickups';
 import { updateSquad, squadCentre } from './squad';
 import { updateEnemyMovement } from './enemy';
@@ -52,6 +53,10 @@ export class Game implements InputHandler {
   hurtFlash = 0;
   banners: Banner[] = [];
   objective: Objective = { text: '' };
+  /** Class mix used by reset(); set by the preset picker. Defaults to 2 Infantry. */
+  composition: SoldierClassId[] = [...PRESETS[0].classes];
+  /** Short feedback line (e.g. why an ability can't be used). */
+  notice: { text: string; life: number } | null = null;
   input: Input;
   ui!: GameUI;
   private flowTimer = 0;
@@ -61,7 +66,13 @@ export class Game implements InputHandler {
   }
 
   // ---------------- lifecycle ----------------
-  reset(size = CFG.squad.startSize) {
+  /** Restart the mission. A number = that many Infantry (v0.1 API); an array = class mix. */
+  reset(squad: number | SoldierClassId[] = this.composition) {
+    const classes: SoldierClassId[] = typeof squad === 'number'
+      ? Array.from({ length: clamp(squad, 1, CFG.squad.maxSize) }, () => 'infantry' as const)
+      : squad.slice(0, CFG.squad.maxSize);
+    if (!classes.length) classes.push('infantry');
+    this.composition = [...classes];
     this.soldiers = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.scorches = []; this.fx = new Effects(); this.banners = [];
     this.anchor = { ...SQUAD_START }; this.cam = { ...SQUAD_START }; this.spread = 1;
@@ -71,7 +82,8 @@ export class Game implements InputHandler {
       ...MEDKITS.map((p) => ({ type: Medkit, pos: { ...p }, bob: Math.random() * 6 })),
       ...RAPIDFIRE.map((p) => ({ type: RapidFire, pos: { ...p }, bob: 0 })),
     ];
-    for (let i = 0; i < clamp(size, 1, CFG.squad.maxSize); i++) this.spawnSoldier();
+    this.notice = null;
+    for (const c of classes) this.spawnSoldier(c);
     this.mission.start(this);
     this.world.computeFlow(this.soldiers.map((s) => s.pos));
     this.phase = 'playing';
@@ -83,15 +95,17 @@ export class Game implements InputHandler {
   fail() { this.phase = 'failed'; this.targeting = null; this.ui.showEnd(); }
 
   // ---------------- spawning ----------------
-  spawnSoldier(): Unit | null {
+  /** Add a soldier of the given class (debug spawn without a class cycles through the classes). */
+  spawnSoldier(classId?: SoldierClassId): Unit | null {
     if (this.soldiers.length >= CFG.squad.maxSize) return null;
     const i = this.soldiers.length;
     const r = CFG.squad.roster[i % CFG.squad.roster.length];
+    const cls = classId ?? CLASS_IDS[i % CLASS_IDS.length];
     const base = this.phase === 'playing' && this.soldiers.length ? this.anchor : SQUAD_START;
     const pos = this.findOpenNear({ x: base.x + r.offset[0] * 34, y: base.y + r.offset[1] * 34 }, 40);
-    const s = new Unit('squad', pos, NearestVisible);
-    s.name = r.name; s.speedMul = r.speedMul; s.slot = r.offset;
-    s.ability = new GrenadeAbility();
+    const s = new Unit('squad', pos, NearestVisible, createIdentity(r.name, cls));
+    s.speedMul = r.speedMul; s.slot = r.offset;
+    s.ability = ABILITY_FACTORIES[CLASSES[cls].abilityId]();
     this.soldiers.push(s);
     this.ui?.rebuildPanels();
     return s;
@@ -174,6 +188,7 @@ export class Game implements InputHandler {
     s.hp = 0;
     s.bleed = CFG.revive.bleedOut;
     s.reviveProgress = 0;
+    s.reviver = null;
     s.target = null;
     s.vel = { x: 0, y: 0 };
     s.path = null;
@@ -192,13 +207,37 @@ export class Game implements InputHandler {
     this.objective = { text, sub, progress };
   }
 
+  say(text: string, dur = 1.6) { this.notice = { text, life: dur }; }
+
+  // ---------------- abilities ----------------
+  /**
+   * The ability button / number key. Ground abilities (Grenade) toggle targeting mode;
+   * instant abilities fire immediately. Returns true if something happened.
+   */
+  useAbility(s: Unit): boolean {
+    if (this.phase !== 'playing' || !s.ability) return false;
+    const ab = s.ability;
+    if (ab.targetingMode === 'ground') return this.beginTargeting(s);
+    this.targeting = null;
+    const why = ab.blockReason(this, s);
+    if (why) { this.say(`${s.name}: ${ab.name.toUpperCase()} — ${why}`); sfx('deny'); return false; }
+    ab.execute(this, s, s.pos);
+    return true;
+  }
+
   // ---------------- grenade targeting ----------------
   isTargeting() { return this.phase === 'playing' && !!this.targeting; }
-  beginTargeting(s: Unit) {
-    if (this.phase !== 'playing' || !s.ability) return;
-    if (this.targeting === s) { this.targeting = null; return; }
-    if (!s.ability.ready(s)) return;
+  beginTargeting(s: Unit): boolean {
+    if (this.phase !== 'playing' || !s.ability) return false;
+    if (this.targeting === s) { this.targeting = null; return true; }
+    if (s.ability.targetingMode !== 'ground') return this.useAbility(s);
+    if (!s.ability.ready(s)) {
+      const why = s.ability.blockReason(this, s);
+      if (why) { this.say(`${s.name}: ${s.ability.name.toUpperCase()} — ${why}`); sfx('deny'); }
+      return false;
+    }
     this.targeting = s;
+    return true;
   }
   onTargetCancel() { this.targeting = null; }
   onTargetConfirm(screen: Vec) {
@@ -217,7 +256,7 @@ export class Game implements InputHandler {
     if (code === 'Escape') { this.targeting = null; return; }
     if (code === 'KeyP') { this.paused = !this.paused; return; }
     const m = /^Digit([1-6])$/.exec(code);
-    if (m) { const s = this.soldiers[+m[1] - 1]; if (s) this.beginTargeting(s); return; }
+    if (m) { const s = this.soldiers[+m[1] - 1]; if (s) this.useAbility(s); return; }
     // debug hotkeys
     if (code === 'KeyF') this.spawnSoldier();
     else if (code === 'KeyG') this.debugSpawnGroup();
@@ -244,6 +283,7 @@ export class Game implements InputHandler {
     this.fx.update(dt);
     for (const b of this.banners) b.life -= dt;
     this.banners = this.banners.filter((b) => b.life > 0);
+    if (this.notice && (this.notice.life -= dt) <= 0) this.notice = null;
     if (this.phase !== 'playing' || this.paused) return;
     this.time += dt;
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
@@ -294,7 +334,10 @@ export class Game implements InputHandler {
       u.hitFlash = Math.max(0, u.hitFlash - dt);
       u.rapidFire = Math.max(0, u.rapidFire - dt);
       u.healFlash = Math.max(0, u.healFlash - dt);
-      if (u.ability) u.ability.cooldownLeft = Math.max(0, u.ability.cooldownLeft - dt);
+      if (u.ability) {
+        u.ability.cooldownLeft = Math.max(0, u.ability.cooldownLeft - dt);
+        u.ability.tick(this, u, dt);
+      }
     }
     this.enemies = this.enemies.filter((e) => e.state !== 'dead');
 
@@ -315,18 +358,31 @@ export class Game implements InputHandler {
     this.cam.y = clamp(this.cam.y, VIEW_H / 2, WORLD_H - VIEW_H / 2);
   }
 
+  /**
+   * Revive: progress is a FRACTION (0..1) so it survives a change of reviver. Each
+   * second adds 1 / reviveTime of the reviver's class. With several standing soldiers
+   * in range the fastest one counts (revivers don't stack, as in v0.1). Leaving the
+   * radius pauses (keeps) progress; bleed-out runs only while nobody is reviving.
+   */
   private updateDowned(dt: number) {
     const R = CFG.revive;
     for (const s of this.soldiers) {
       if (s.state !== 'downed') continue;
-      s.reviving = this.soldiers.some((o) => o !== s && o.active && dist(o.pos, s.pos) <= R.radius);
-      if (s.reviving) {
-        s.reviveProgress += dt; // bleed-out paused while reviving
-        if (s.reviveProgress >= R.time) {
+      let best: Unit | null = null;
+      for (const o of this.soldiers) {
+        if (o === s || !o.active || dist(o.pos, s.pos) > R.radius) continue;
+        if (!best || o.soldierStats.reviveTime < best.soldierStats.reviveTime) best = o;
+      }
+      s.reviver = best;
+      s.reviving = !!best;
+      if (best) {
+        s.reviveProgress += dt / Math.max(0.1, best.soldierStats.reviveTime); // bleed-out paused while reviving
+        if (s.reviveProgress >= 1) {
           s.state = 'active';
           s.hp = Math.max(1, s.maxHp * R.hpFrac);
           s.reviveProgress = 0;
           s.reviving = false;
+          s.reviver = null;
           this.banner(`${s.name} REVIVED`, '#7dff8a', 2);
           this.fx.ring(s.pos, 40, 'rgba(120,255,140,0.9)', 0.5, 4);
         }

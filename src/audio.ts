@@ -1,5 +1,5 @@
 // Tiny synthesized sound effects. Low priority: cheap, throttled, mutable.
-type Sfx = 'shot' | 'eshot' | 'hit' | 'boom' | 'down' | 'pickup' | 'throw';
+type Sfx = 'shot' | 'eshot' | 'hit' | 'boom' | 'down' | 'pickup' | 'throw' | 'deny' | 'heal' | 'suppress';
 
 let ctx: AudioContext | null = null;
 let noise: AudioBuffer | null = null;
@@ -51,7 +51,7 @@ function tone(f0: number, f1: number, type: OscillatorType, peak: number, dur: n
   o.start(t); o.stop(t + dur + 0.05);
 }
 
-const MIN_GAP: Record<Sfx, number> = { shot: 0.04, eshot: 0.06, hit: 0.05, boom: 0.05, down: 0.3, pickup: 0.1, throw: 0.1 };
+const MIN_GAP: Record<Sfx, number> = { shot: 0.04, eshot: 0.06, hit: 0.05, boom: 0.05, down: 0.3, pickup: 0.1, throw: 0.1, deny: 0.25, heal: 0.2, suppress: 0.2 };
 
 export function sfx(kind: Sfx) {
   if (muted || !ctx) return;
@@ -66,5 +66,8 @@ export function sfx(kind: Sfx) {
     case 'down': tone(600, 200, 'sawtooth', 0.1, 0.4); break;
     case 'pickup': tone(500, 1200, 'triangle', 0.15, 0.15); break;
     case 'throw': tone(300, 500, 'triangle', 0.06, 0.12); break;
+    case 'deny': tone(180, 140, 'square', 0.06, 0.12); break;
+    case 'heal': tone(520, 1040, 'sine', 0.14, 0.3); break;
+    case 'suppress': tone(160, 90, 'sawtooth', 0.1, 0.25); noiseHit(900, 'bandpass', 0.15, 0.2); break;
   }
 }
