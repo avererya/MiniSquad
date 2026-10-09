@@ -1,14 +1,16 @@
-// One character type for both sides. Stats come from CFG by reference, so
-// tuning panel changes apply live.
-import { CFG, type SoldierStats } from './config';
+// One character type for both sides. Enemy stats are CFG.enemy by reference; squad
+// soldiers' stats are computed on every read (class base from CFG -> trait -> individual
+// modifiers), so tuning panel changes apply live and traits never stack or mutate CFG.
+import { CFG } from './config';
 import type { Ability } from './abilities';
-import { CLASSES, classStats, type SoldierClassDef, type SoldierIdentity } from './classes';
+import { CLASSES, effectiveStats, type SoldierClassDef, type SoldierIdentity } from './classes';
+import type { EffectiveStats } from './traits';
 import type { TargetingStrategy } from './targeting';
 import type { Vec } from './util';
 
 export type Team = 'squad' | 'enemy';
 export type UnitState = 'active' | 'downed' | 'kia' | 'dead';
-export type StatBlock = SoldierStats | typeof CFG.enemy;
+export type StatBlock = EffectiveStats | typeof CFG.enemy;
 
 let nextId = 1;
 
@@ -58,16 +60,16 @@ export class Unit {
   constructor(public team: Team, pos: Vec, public targeting: TargetingStrategy, identity: SoldierIdentity | null = null) {
     this.pos = { x: pos.x, y: pos.y };
     this.identity = identity;
-    if (identity) this.name = identity.name;
+    if (identity) this.name = identity.name.toUpperCase();
     this.hp = this.stats.hp;
   }
 
   /** Class definition (squad soldiers only). */
   get classDef(): SoldierClassDef | null { return this.identity ? CLASSES[this.identity.classId] : null; }
-  /** Live stats: the soldier's class group in CFG, or CFG.enemy. */
-  get stats(): StatBlock { return this.identity ? classStats(this.identity.classId) : CFG.enemy; }
-  /** Squad soldier's class stats (throws for enemies). */
-  get soldierStats(): SoldierStats { return classStats(this.identity!.classId); }
+  /** Live stats: the soldier's EFFECTIVE stats (class + trait + individual mods), or CFG.enemy. */
+  get stats(): StatBlock { return this.identity ? effectiveStats(this.identity) : CFG.enemy; }
+  /** Squad soldier's effective stats (throws for enemies). */
+  get soldierStats(): EffectiveStats { return effectiveStats(this.identity!); }
   get maxHp() { return this.stats.hp; }
   get radius() { return this.stats.radius; }
   get maxSpeed() {
@@ -87,6 +89,7 @@ export class Unit {
       id: this.identity?.id ?? `E${this.id}`,
       name: this.name,
       classId: this.identity?.classId ?? 'enemy',
+      traitId: this.identity?.traitId ?? null,
       hp: this.hp,
       maxHp: this.maxHp,
       status: this.state === 'active' ? 'alive' : this.state,

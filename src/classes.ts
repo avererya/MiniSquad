@@ -1,14 +1,17 @@
-// Soldier classes as data. Three layers:
+// Soldier classes as data. Layers:
 //   1. SoldierClassDef  (this file): what a class IS. Base stats live in CFG[class id]
 //      so the tuning panel edits them live; the def adds the weapon, ability and look.
-//   2. SoldierIdentity  (this file): WHO a soldier is (id, name, class). Plain data that
-//      can outlive a mission later (roster, progression); nothing is saved yet.
-//   3. Unit             (unit.ts):   the runtime body in a mission (position, HP, state,
-//      ability state, targeting, revive progress), created from an identity.
+//   2. Traits           (traits.ts): natural trait modifiers, applied on top of the class.
+//   3. SoldierIdentity  (this file): WHO a soldier is (id, name, class, trait, individual
+//      modifiers, progression). Roster soldiers persist (roster.ts / save.ts); anonymous
+//      dev generics (presets, debug spawns) have no trait and no progression.
+//   4. Unit             (unit.ts):   the runtime body in a mission (position, HP, state,
+//      ability state, targeting, revive progress), created from a COPY of an identity.
 // Adding a class (Sniper, Commando...) = a CFG group + an entry in CLASSES + an ability
 // factory. No class checks are scattered through gameplay code: it reads the def.
 import { CFG, type SoldierStats } from './config';
 import { FieldTreatmentAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
+import { TRAITS, applyModifiers, combineModifiers, type EffectiveStats, type StatModifiers, type TraitId } from './traits';
 
 export type SoldierClassId = 'infantry' | 'heavy' | 'medic';
 export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment';
@@ -37,6 +40,8 @@ export const ABILITY_FACTORIES: Record<AbilityId, () => Ability> = {
   fieldTreatment: () => new FieldTreatmentAbility(),
 };
 
+export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', suppressive: 'Suppressive Fire', fieldTreatment: 'Field Treatment' };
+
 export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
   infantry: {
     id: 'infantry', label: 'Infantry', short: 'INF', abilityId: 'grenade',
@@ -54,24 +59,51 @@ export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
 
 export const CLASS_IDS = Object.keys(CLASSES) as SoldierClassId[];
 
-/** Live stats for a class (CFG group of the same name). */
+/** Live class BASE stats (CFG group of the same name; shared by every soldier of the class). */
 export function classStats(id: SoldierClassId): SoldierStats { return CFG[id]; }
 
-/** Persistent-ish soldier identity. HP/status/cooldown are runtime and read via snapshot(). */
+/** Per-soldier progression. v0.2.2 only stores the starting values; nothing earns or spends them yet. */
+export interface ProgressionRecord {
+  level: number; // 1
+  xp: number; // 0
+  upgrades: string[]; // none
+  specialization: string | null; // none
+}
+export const newProgression = (): ProgressionRecord => ({ level: 1, xp: 0, upgrades: [], specialization: null });
+
+/** Who a soldier is. HP/status/cooldown are runtime and read via Unit.snapshot(). */
 export interface SoldierIdentity {
-  id: string; // unique per created soldier: "S1", "S2", ...
+  id: string; // stable: roster ids ("ace"), dev generics "G1", "G2", ...
   name: string;
   classId: SoldierClassId;
-  /** Reserved for future progression (rank, XP, perks). Intentionally empty in v0.2.1. */
-  progression: null;
+  /** Natural trait (exactly one for roster soldiers; null for anonymous dev generics). */
+  traitId: TraitId | null;
+  /** Individual stat modifiers (future upgrades write here, per soldier). Empty in v0.2.2. */
+  mods: StatModifiers;
+  /** Individual progression record (null for anonymous dev generics). */
+  progression: ProgressionRecord | null;
 }
 
-let identitySeq = 0;
-export function createIdentity(name: string, classId: SoldierClassId): SoldierIdentity {
-  return { id: `S${++identitySeq}`, name, classId, progression: null };
+/** Effective stats: class base -> trait -> individual modifiers. Computed fresh; nothing is mutated. */
+export function effectiveStats(id: Pick<SoldierIdentity, 'classId' | 'traitId' | 'mods'>): EffectiveStats {
+  const trait = id.traitId ? TRAITS[id.traitId].mods : null;
+  return applyModifiers(classStats(id.classId), combineModifiers(trait, id.mods));
+}
+
+/** Deep copy, so a mission's units never share objects with the saved roster. */
+export function cloneIdentity(i: SoldierIdentity): SoldierIdentity {
+  return { ...i, mods: { ...i.mods }, progression: i.progression ? { ...i.progression, upgrades: [...i.progression.upgrades] } : null };
+}
+
+let genericSeq = 0;
+/** Anonymous dev soldier (presets, debug spawns): class base stats only, never saved. */
+export function createGeneric(name: string, classId: SoldierClassId): SoldierIdentity {
+  return { id: `G${++genericSeq}`, name, classId, traitId: null, mods: {}, progression: null };
 }
 
 // ---------------- squad presets (dev control) ----------------
+// Presets deploy ANONYMOUS generics (no trait) so class balance can be tested in isolation.
+// They never touch the saved roster or the saved squad selection.
 export interface SquadPreset { id: string; label: string; classes: SoldierClassId[] }
 
 export const PRESETS: SquadPreset[] = [

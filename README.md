@@ -6,7 +6,9 @@ This repository holds **Combat Prototype v0.1**, a disposable web feel prototype
 
 ## Status
 
-`v0.2.1` (soldier classes and combat refinement; the original build is tagged `prototype-v0.1`).
+`v0.2.2` (Barracks, squad selection, natural traits and mission results; the original build is tagged `prototype-v0.1`).
+
+- v0.2.2: first full loop, Barracks → select squad → deploy → mission → Results → Barracks. A fixed roster of six soldiers (Ace, Ranger, Tank, Havoc, Doc, Patch), each with a class, one natural trait and a progression record (level 1, no XP or upgrades yet). Traits (Sharpshooter, Quick Reflexes, Tough, Trigger Happy, First Responder, Healer) modify computed effective stats and never change class defaults. Pick 1 to 3 soldiers (duplicate classes allowed). Roster and selection are saved locally (versioned, validated). The Results screen shows kills, damage, healing, revives and final status per soldier, with Retry and Return to Barracks. KIA lasts only for the mission.
 
 - v0.2.1: three soldier classes (Infantry, Heavy Gunner, Medic) built on a class registry, each with its own stats, look and ability (Grenade, Suppressive Fire, Field Treatment); revive speed depends on the reviver's class; friendly bullets slowed to 700 px/s (from 950); Infantry spread widened to 12° still / 30° moving (from 7° / 25°, full cone); Infantry fire rate set to 3/s (from 4/s); squad presets in the tuning panel (or `?squad=ihm` in the URL); slower soldiers catch up when they fall behind
 
@@ -14,6 +16,8 @@ This repository holds **Combat Prototype v0.1**, a disposable web feel prototype
 
 - v0.1.1: green overhead health bars on friendly soldiers; medkits heal every standing soldier by 20% of max HP; enemy bullets slowed to 390 px/s (from 600) so they can be dodged; Infantry spread widened to 7° (from 4°)
 
+- Barracks with six named soldiers, natural traits, per-soldier details (base vs effective stats) and 3-slot squad selection, saved in localStorage
+- Results screen after every mission with per-soldier kills, damage, healing, revives and final status
 - Squads of 1 to 3 soldiers from three classes, with loose squad following and pathing around obstacles
 - Auto-targeting with line of sight, physical projectiles, an accuracy cone that widens while moving
 - Physical cover; Enemy Riflemen with flow-field pursuit and two temperaments
@@ -42,9 +46,13 @@ npm run build:single   # one self-contained file: dist-single/index.html
 | Move squad | WASD / arrow keys | Drag on the left side |
 | Ability | 1 / 2 / 3 or click a portrait | Tap a portrait |
 | Grenade target | Click the ground (right-click / Esc cancels) | Tap the ground (tap the portrait again to cancel) |
-| Squad preset | Tuning panel → Squad preset, or `?squad=ii\|ih\|im\|ihm\|hh\|mm` | same |
+| Pick squad | Barracks: click a soldier's ADD / ✕, click a slot then a soldier to replace; Enter deploys | tap |
+| Results | Enter retry · B / Esc back to Barracks | buttons |
+| Dev squad | Tuning panel → Squad preset (generic soldiers), `?squad=ii\|ih\|im\|ihm\|hh\|mm`, or `?squad=ace,doc` (roster soldiers, temporary). None of these change the saved squad | same |
 | Tuning panel | ` (backtick) or ⚙ | ⚙ |
 | Mute / Pause | M / P | 🔊 / ⏸ |
+
+Reset the saved roster and squad: tuning panel → Debug → "Reset roster save…" (tap twice to confirm).
 
 Debug keys: F spawn friendly · G spawn enemy group · K down a soldier · I invulnerable · Shift+R restart.
 
@@ -53,7 +61,11 @@ Debug keys: F spawn friendly · G spawn enemy group · K down a soldier · I inv
 TypeScript + Vite + plain 2D canvas, no framework.
 
 - `src/config.ts`: every gameplay number, including per-class stats (the tuning panel edits it live)
-- `src/classes.ts`: class registry (stats group, ability, look), soldier identity, squad presets
+- `src/classes.ts`: class registry (stats group, ability, look), soldier identity, effective stats, squad presets
+- `src/traits.ts`: natural trait registry and the stat modifier math (class base → trait → individual modifiers)
+- `src/roster.ts`, `src/save.ts`: the six-soldier roster, squad selection rules, versioned local save (`minisquad.save`, v1) with validation and recovery
+- `src/missionstats.ts`: per-soldier mission statistics and attribution rules
+- `src/menus.ts`: Barracks, soldier details and Results screens
 - `src/game.ts`: game state, fixed-step update, damage, downed/revive/KIA
 - `src/squad.ts`: squad anchor and loose following
 - `src/enemy.ts`: Rifleman AI
@@ -64,4 +76,4 @@ TypeScript + Vite + plain 2D canvas, no framework.
 - `src/mission.ts`: mission flow and extraction interface
 - `src/world.ts`, `src/map.ts`: collision, line of sight, pathfinding, level data
 - `src/render.ts`, `src/hud.ts`, `src/tuning.ts`, `src/input.ts`, `src/audio.ts`: presentation and input
-- `tools/*.cjs`: headless Playwright checks: `logic.cjs` (rule checks, PASS/FAIL), `mobile.cjs` (touch, rotation, HUD), `balance.cjs` (accuracy and mission experiments), `play.cjs` (autopilot), `classes.cjs` / `lineup.cjs` (screenshots), plus the older smoke/touch/visual scripts. Serve a build first: `npm run build && npx vite preview --port 4173`
+- `tools/*.cjs`: headless Playwright checks: `logic.cjs` (rule checks, PASS/FAIL), `barracks.cjs` (selection, save/reload, invalid saves, results flow), `squads.cjs` (roster squad playthroughs + stat attribution ledger), `mobile.cjs` (Barracks/Results/HUD on phones, touch, rotation), `balance.cjs` (accuracy and mission experiments), `play.cjs` (autopilot), `classes.cjs` / `lineup.cjs` (screenshots), plus the older smoke/touch/visual scripts. Serve a build first: `npm run build && npx vite preview --port 4173`

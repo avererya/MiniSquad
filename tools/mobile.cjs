@@ -1,5 +1,7 @@
-// Mobile checks (touch emulation): rotation, HUD visibility, hitbox alignment, no scroll,
-// joystick, and every ability via touch, with a 3-soldier squad (Infantry + Heavy + Medic).
+// Mobile checks (touch emulation) for the full loop: Barracks (portrait + landscape, rotation,
+// details panel, squad selection by tap) -> Deploy -> HUD rotation/hitboxes, joystick, every
+// ability via touch -> Results (victory + defeat) -> Retry / Return to Barracks.
+// Squad: Ace (Infantry) + Havoc (Heavy, Trigger Happy) + Doc (Medic), picked by tapping.
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const OUT = process.env.OUT || '.';
 const DEVICES = [
@@ -17,9 +19,54 @@ const DEVICES = [
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    await page.goto((process.env.URL || 'http://localhost:4173/') + '?squad=ihm');
-    await page.tap('[data-a="start"]'); // start in portrait, then rotate
+    await page.goto(process.env.URL || 'http://localhost:4173/'); // opens in portrait
+    await page.waitForTimeout(300);
+    // ---------- Barracks ----------
+    const menuLayout = async (sel) => page.evaluate((sel) => {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const els = [...document.querySelectorAll(sel)];
+      const boxes = els.map((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { inside: r.left >= -0.5 && r.top >= -0.5 && r.right <= vw + 0.5 && r.bottom <= vh + 0.5, aligned: !!hit && (hit === el || el.contains(hit)), h: Math.round(r.height), w: Math.round(r.width) };
+      });
+      const de = document.documentElement, m = document.getElementById('menu');
+      const fontPx = parseFloat(getComputedStyle(m).fontSize);
+      return { vw, vh, n: els.length, boxes, fontPx, menuScroll: m.scrollHeight > m.clientHeight + 1, hOverflow: de.scrollWidth > vw + 1 || m.scrollWidth > m.clientWidth + 1 };
+    }, sel);
+    const BARRACKS_SEL = '.s-card, .slot, [data-a="deploy"], .s-card .pick';
+    let P = await menuLayout(BARRACKS_SEL);
+    check(`${dev.name} portrait: Barracks usable (6 cards, no sideways scroll)`, P.n === 6 + 3 + 1 + 6 && !P.hOverflow && P.fontPx >= 11, `font ${P.fontPx}px, vertical scroll ${P.menuScroll}`);
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-portrait-barracks.png` });
+    const barracksChecks = async (tag) => {
+      const L = await menuLayout(BARRACKS_SEL);
+      check(`${dev.name} ${tag}: all cards, slots, Deploy on screen`, L.n === 16 && L.boxes.every((b) => b.inside) && !L.menuScroll && !L.hOverflow, `font ${L.fontPx}px, out: ${L.boxes.filter((b) => !b.inside).length}, scroll ${L.menuScroll}`);
+      check(`${dev.name} ${tag}: Barracks hitboxes aligned, buttons >= 28px`, L.boxes.every((b) => b.aligned) && L.boxes.slice(-6).every((b) => b.h >= 28), L.boxes.map((b) => b.aligned ? '' : 'X').join(''));
+    };
+    await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
+    await barracksChecks('landscape');
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-barracks.png` });
+    await page.tap('.s-card[data-id="havoc"] .s-name');
+    await page.waitForTimeout(150);
+    const D = await menuLayout('.d-card, .d-btns .m-big');
+    check(`${dev.name} landscape: details panel fits, buttons tappable`, D.n === 3 && D.boxes.every((b) => b.inside && b.aligned), JSON.stringify(D.boxes.map((b) => `${b.w}x${b.h}`)));
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-details.png` });
+    await page.tap('.d-btns [data-a="close"]');
+    // rotate while in the Barracks
+    await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(450);
+    await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
+    await barracksChecks('landscape after rotation');
+    // pick Havoc instead of Tank by tapping: remove slot 2, then Havoc's button
+    await page.tap('.slot[data-slot="1"] .slot-x');
+    await page.tap('.s-card[data-id="havoc"] .pick');
+    const picked = await page.evaluate(() => window.game.roster.slots.join());
+    check(`${dev.name}: squad picked by tapping (Ace, Havoc, Doc)`, picked === 'ace,havoc,doc', picked);
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-selection.png` });
+    await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(300); // deploy in portrait, then rotate
+    await page.tap('[data-a="deploy"]');
     await page.waitForTimeout(200);
+    const dep = await page.evaluate(() => window.game.soldiers.map((s) => s.identity.id).join());
+    check(`${dev.name}: Deploy starts the mission with the picked soldiers`, dep === 'ace,havoc,doc', dep);
     const layout = async () => page.evaluate(() => {
       const vw = window.innerWidth, vh = window.innerHeight;
       const btns = [...document.querySelectorAll('.panel .ability')].map((b) => {
@@ -64,7 +111,7 @@ const DEVICES = [
     // 2: Suppressive Fire (instant)
     await page.tap('.panel:nth-child(2) .ability');
     const sp = await page.evaluate(() => { const h = window.game.soldiers[1]; return { active: h.ability.activeLeft, rate: h.fireRate, targeting: !!window.game.targeting }; });
-    check(`${dev.name}: Suppressive Fire via one tap`, sp.active > 3.5 && sp.rate === 12.25 && !sp.targeting, JSON.stringify(sp));
+    check(`${dev.name}: Suppressive Fire via one tap (Havoc 7.35 x 1.75)`, sp.active > 3.5 && Math.abs(sp.rate - 12.8625) < 1e-9 && !sp.targeting, JSON.stringify(sp));
     await page.waitForTimeout(150);
     await page.screenshot({ path: `${OUT}/m-${dev.name}-suppressive.png` });
     // 3: Field Treatment (instant)
@@ -80,6 +127,30 @@ const DEVICES = [
     await page.waitForTimeout(120); // the HUD redraws on the next animation frame
     const hint = await page.evaluate(() => { const h = document.getElementById('hint'); return h.style.display !== 'none' ? h.textContent : ''; });
     check(`${dev.name}: unavailable ability shows feedback`, /RECHARGING/.test(hint), hint);
+    // ---------- Results ----------
+    const RESULT_SEL = '#menu .r-card, #menu [data-a="retry"], #menu [data-a="barracks"]';
+    await page.evaluate(() => { const g = window.game; g.soldiers[2].state = 'kia'; g.win(); });
+    await page.waitForTimeout(150);
+    let Rl = await menuLayout(RESULT_SEL);
+    check(`${dev.name} landscape: victory Results fit, buttons tappable`, Rl.n === 3 && Rl.boxes.every((b) => b.inside && b.aligned) && !Rl.menuScroll, `font ${Rl.fontPx}px ${JSON.stringify(Rl.boxes.map((b) => `${b.w}x${b.h}`))}`);
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-results-victory.png` });
+    await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(450);
+    Rl = await menuLayout(RESULT_SEL);
+    check(`${dev.name} portrait: Results usable`, Rl.n === 3 && !Rl.hOverflow && Rl.boxes.slice(1).every((b) => b.aligned), `scroll ${Rl.menuScroll}`);
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-portrait-results.png` });
+    await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
+    await page.tap('[data-a="retry"]');
+    await page.waitForTimeout(100);
+    const rt = await page.evaluate(() => ({ phase: window.game.phase, ids: window.game.soldiers.map((s) => `${s.identity.id}:${s.state}:${s.hp}`).join() }));
+    check(`${dev.name}: Retry restarts with the same squad, KIA cleared`, rt.phase === 'playing' && rt.ids === 'ace:active:100,havoc:active:150,doc:active:80', JSON.stringify(rt));
+    await page.evaluate(() => { const g = window.game; g.invuln = false; g.soldiers.forEach((s) => g.downSoldier(s)); g.soldiers[1].state = 'kia'; });
+    await page.waitForTimeout(150);
+    Rl = await menuLayout(RESULT_SEL);
+    check(`${dev.name} landscape: defeat Results fit`, Rl.n === 3 && Rl.boxes.every((b) => b.inside && b.aligned), '');
+    await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-results-defeat.png` });
+    await page.tap('#menu [data-a="barracks"]');
+    await page.waitForTimeout(150);
+    await barracksChecks('back in Barracks');
     check(`${dev.name}: no page errors`, errors.length === 0, errors.join(' | '));
     await ctx.close();
   }

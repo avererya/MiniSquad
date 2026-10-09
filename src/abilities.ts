@@ -72,7 +72,7 @@ export class SuppressiveFireAbility extends BaseAbility implements Ability {
 }
 
 /**
- * Medic: instant heal of healFrac x max HP for every standing squad soldier within
+ * Medic: instant heal of healFrac x (the Medic's healMul: Healer trait 1.1) x max HP for every standing squad soldier within
  * radius of the Medic (Medic included). Capped at max HP. Never revives downed
  * soldiers, does nothing for KIA. Refuses (no cooldown spent) if nobody in range is hurt.
  */
@@ -83,6 +83,8 @@ export class FieldTreatmentAbility extends BaseAbility implements Ability {
   readonly targetingMode = 'instant' as const;
   cooldown() { return CFG.fieldTreatment.cooldown; }
   previewRadius() { return CFG.fieldTreatment.radius; }
+  /** Fraction of each target's max HP this Medic heals (Healer: 0.25 x 1.1 = 0.275). */
+  healFrac(owner: Unit) { return CFG.fieldTreatment.healFrac * ((owner.stats as { healMul?: number }).healMul ?? 1); }
   /** Standing soldiers inside the heal radius. */
   affected(game: Game, owner: Unit) {
     const r = CFG.fieldTreatment.radius;
@@ -97,9 +99,11 @@ export class FieldTreatmentAbility extends BaseAbility implements Ability {
   execute(game: Game, owner: Unit) {
     if (this.blockReason(game, owner)) return;
     const F = CFG.fieldTreatment;
+    const frac = this.healFrac(owner);
     for (const s of this.affected(game, owner)) {
       const before = s.hp;
-      s.hp = Math.min(s.maxHp, s.hp + s.maxHp * F.healFrac);
+      s.hp = Math.min(s.maxHp, s.hp + s.maxHp * frac);
+      game.stats.heal(owner, s.hp - before); // actual HP restored, no overheal
       const healed = Math.round(s.hp - before);
       s.healFlash = 0.8;
       game.fx.burst({ x: s.pos.x, y: s.pos.y - 20 }, 8, '#7dff8a', 70, 0.5, 2.5);
@@ -118,6 +122,7 @@ export interface Grenade {
   flight: number;
   fuse: number; // remaining after landing
   landed: boolean;
+  owner?: Unit; // thrower: gets the damage + kills
 }
 
 /** Infantry: thrown grenade (unchanged since v0.1 apart from where its cooldown lives). */
@@ -135,7 +140,7 @@ export class GrenadeAbility extends BaseAbility implements Ability {
     const to = d > r
       ? { x: owner.pos.x + ((target.x - owner.pos.x) / d) * r, y: owner.pos.y + ((target.y - owner.pos.y) / d) * r }
       : { ...target };
-    game.grenades.push({ from: { ...owner.pos }, to, t: 0, flight: CFG.grenade.flightTime, fuse: CFG.grenade.fuse, landed: false });
+    game.grenades.push({ from: { ...owner.pos }, to, t: 0, flight: CFG.grenade.flightTime, fuse: CFG.grenade.fuse, landed: false, owner });
     this.cooldownLeft = this.cooldown();
     sfx('throw');
   }
@@ -150,7 +155,7 @@ export function updateGrenades(game: Game, dt: number) {
       g.fuse -= dt;
       if (g.fuse <= 0) {
         const G = CFG.grenade;
-        explode(game, g.to, G.radius, G.damage, G.edgeDamageFrac, game.enemies);
+        explode(game, g.to, G.radius, G.damage, G.edgeDamageFrac, game.enemies, g.owner);
       }
     }
   }

@@ -8,7 +8,7 @@ const OUT = process.env.OUT || '.';
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
-  await page.tap('[data-a="start"]');
+  await page.tap('[data-a="deploy"]');
   const cdp = await ctx.newCDPSession(page);
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((p, i) => ({ x: p[0], y: p[1], id: p[2] ?? i })) });
   const before = await page.evaluate(() => ({ ...window.game.anchor }));

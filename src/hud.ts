@@ -3,9 +3,10 @@
 import type { Game, GameUI } from './game';
 import type { Unit } from './unit';
 import { CFG } from './config';
-import { CLASSES } from './classes';
 import { isMuted, setMuted, unlockAudio } from './audio';
 import { Tuning } from './tuning';
+import { Menus } from './menus';
+import { TRAITS } from './traits';
 
 interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
 
@@ -25,8 +26,9 @@ export class Hud implements GameUI {
   private muteBtn: HTMLElement;
   private panels: PanelRefs[] = [];
   private tuning: Tuning;
+  readonly menus: Menus;
 
-  constructor(private root: HTMLElement, tuningRoot: HTMLElement, private game: Game) {
+  constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
       <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div></div>
       <div id="timer"></div>
@@ -53,6 +55,7 @@ export class Hud implements GameUI {
       });
     });
     this.tuning = new Tuning(tuningRoot, game);
+    this.menus = new Menus(menuRoot, game, () => this.toggleTuning());
   }
 
   toggleTuning() { this.tuning.toggle(); }
@@ -66,6 +69,7 @@ export class Hud implements GameUI {
       const def = u.classDef!;
       const ab = u.ability!;
       root.className = 'panel';
+      root.title = `${u.name} · ${def.label}${u.identity?.traitId ? ' · ' + TRAITS[u.identity.traitId].name : ''}`;
       root.dataset.cls = def.id;
       root.innerHTML = `
         <button class="ability cls-${def.id}" title="${ab.name} (${i + 1})" data-ability="${ab.id}">
@@ -138,45 +142,16 @@ export class Hud implements GameUI {
     }
   }
 
-  hideOverlay() { this.overlay.style.display = 'none'; this.overlay.innerHTML = ''; }
+  hideOverlay() { this.overlay.style.display = 'none'; this.overlay.innerHTML = ''; this.menus.hide(); }
 
-  showStart() {
-    this.overlay.style.display = 'flex';
-    this.overlay.innerHTML = `
-      <div class="card">
-        <h1>MINISQUAD</h1>
-        <div class="sub">Combat Prototype v${__APP_VERSION__} — Secure the Communications Outpost</div>
-        <div class="controls">
-          <div><b>Move</b> WASD / arrows · touch: drag left side</div>
-          <div><b>Abilities</b> 1 / 2 / 3 or tap a portrait · Grenade: then click/tap the ground (right-click / Esc cancels) · Suppressive Fire &amp; Field Treatment: instant</div>
-          <div><b>Squad</b> ${this.game.composition.map((c) => CLASSES[c].label).join(' + ')} · change it under ⚙ → Squad preset</div>
-          <div><b>Tuning panel</b> \` (backtick) or ⚙ · <b>Mute</b> M · <b>Pause</b> P</div>
-          <div class="dim">Debug keys: F spawn friendly · G spawn enemies · K down a soldier · I invulnerable · Shift+R restart</div>
-        </div>
-        <button class="big" data-a="start">START MISSION</button>
-      </div>`;
-    this.overlay.querySelector('[data-a="start"]')!.addEventListener('click', () => { unlockAudio(); this.game.reset(); });
-  }
+  /** Barracks (launch screen and "Return to Barracks"). */
+  showStart(notice?: string) { this.hideOverlay(); this.menus.showBarracks(notice); }
 
-  showEnd() {
-    const g = this.game;
-    const won = g.phase === 'won';
-    const rows = g.soldiers.map((s) => {
-      const st = s.state === 'active' ? 'OK' : s.state === 'downed' ? 'DOWNED' : 'KIA';
-      return `<div class="row"><span>${s.name} <span class="dim">${s.classDef?.label ?? ''}</span></span><span class="${st === 'OK' ? 'okc' : 'kiac'}">${st}</span></div>`;
-    }).join('');
-    this.overlay.style.display = 'flex';
-    this.overlay.innerHTML = `
-      <div class="card ${won ? 'won' : 'lost'}">
-        <h1>${won ? 'MISSION COMPLETE' : 'MISSION FAILED'}</h1>
-        <div class="sub">${won ? 'The squad made it out.' : 'The whole squad is down.'}</div>
-        <div class="row"><span>Mission time</span><span>${fmtTime(g.time)}</span></div>
-        ${rows}
-        <button class="big" data-a="restart">RESTART</button>
-        <div class="dim">or press Enter</div>
-      </div>`;
-    this.overlay.querySelector('[data-a="restart"]')!.addEventListener('click', () => this.game.reset());
-  }
+  /** Mission Results (victory or defeat). */
+  showEnd() { this.menus.showResults(); }
+
+  /** The roster object was replaced (dev save reset): redraw the Barracks if it is open. */
+  rosterChanged() { if (this.menus.screen === 'barracks') this.menus.showBarracks('Roster reset to defaults.'); }
 
   get rootEl() { return this.root; }
 }

@@ -126,8 +126,8 @@ export function updateProjectiles(game: Game, dt: number) {
     }
     const hx = x1 + (x2 - x1) * bestT, hy = y1 + (y2 - y1) * bestT;
     if (hitUnit) {
-      if (p.owner) { p.owner.hits++; p.owner.dealt += Math.min(p.damage, Math.max(0, hitUnit.hp)); }
-      game.damage(hitUnit, p.damage);
+      if (p.owner) p.owner.hits++;
+      game.damage(hitUnit, p.damage, p.owner);
       game.fx.burst({ x: hx, y: hy }, 4, hitUnit.team === 'squad' ? '#ffd1a0' : '#ffe08a', 120, 0.2, 2.5);
       continue;
     }
@@ -143,13 +143,13 @@ export function updateProjectiles(game: Game, dt: number) {
 }
 
 /** Area damage to one team only (grenades never hurt friendlies). */
-export function explode(game: Game, pos: Vec, radius: number, damage: number, edgeFrac: number, victims: Unit[]) {
+export function explode(game: Game, pos: Vec, radius: number, damage: number, edgeFrac: number, victims: Unit[], source?: Unit) {
   for (const u of victims) {
     if (!u.active) continue;
     const d = dist(pos, u.pos);
     if (d > radius + u.radius) continue;
     const f = Math.min(1, d / radius);
-    game.damage(u, damage * (1 - f * (1 - edgeFrac)));
+    game.damage(u, damage * (1 - f * (1 - edgeFrac)), source);
   }
   game.fx.ring(pos, radius, 'rgba(255,220,120,0.9)', 0.35, 6);
   game.fx.burst(pos, 26, '#ffb347', 380, 0.45, 5);

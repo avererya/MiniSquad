@@ -17,14 +17,16 @@ export interface Pickup { type: PickupType; pos: Vec; bob: number }
 
 export const Medkit: PickupType = {
   kind: 'medkit', color: '#f4f4f4', label: '+',
-  onCollect(game) {
+  onCollect(game, collector) {
     // Squad-wide: every standing soldier heals a fraction of their own max HP.
-    // Downed soldiers are not revived and KIA soldiers get nothing.
+    // Downed soldiers are not revived and KIA soldiers get nothing. Not affected by the
+    // Healer trait. Mission stats credit all of it to the collector.
     const living = game.soldiers.filter((s) => s.active);
     if (!living.some((s) => s.hp < s.maxHp)) return false;
     for (const s of living) {
       const before = s.hp;
       s.hp = Math.min(s.maxHp, s.hp + s.maxHp * CFG.pickups.medkitHealFrac);
+      game.stats.heal(collector, s.hp - before);
       const healed = Math.round(s.hp - before);
       s.healFlash = 0.8;
       game.fx.ring(s.pos, 30, 'rgba(120,255,140,0.9)', 0.5);

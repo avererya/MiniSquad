@@ -3,15 +3,27 @@ import { Hud } from './hud';
 import { render } from './render';
 import { VIEW_W, VIEW_H } from './view';
 import { unlockAudio } from './audio';
-import { findPreset } from './classes';
+import { findPreset, effectiveStats } from './classes';
 import { CFG, applyConfigJSON, resetConfig } from './config';
+import { loadSave, parseSave, resetSave, writeSave, SAVE_KEY } from './save';
+import { Roster } from './roster';
+import { TRAITS } from './traits';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const game = new Game(stage, canvas);
-const hud = new Hud(document.getElementById('hud')!, document.getElementById('tuning')!, game);
+const hud = new Hud(document.getElementById('hud')!, document.getElementById('tuning')!, document.getElementById('menu')!, game);
 game.ui = hud;
+
+// Saved roster + squad selection. Only Barracks selection changes are written back
+// (autosave on change); dev presets and ?squad= deployments never save.
+function useRoster(r: Roster) { r.onChange = () => writeSave(r); game.replaceRoster(r); }
+const loaded = loadSave();
+game.roster = loaded.roster;
+loaded.roster.onChange = () => writeSave(loaded.roster);
+/** Dev: wipe the save back to the six default soldiers (tuning panel, two-step confirm). */
+function resetRosterSave() { useRoster(resetSave()); }
 
 // Fit the 1280x720 stage into the visible viewport, minus safe areas (notch, home bar).
 // Mobile browsers often report stale sizes right after a rotation and may leave the
@@ -62,12 +74,16 @@ scheduleResize();
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
-// dev shortcut: ?squad=ihm (preset ids: ii, ih, im, ihm, hh, mm, i, iii)
-const preset = findPreset(new URLSearchParams(location.search).get('squad'));
-if (preset) game.composition = [...preset.classes];
-
-hud.showStart();
+// Dev shortcuts (deploy immediately, never saved):
+//   ?squad=ihm          generic class preset (ids: ii, ih, im, ihm, hh, mm, i, iii)
+//   ?squad=ace,tank,doc roster soldiers by id, as a temporary squad
+const sq = new URLSearchParams(location.search).get('squad');
+const preset = findPreset(sq);
+const tempIds = sq ? sq.split(/[,+ ]/).map((x) => game.roster.get(x.toLowerCase())).filter((x) => !!x) : [];
 hud.rebuildPanels();
+if (preset) game.reset(preset.classes);
+else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 3), 'temp');
+else hud.showStart(loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.' : undefined);
 
 // fixed-step simulation, render every frame
 const STEP = 1 / 60;
@@ -78,7 +94,7 @@ function frame(now: number) {
   last = now;
   while (acc >= STEP) { game.update(STEP); acc -= STEP; }
   ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0);
-  render(ctx, game);
+  if (game.phase !== 'start') render(ctx, game); // the Barracks covers the whole screen
   hud.update();
   requestAnimationFrame(frame);
 }
@@ -88,3 +104,6 @@ requestAnimationFrame(frame);
 (window as any).game = game;
 // config hooks for the headless checks in tools/ (same functions the tuning panel uses)
 Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, __resetConfig: resetConfig });
+// roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
+Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded });
+game.resetRosterSave = resetRosterSave;

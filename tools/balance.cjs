@@ -20,7 +20,7 @@ const STYLE = process.env.STYLE || 'push';
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
-  await page.click('[data-a="start"]');
+  await page.click('[data-a="deploy"]');
   const out = await page.evaluate(async ({ MODE, CONFIG, RUNS, CLASSES, PRESETS, OLD_RATE, STYLE }) => {
     const g = window.game;
     const v2 = typeof g.useAbility === 'function';

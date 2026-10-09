@@ -5,7 +5,7 @@ const OUT = process.env.OUT || '.';
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 3 });
   await page.goto((process.env.URL || 'http://localhost:4173/') + '?squad=ihm');
-  await page.click('[data-a="start"]');
+  await page.waitForTimeout(200); // ?squad= deploys immediately (dev shortcut)
   const clip = await page.evaluate(() => {
     const g = window.game;
     g.reset(['infantry', 'heavy', 'medic', 'infantry', 'heavy', 'medic']);

@@ -119,12 +119,14 @@ export class Tuning {
     dbg.className = 'tune-sec';
     dbg.innerHTML = `<div class="tune-title">Debug</div>
       <div class="tune-btns">
-        <label>Squad preset <select>${PRESETS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('')}</select></label>
+        <label title="Dev presets deploy anonymous generic soldiers (class stats only, no traits). They never change the saved roster or squad.">Squad preset <select><option value="" disabled>(Barracks squad)</option>${PRESETS.map((p) => `<option value="${p.id}">${p.label} (generic)</option>`).join('')}</select></label>
         <button data-a="restart">Restart mission</button>
+        <button data-a="barracks">Barracks</button>
         <button data-a="spawnF">Spawn friendly</button>
         <button data-a="spawnE">Spawn enemy group</button>
         <button data-a="down">Down a soldier</button>
         <button data-a="invuln">Invulnerable: off</button>
+        <button data-a="resetSave" class="danger">Reset roster save…</button>
       </div>`;
     this.presetSel = dbg.querySelector('select')!;
     // picking a preset restarts the mission right away with that squad
@@ -138,6 +140,17 @@ export class Tuning {
       const g = this.game;
       switch (b.dataset.a) {
         case 'restart': g.reset(); break;
+        case 'barracks': if (g.phase !== 'start') g.toBarracks(); break;
+        case 'resetSave':
+          // two-step confirmation: first tap arms it for 4 s, second tap wipes the save
+          if (b.dataset.armed) {
+            delete b.dataset.armed; b.textContent = 'Reset roster save…';
+            g.resetRosterSave?.();
+          } else {
+            b.dataset.armed = '1'; b.textContent = 'Tap again to reset roster + squad';
+            window.setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Reset roster save…'; } }, 4000);
+          }
+          break;
         case 'spawnF': if (g.phase === 'playing') g.spawnSoldier(); break;
         case 'spawnE': if (g.phase === 'playing') g.debugSpawnGroup(); break;
         case 'down': if (g.phase === 'playing') g.debugDownSoldier(); break;
@@ -222,8 +235,8 @@ export class Tuning {
     if (this.invulnBtn) this.invulnBtn.textContent = `Invulnerable: ${this.game.invuln ? 'ON' : 'off'}`;
     if (this.presetSel) {
       const cur = this.game.composition.join(',');
-      const p = PRESETS.find((x) => x.classes.join(',') === cur);
-      if (p) this.presetSel.value = p.id;
+      const p = this.game.deployment.kind === 'generic' ? PRESETS.find((x) => x.classes.join(',') === cur) : undefined;
+      this.presetSel.value = p ? p.id : '';
     }
   }
 }

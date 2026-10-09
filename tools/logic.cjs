@@ -6,7 +6,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
-  await page.click('[data-a="start"]');
+  await page.click('[data-a="deploy"]');
   const res = await page.evaluate(() => {
     const g = window.game; const out = [];
     const check = (name, ok, detail) => out.push({ name, ok: !!ok, detail: String(detail) });
@@ -130,7 +130,8 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     };
     const sp = { infantry: measure('infantry'), heavy: measure('heavy'), medic: measure('medic') };
     check('projectile speed: friendly 700 (all classes), enemy 390', ['infantry', 'heavy', 'medic'].every(c => sp[c][0] === 700 && sp[c][1] === 390), JSON.stringify(sp));
-    fresh(['heavy']); const hs = g.soldiers[0].stats; hs.projectileSpeed = 900;
+    // (soldier stats are computed per read since v0.2.2, so tune the CLASS group in CFG)
+    const hs = window.__CFG.heavy; hs.projectileSpeed = 900;
     const hv = measure('heavy')[0], iv = measure('infantry')[0];
     hs.projectileSpeed = 700;
     check('projectile speed is per class', hv === 900 && iv === 700, `heavy set to 900 -> ${hv}, infantry ${iv}`);
@@ -276,6 +277,211 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     window.__resetConfig && window.__resetConfig();
     fresh(['infantry']);
     check('reset to defaults restores v0.2.1 values', g.soldiers[0].stats.accuracy === 12 && g.soldiers[0].stats.projectileSpeed === 700 && window.__CFG.grenade.cooldown === 8, `${g.soldiers[0].stats.accuracy} ${g.soldiers[0].stats.projectileSpeed}`);
+
+    // ============ v0.2.2: roster, traits, selection, mission stats ============
+    const CFG = window.__CFG, eff = window.__effectiveStats;
+    const cfgSnapshot = JSON.stringify(CFG);
+    const R = g.roster;
+    const savedSlots = [...R.slots];
+    const byId = (id) => R.get(id);
+    const deployIds = (ids) => { g.deploy(ids.map(byId)); clearEnemies(); g.invuln = false; };
+
+    // roster
+    const want = [['ace', 'Ace', 'infantry', 'sharpshooter'], ['ranger', 'Ranger', 'infantry', 'quickReflexes'], ['tank', 'Tank', 'heavy', 'tough'],
+      ['havoc', 'Havoc', 'heavy', 'triggerHappy'], ['doc', 'Doc', 'medic', 'firstResponder'], ['patch', 'Patch', 'medic', 'healer']];
+    const rosterOk = R.soldiers.length === 6 && want.every(([id, name, cls, tr], i) => {
+      const s = R.soldiers[i];
+      return s.id === id && s.name === name && s.classId === cls && s.traitId === tr && Object.keys(s.mods).length === 0
+        && s.progression && s.progression.level === 1 && s.progression.xp === 0 && s.progression.upgrades.length === 0 && s.progression.specialization === null;
+    });
+    check('roster: six default soldiers (name/class/trait/progression)', rosterOk, R.soldiers.map(s => `${s.id}:${s.classId}:${s.traitId}:L${s.progression?.level}/${s.progression?.xp}xp`).join(' '));
+    check('roster: stable unique ids, exactly one trait each', new Set(R.soldiers.map(s => s.id)).size === 6 && R.soldiers.every(s => typeof s.traitId === 'string' && window.__TRAITS[s.traitId]), R.soldiers.map(s => s.id).join(','));
+
+    // effective stats (class base -> trait), all six
+    const E = Object.fromEntries(R.soldiers.map(s => [s.id, eff(s)]));
+    const row = (st) => `hp ${st.hp} rate ${st.fireRate} cone ${st.accuracy}/${r1(st.accuracy + st.movePenalty)} speed ${st.moveSpeed} revive ${st.reviveTime} heal x${st.healMul}`;
+    const expectEff = {
+      ace: { hp: 100, fireRate: 3, accuracy: 10.8, moving: 27, moveSpeed: 150, reviveTime: 10, healMul: 1 },
+      ranger: { hp: 100, fireRate: 3, accuracy: 12, moving: 30, moveSpeed: 157.5, reviveTime: 10, healMul: 1 },
+      tank: { hp: 165, fireRate: 7, accuracy: 15, moving: 40, moveSpeed: 120, reviveTime: 12, healMul: 1 },
+      havoc: { hp: 150, fireRate: 7.35, accuracy: 15, moving: 40, moveSpeed: 120, reviveTime: 12, healMul: 1 },
+      doc: { hp: 80, fireRate: 2.5, accuracy: 10, moving: 28, moveSpeed: 157.5, reviveTime: 4.5, healMul: 1 },
+      patch: { hp: 80, fireRate: 2.5, accuracy: 10, moving: 28, moveSpeed: 157.5, reviveTime: 5, healMul: 1.1 },
+    };
+    for (const [id, x] of Object.entries(expectEff)) {
+      const st = E[id];
+      const ok = st.hp === x.hp && st.fireRate === x.fireRate && st.accuracy === x.accuracy && r1(st.accuracy + st.movePenalty) === x.moving
+        && st.moveSpeed === x.moveSpeed && st.reviveTime === x.reviveTime && st.healMul === x.healMul;
+      check(`trait effect: ${id} (${byId(id).traitId})`, ok, row(st));
+    }
+    check('traits do not mutate shared class defaults (CFG unchanged)', JSON.stringify(CFG) === cfgSnapshot && CFG.infantry.accuracy === 12 && CFG.heavy.hp === 150 && CFG.heavy.fireRate === 7 && CFG.medic.reviveTime === 5, `infantry acc ${CFG.infantry.accuracy}, heavy hp ${CFG.heavy.hp} rate ${CFG.heavy.fireRate}, medic revive ${CFG.medic.reviveTime}`);
+    // tuning panel edits class defaults; traits apply on top, live
+    CFG.heavy.hp = 200; CFG.infantry.accuracy = 20;
+    const tuned = [eff(byId('tank')).hp, eff(byId('havoc')).hp, eff(byId('ace')).accuracy, eff(byId('ranger')).accuracy];
+    CFG.heavy.hp = 150; CFG.infantry.accuracy = 12;
+    check('tuning edits class base; traits apply on top', tuned.join() === '220,200,18,20', `heavy hp 200 -> Tank ${tuned[0]}, Havoc ${tuned[1]}; infantry spread 20 -> Ace ${tuned[2]}, Ranger ${tuned[3]}`);
+    // individual modifiers: upgrading Ace does not touch Ranger or the class
+    byId('ace').mods.fireRateMul = 1.2;
+    const indiv = [eff(byId('ace')).fireRate, eff(byId('ranger')).fireRate, CFG.infantry.fireRate];
+    delete byId('ace').mods.fireRateMul;
+    check('individual modifiers are per soldier (Ace x1.2 rate, Ranger unchanged)', indiv.join() === '3.6,3,3' && eff(byId('ace')).fireRate === 3, `Ace ${indiv[0]}, Ranger ${indiv[1]}, class ${indiv[2]}, Ace after removal ${eff(byId('ace')).fireRate}`);
+
+    // no stacking across deploy / retry
+    let stackLog = [];
+    for (let i = 0; i < 4; i++) {
+      if (i === 0) deployIds(['tank', 'havoc', 'ace']); else { g.reset(); clearEnemies(); }
+      const [t, h, a] = g.soldiers;
+      stackLog.push(`${t.maxHp}/${t.hp},${h.fireRate},${a.cone}`);
+    }
+    check('traits never stack on deploy + retry (x4)', stackLog.every(x => x === '165/165,7.35,10.8'), stackLog.join(' | '));
+    check('deployed units copy identities (mission never shares roster objects)', g.soldiers[0].identity !== byId('tank') && g.soldiers[0].identity.id === 'tank', `same object: ${g.soldiers[0].identity === byId('tank')}`);
+
+    // selection rules (on the live roster; restored afterwards)
+    R.slots = [null, null, null];
+    const sel = [R.select('ace'), R.select('ranger'), R.select('ace'), R.select('tank'), R.select('doc')];
+    check('selection: up to 3, 4th refused, duplicates impossible', sel[0].ok && sel[1].ok && sel[2].ok && sel[2].slot === 0 && sel[3].ok && !sel[4].ok && R.slots.join() === 'ace,ranger,tank',
+      `results ${sel.map(x => x.ok ? 'ok@' + x.slot : 'refused').join(' ')}, slots ${R.slots.join()}`);
+    R.select('doc', 1); // replace slot 2
+    const afterReplace = R.slots.join();
+    R.select('doc', 2); // move doc to slot 3: never in two slots
+    check('selection: replace a slot; moving never duplicates', afterReplace === 'ace,doc,tank' && R.slots.join() === 'ace,,doc' && R.slots.filter(x => x === 'doc').length === 1, `${afterReplace} -> ${R.slots.join()}`);
+    g.roster.slots = ['ace', 'ranger', null]; g.deploySelected(); clearEnemies();
+    const [sa, sr] = g.soldiers;
+    check('deploy: two Infantry with their own identity + traits', g.soldiers.length === 2 && sa.identity.id === 'ace' && sr.identity.id === 'ranger' && sa.cone === 10.8 && sr.cone === 12 && sa.ability !== sr.ability && sr.stats.moveSpeed === 157.5 && sa.stats.moveSpeed === 150,
+      `${g.soldiers.map(s => `${s.name}/${s.identity.traitId} cone ${s.cone} speed ${s.stats.moveSpeed}`).join(', ')}`);
+    R.slots = [null, null, null];
+    const ph = g.phase, n0 = g.soldiers.length;
+    const deployedEmpty = g.deploySelected();
+    check('deploy needs at least one soldier', !deployedEmpty && g.phase === ph && g.soldiers.length === n0, `deploySelected() -> ${deployedEmpty}`);
+    R.slots = ['havoc', null, 'patch'];
+    g.deploySelected(); clearEnemies();
+    check('deploy uses exactly the selected soldiers, in slot order (no generic fallback)', g.soldiers.map(s => s.identity.id).join() === 'havoc,patch' && g.soldiers.every(s => s.identity.traitId && !/^G/.test(s.identity.id)) && g.deployment.kind === 'roster',
+      g.soldiers.map(s => `${s.identity.id}:${s.identity.classId}:${s.identity.traitId}`).join(' '));
+
+    // traits in combat
+    const hv3 = g.soldiers[0];
+    const rates = [hv3.fireRate]; g.useAbility(hv3); rates.push(hv3.fireRate); hv3.ability.activeLeft = 0; hv3.rapidFire = 5; rates.push(hv3.fireRate); hv3.rapidFire = 0;
+    check('Trigger Happy x Suppressive: 7.35 base, x1.75 on top = 12.8625', r1(rates[0] * 100) / 100 === 7.35 && Math.abs(rates[1] - 12.8625) < 1e-9 && Math.abs(rates[2] - 13.23) < 1e-9, `base ${rates[0]}, suppressing ${rates[1]}, rapid fire ${rates[2]}`);
+    const measureRate = (id) => {
+      deployIds([id]); g.invuln = true; g.pickups = [];
+      const sh = g.soldiers[0]; sh.pos = { x: 1000, y: 1250 }; g.anchor = { ...sh.pos }; g.cam = { ...sh.pos }; sh.ability.cooldownLeft = 1e9;
+      const e = g.spawnEnemy({ x: 1250, y: 1250 }); e.hp = 1e9; e.guard = true; e.reactionTime = 1e9;
+      step(1); const s0 = sh.shots; step(40); return (sh.shots - s0) / 40;
+    };
+    const rH = measureRate('havoc'), rT = measureRate('tank');
+    check('Trigger Happy measured in combat: Havoc fires ~5% faster than Tank', rH / rT > 1.02 && rH / rT < 1.09, `Havoc ${r1(rH * 10) / 10}/s vs Tank ${r1(rT * 10) / 10}/s (x${(rH / rT).toFixed(3)})`);
+    // Sharpshooter measured: shots stay inside ±5.4° still
+    const devsOf = (id) => {
+      deployIds([id]); g.invuln = true; g.pickups = [];
+      const sh = g.soldiers[0]; sh.pos = { x: 1000, y: 1250 }; g.anchor = { ...sh.pos }; g.cam = { ...sh.pos }; sh.ability.cooldownLeft = 1e9;
+      const e = g.spawnEnemy({ x: 1300, y: 1250 }); e.hp = 1e9; e.guard = true; e.reactionTime = 1e9;
+      const devs = [];
+      for (let i = 0; i < 60 * 90 && devs.length < 300; i++) {
+        const before = new Set(g.projectiles); g.update(1 / 60);
+        for (const p of g.projectiles) if (!before.has(p) && p.owner === sh) { let dv = Math.atan2(p.vel.y, p.vel.x) - sh.aim; while (dv > Math.PI) dv -= 2 * Math.PI; while (dv < -Math.PI) dv += 2 * Math.PI; devs.push(Math.abs(dv * 180 / Math.PI)); }
+      }
+      return devs;
+    };
+    const dAce = devsOf('ace'), dRanger = devsOf('ranger');
+    check('Sharpshooter in combat: Ace shots within ±5.4°, Ranger uses ±6°', Math.max(...dAce) <= 5.4 + 1e-6 && Math.max(...dAce) > 4.8 && Math.max(...dRanger) > 5.4,
+      `Ace max dev ${r1(Math.max(...dAce))}° (${dAce.length} shots), Ranger max dev ${r1(Math.max(...dRanger))}° (${dRanger.length} shots)`);
+    // Quick Reflexes: Ranger alone moves 5% faster than Ace alone
+    const soloSpeed = (id) => {
+      deployIds([id]); g.invuln = true; g.pickups = [];
+      const st = { x: 300, y: 1350 }; g.anchor = { ...st }; g.soldiers[0].pos = { ...st };
+      g.input.move = () => ({ x: 1, y: 0 }); step(2); const x0 = g.soldiers[0].pos.x, a0 = g.anchor.x; step(5);
+      g.input.move = Object.getPrototypeOf(g.input).move.bind(g.input);
+      return [(g.soldiers[0].pos.x - x0) / 5, (g.anchor.x - a0) / 5, g.soldiers[0].stats.moveSpeed];
+    };
+    const vA = soloSpeed('ace'), vR = soloSpeed('ranger');
+    check('Quick Reflexes in combat: Ranger moves ~5% faster than Ace', vR[2] === 157.5 && vA[2] === 150 && vR[0] / vA[0] > 1.03 && vR[0] / vA[0] < 1.07,
+      `class speed ${vA[2]} vs ${vR[2]}; measured soldier ${Math.round(vA[0])} vs ${Math.round(vR[0])} px/s (x${(vR[0] / vA[0]).toFixed(3)}), anchor ${Math.round(vA[1])} vs ${Math.round(vR[1])}`);
+    // Tough: Tank starts at 165/165, Field Treatment heals 25% of 165
+    deployIds(['tank', 'doc']);
+    const [tk, dc] = g.soldiers; const tk0 = `${tk.hp}/${tk.maxHp}`;
+    tk.hp = 50; tk.pos = { ...dc.pos, x: dc.pos.x + 30 };
+    g.useAbility(dc);
+    check('Tough in combat: Tank 165 HP; Doc heals 25% of it (41.25)', tk0 === '165/165' && tk.hp === 91.25, `start ${tk0}, 50 -> ${tk.hp}`);
+    // First Responder: Doc revives in 4.5 s, Patch in 5 s
+    const reviveBy = (rid) => {
+      deployIds(['ace', rid]); const v = g.soldiers[0]; g.downSoldier(v);
+      g.soldiers[1].pos = { x: v.pos.x + 15, y: v.pos.y }; g.anchor = { ...g.soldiers[1].pos };
+      let tt = 0; while (v.state === 'downed' && tt < 20) { g.update(1 / 60); tt += 1 / 60; } return r1(tt);
+    };
+    const tDoc = reviveBy('doc'), tPatch = reviveBy('patch');
+    check('First Responder in combat: Doc revives in 4.5 s (Patch 5 s)', Math.abs(tDoc - 4.5) <= 0.05 && Math.abs(tPatch - 5) <= 0.05, `Doc ${tDoc}s, Patch ${tPatch}s`);
+    // Healer: Patch heals 27.5%, Doc 25%; medkits unaffected (20%)
+    const ftBy = (mid) => { deployIds([mid, 'ace']); const [m, a] = g.soldiers; a.pos = { ...m.pos, x: m.pos.x + 30 }; a.hp = 30; m.hp = 40; g.useAbility(m); return [a.hp, m.hp]; };
+    const fP = ftBy('patch'), fD = ftBy('doc');
+    deployIds(['patch', 'ace']); { const [m, a] = g.soldiers; a.hp = 30; m.hp = 40; a.pos = { x: 1300, y: 1060 }; m.pos = { x: 1310, y: 1000 }; g.anchor = { x: 1300, y: 1060 }; }
+    step(0.1); const mk = g.soldiers.map(s => r1(s.hp));
+    check('Healer in combat: Patch Field Treatment 27.5% (Doc 25%), medkit stays 20%', fP[0] === 57.5 && fP[1] === 62 && fD[0] === 55 && fD[1] === 60 && mk.join() === '56,50',
+      `Patch: Ace 30 -> ${fP[0]}, self 40 -> ${fP[1]}; Doc: Ace 30 -> ${fD[0]}, self 40 -> ${fD[1]}; medkit (Patch 40/80, Ace 30/100) -> ${mk}`);
+
+    // mission stats attribution
+    deployIds(['ace', 'tank', 'patch']); g.invuln = true;
+    let [ace, tank, patch] = g.soldiers;
+    const statOf = (id) => g.stats.bySoldier.get(id);
+    // overkill excluded: a 10-damage bullet on a 4 HP enemy counts 4
+    const e1 = g.spawnEnemy({ x: ace.pos.x + 200, y: ace.pos.y }); e1.hp = 4; e1.guard = true; e1.reactionTime = 1e9;
+    g.projectiles.push({ pos: { x: e1.pos.x - 30, y: e1.pos.y }, vel: { x: 700, y: 0 }, team: 'squad', damage: 10, life: 1, trail: { ...e1.pos }, owner: ace });
+    g.soldiers.forEach(s => s.fireCooldown = 99); step(0.1);
+    check('stats: bullet damage = HP removed (overkill excluded) + kill', e1.state === 'dead' && statOf('ace').damage === 4 && statOf('ace').kills === 1, `ace dmg ${statOf('ace').damage}, kills ${statOf('ace').kills}`);
+    // grenade kills go to the thrower, even if he goes down before it explodes
+    const gx = { x: ace.pos.x + 120, y: ace.pos.y };
+    const ga = g.spawnEnemy({ ...gx }), gb = g.spawnEnemy({ x: gx.x + 10, y: gx.y + 10 });
+    [ga, gb].forEach(e => { e.guard = true; e.reactionTime = 1e9; });
+    g.soldiers.forEach(s => s.fireCooldown = 1e9);
+    g.useAbility(ace); g.onTargetConfirm(g.worldToScreen(gx));
+    g.invuln = false; g.downSoldier(ace); g.invuln = true;
+    for (let i = 0; i < 90; i++) { g.soldiers.forEach(s => s.fireCooldown = 1e9); g.update(1 / 60); }
+    check('stats: grenade kills + damage credited to the thrower (even when downed)', ga.state === 'dead' && gb.state === 'dead' && statOf('ace').kills === 3 && statOf('ace').damage === 84 && statOf('tank').kills === 0,
+      `ace kills ${statOf('ace').kills}, dmg ${statOf('ace').damage} (4 + 40 + 40), tank kills ${statOf('tank').kills}`);
+    // no double counting: two hits on the same frame, second target already dead
+    const e2 = g.spawnEnemy({ x: 100, y: 100 }); e2.hp = 5;
+    g.damage(e2, 10, tank); g.damage(e2, 50, patch);
+    check('stats: one kill per enemy, no damage on a dead target', statOf('tank').kills === 1 && statOf('tank').damage === 5 && statOf('patch').kills === 0 && statOf('patch').damage === 0, `tank ${statOf('tank').kills}k/${statOf('tank').damage}dmg, patch ${statOf('patch').kills}k/${statOf('patch').damage}dmg`);
+    // revive credited to the reviver; revive HP is not healing
+    const h0 = statOf('patch').healing;
+    patch.pos = { x: ace.pos.x + 15, y: ace.pos.y }; tank.pos = { x: ace.pos.x + 400, y: ace.pos.y }; g.anchor = { ...patch.pos };
+    let tr = 0; while (ace.state === 'downed' && tr < 10) { g.update(1 / 60); tr += 1 / 60; patch.pos = { x: ace.pos.x + 15, y: ace.pos.y }; tank.pos = { x: ace.pos.x + 400, y: ace.pos.y }; }
+    check('stats: revive credited to the reviver; revive HP is not healing', ace.state === 'active' && statOf('patch').revives === 1 && statOf('tank').revives === 0 && statOf('patch').healing === h0, `patch revives ${statOf('patch').revives}, healing ${h0} -> ${statOf('patch').healing}`);
+    // overheal excluded: Field Treatment (Patch) and medkit (collector)
+    ace.hp = 95; tank.hp = 160; patch.hp = 80;
+    ace.pos = { ...patch.pos, x: patch.pos.x + 20 }; tank.pos = { ...patch.pos, y: patch.pos.y + 20 };
+    patch.ability.cooldownLeft = 0; g.useAbility(patch);
+    check('stats: Field Treatment healing = HP actually restored (overheal excluded)', statOf('patch').healing === 10 && ace.hp === 100 && tank.hp === 165, `ace 95 -> 100, tank 160 -> 165, patch full: credited ${statOf('patch').healing}`);
+    ace.hp = 90; tank.hp = 165; patch.hp = 80;
+    // medkit collected by Tank: Ace +10 (to 100), Tank/Patch full -> credit 10 to Tank
+    deployIds(['ace', 'tank', 'patch']); [ace, tank, patch] = g.soldiers;
+    ace.hp = 90; ace.pos = { x: 1000, y: 700 }; patch.pos = { x: 1000, y: 760 };
+    tank.pos = { x: 1300, y: 1060 }; g.anchor = { x: 1300, y: 1060 };
+    step(0.1);
+    check('stats: medkit healing credited to the collector, overheal excluded', Math.round(ace.hp) === 100 && statOf('tank').healing === 10 && statOf('ace').healing === 0 && g.pickups.filter(p => p.type.kind === 'medkit').length === 2,
+      `ace 90 -> ${Math.round(ace.hp)}, tank credited ${statOf('tank').healing}, ace ${statOf('ace').healing}`);
+
+    // results flow, retry, KIA reset
+    deployIds(['ace', 'havoc']);
+    [ace] = g.soldiers; g.damage(g.spawnEnemy({ x: 100, y: 100 }), 5, ace);
+    ace.state = 'kia';
+    g.win();
+    const res1 = { menu: document.getElementById('menu').className, rows: [...document.querySelectorAll('.r-table tbody tr')].map(r => r.textContent.replace(/\s+/g, ' ').trim()) };
+    check('results: shown on victory with per-soldier rows + KIA status', res1.menu === 'results' && res1.rows.length === 2 && /^Ace.*KIA$/i.test(res1.rows[0]) && /^Havoc.*Standing$/i.test(res1.rows[1]) && /MISSION COMPLETE/.test(document.querySelector('.r-title').textContent),
+      `${res1.menu}: ${res1.rows.join(' | ')}`);
+    document.querySelector('[data-a="retry"]').click();
+    check('retry: same squad, fresh HP/state/stats/cooldowns', g.phase === 'playing' && g.time === 0 && g.soldiers.map(s => s.identity.id).join() === 'ace,havoc' && g.soldiers.every(s => s.state === 'active' && s.hp === s.maxHp && s.ability.cooldownLeft === 0) && statOf('ace').damage === 0 && document.getElementById('menu').className === 'hidden',
+      `${g.phase} ${g.soldiers.map(s => `${s.name}:${s.state}:${s.hp}`).join(' ')} stats ace dmg ${statOf('ace').damage}`);
+    g.soldiers.forEach(s => g.downSoldier(s)); step(0.05);
+    const failed = g.phase === 'failed' && /MISSION FAILED/.test(document.querySelector('.r-title')?.textContent || '') && [...document.querySelectorAll('.r-status')].every(x => x.textContent === 'Downed');
+    document.querySelector('[data-a="barracks"]').click();
+    const cards = [...document.querySelectorAll('.s-card')];
+    check('defeat -> results (Downed) -> Return to Barracks', failed && g.phase === 'start' && document.getElementById('menu').className === 'barracks' && cards.length === 6, `failed ok ${failed}, phase ${g.phase}, cards ${cards.length}`);
+    check('KIA is not permanent: everyone available again', !document.getElementById('menu').textContent.includes('KIA') && cards.every(c => /AVAILABLE|IN SQUAD/.test(c.textContent)), cards.map(c => c.querySelector('.s-status').textContent).join(','));
+    g.deploy([byId('ace')]);
+    check('KIA soldier redeploys at full health', g.soldiers[0].state === 'active' && g.soldiers[0].hp === 100, `${g.soldiers[0].state} ${g.soldiers[0].hp}`);
+
+    check('CFG still equals the defaults after all trait checks', JSON.stringify(CFG) === cfgSnapshot, '');
+    R.slots = savedSlots;
     return out;
   });
   let fails = 0;

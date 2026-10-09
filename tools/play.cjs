@@ -11,7 +11,7 @@ const SQUAD = process.env.SQUAD ? process.env.SQUAD.split('+') : null; // e.g. S
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
-  await page.click('[data-a="start"]');
+  await page.click('[data-a="deploy"]');
   const result = await page.evaluate(async ({ INVULN, SIZE, SQUAD }) => {
     const g = window.game;
     g.reset(SQUAD || SIZE);

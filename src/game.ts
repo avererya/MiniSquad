@@ -6,7 +6,9 @@ import { Unit } from './unit';
 import { NearestVisible } from './targeting';
 import { Effects, updateProjectiles, updateWeapon, type Projectile } from './combat';
 import { updateGrenades, type Grenade } from './abilities';
-import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, createIdentity, type SoldierClassId } from './classes';
+import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, cloneIdentity, createGeneric, type SoldierClassId, type SoldierIdentity } from './classes';
+import { MissionStats } from './missionstats';
+import { Roster } from './roster';
 import { Medkit, RapidFire, updatePickups, type Pickup } from './pickups';
 import { updateSquad, squadCentre } from './squad';
 import { updateEnemyMovement } from './enemy';
@@ -21,10 +23,22 @@ export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 export interface Banner { text: string; color: string; life: number; maxLife: number }
 export interface Objective { text: string; sub?: string; progress?: number }
 
+/**
+ * What a mission was started with, so Retry can repeat it exactly.
+ *  - 'roster': saved Barracks soldiers (copies of their identities)
+ *  - 'temp':   roster soldiers deployed by a dev shortcut (?squad=ace,doc); selection not saved
+ *  - 'generic': anonymous class-only soldiers (dev presets, tools); never saved
+ */
+export interface Deployment { kind: 'roster' | 'temp' | 'generic'; identities: SoldierIdentity[]; classes: SoldierClassId[] }
+
 export interface GameUI {
   rebuildPanels(): void;
+  /** Mission ended (won/failed): show the Results screen. */
   showEnd(): void;
-  showStart(): void;
+  /** Show the Barracks (launch, Return to Barracks). */
+  showStart(notice?: string): void;
+  /** The roster object was replaced (dev save reset). */
+  rosterChanged(): void;
   hideOverlay(): void;
   toggleTuning(): void;
   refreshTuning(): void;
@@ -53,8 +67,14 @@ export class Game implements InputHandler {
   hurtFlash = 0;
   banners: Banner[] = [];
   objective: Objective = { text: '' };
-  /** Class mix used by reset(); set by the preset picker. Defaults to 2 Infantry. */
-  composition: SoldierClassId[] = [...PRESETS[0].classes];
+  /** The persistent roster + squad selection (Barracks). Replaced by a dev save reset. */
+  roster = new Roster();
+  /** Last deployment; reset() with no argument (Retry) repeats it. Defaults to 2 generic Infantry. */
+  deployment: Deployment = Game.generic(PRESETS[0].classes);
+  /** Dev hook (set by main.ts): wipe the save back to the default roster. */
+  resetRosterSave: (() => void) | null = null;
+  /** Per-soldier mission statistics (Results screen). */
+  stats = new MissionStats();
   /** Short feedback line (e.g. why an ability can't be used). */
   notice: { text: string; life: number } | null = null;
   input: Input;
@@ -65,14 +85,60 @@ export class Game implements InputHandler {
     this.input = new Input(stage, canvas, this);
   }
 
+  /** Class mix of the current deployment (tuning panel preset display, tests). */
+  get composition(): SoldierClassId[] { return this.deployment.classes; }
+
+  static generic(classes: SoldierClassId[]): Deployment {
+    return { kind: 'generic', identities: [], classes: [...classes] };
+  }
+
   // ---------------- lifecycle ----------------
-  /** Restart the mission. A number = that many Infantry (v0.1 API); an array = class mix. */
-  reset(squad: number | SoldierClassId[] = this.composition) {
-    const classes: SoldierClassId[] = typeof squad === 'number'
-      ? Array.from({ length: clamp(squad, 1, CFG.squad.maxSize) }, () => 'infantry' as const)
-      : squad.slice(0, CFG.squad.maxSize);
-    if (!classes.length) classes.push('infantry');
-    this.composition = [...classes];
+  /** Deploy the Barracks selection (exactly those soldiers, in slot order). */
+  deploySelected(): boolean {
+    const squad = this.roster.squad();
+    if (!squad.length) return false;
+    this.deploy(squad, 'roster');
+    return true;
+  }
+
+  /** Start a mission with these roster identities (copied, so the mission never touches the roster). */
+  deploy(identities: SoldierIdentity[], kind: 'roster' | 'temp' = 'roster') {
+    const ids = identities.slice(0, CFG.squad.maxSize).map(cloneIdentity);
+    if (!ids.length) throw new Error('deploy needs at least one soldier');
+    this.deployment = { kind, identities: ids, classes: ids.map((i) => i.classId) };
+    this.startMission();
+  }
+
+  /**
+   * Restart the mission. No argument = Retry the last deployment (same soldiers, fresh state).
+   * A number = that many generic Infantry (v0.1 API); an array = generic class mix (dev presets).
+   */
+  reset(squad?: number | SoldierClassId[]) {
+    if (squad !== undefined) {
+      const classes: SoldierClassId[] = typeof squad === 'number'
+        ? Array.from({ length: clamp(squad, 1, CFG.squad.maxSize) }, () => 'infantry' as const)
+        : squad.slice(0, CFG.squad.maxSize);
+      if (!classes.length) classes.push('infantry');
+      this.deployment = Game.generic(classes);
+    }
+    this.startMission();
+  }
+
+  /** Leave the mission screen and go back to the Barracks. Mission state is dropped; KIA is not permanent. */
+  toBarracks() {
+    this.phase = 'start';
+    this.paused = false; this.targeting = null;
+    this.soldiers = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.ui.rebuildPanels();
+    this.ui.showStart();
+  }
+
+  /** Dev: swap in a new roster (save reset). Never called by gameplay. */
+  replaceRoster(r: Roster) { this.roster = r; this.ui.rosterChanged(); }
+
+  private startMission() {
+    const dep = this.deployment;
+    this.stats = new MissionStats();
     this.soldiers = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.scorches = []; this.fx = new Effects(); this.banners = [];
     this.anchor = { ...SQUAD_START }; this.cam = { ...SQUAD_START }; this.spread = 1;
@@ -83,7 +149,8 @@ export class Game implements InputHandler {
       ...RAPIDFIRE.map((p) => ({ type: RapidFire, pos: { ...p }, bob: 0 })),
     ];
     this.notice = null;
-    for (const c of classes) this.spawnSoldier(c);
+    if (dep.kind === 'generic') for (const c of dep.classes) this.spawnSoldier(c);
+    else for (const id of dep.identities) this.spawnSoldier(id.classId, cloneIdentity(id));
     this.mission.start(this);
     this.world.computeFlow(this.soldiers.map((s) => s.pos));
     this.phase = 'playing';
@@ -95,18 +162,23 @@ export class Game implements InputHandler {
   fail() { this.phase = 'failed'; this.targeting = null; this.ui.showEnd(); }
 
   // ---------------- spawning ----------------
-  /** Add a soldier of the given class (debug spawn without a class cycles through the classes). */
-  spawnSoldier(classId?: SoldierClassId): Unit | null {
+  /**
+   * Add a soldier. With an identity: that soldier (roster deploy). Without: an anonymous
+   * generic of the given class (debug spawn without a class cycles through the classes).
+   * Formation slot, slot speed jitter and generic names come from CFG.squad.roster[slot].
+   */
+  spawnSoldier(classId?: SoldierClassId, identity?: SoldierIdentity): Unit | null {
     if (this.soldiers.length >= CFG.squad.maxSize) return null;
     const i = this.soldiers.length;
     const r = CFG.squad.roster[i % CFG.squad.roster.length];
-    const cls = classId ?? CLASS_IDS[i % CLASS_IDS.length];
+    const cls = identity?.classId ?? classId ?? CLASS_IDS[i % CLASS_IDS.length];
     const base = this.phase === 'playing' && this.soldiers.length ? this.anchor : SQUAD_START;
     const pos = this.findOpenNear({ x: base.x + r.offset[0] * 34, y: base.y + r.offset[1] * 34 }, 40);
-    const s = new Unit('squad', pos, NearestVisible, createIdentity(r.name, cls));
+    const s = new Unit('squad', pos, NearestVisible, identity ?? createGeneric(r.name, cls));
     s.speedMul = r.speedMul; s.slot = r.offset;
     s.ability = ABILITY_FACTORIES[CLASSES[cls].abilityId]();
     this.soldiers.push(s);
+    this.stats.register(s);
     this.ui?.rebuildPanels();
     return s;
   }
@@ -163,18 +235,29 @@ export class Game implements InputHandler {
   }
 
   // ---------------- damage / states ----------------
-  damage(u: Unit, amount: number) {
+  /**
+   * Apply damage. `source` (shooter / grenade thrower) gets credit for the HP actually
+   * removed (overkill excluded) and for the kill. Inactive targets take nothing, so a
+   * bullet and a blast landing on the same frame can't both count.
+   */
+  damage(u: Unit, amount: number, source?: Unit) {
     if (!u.active) return;
     u.hitFlash = CFG.feel.hitFlash;
     if (u.team === 'squad') {
       this.hurtFlash = 0.25;
       if (this.invuln) return;
     }
+    const removed = Math.min(Math.max(0, amount), Math.max(0, u.hp));
     u.hp -= amount;
+    if (source) {
+      source.dealt += removed;
+      if (u.team === 'enemy') this.stats.damage(source, removed);
+    }
     sfx('hit');
     if (u.hp > 0) return;
     if (u.team === 'squad') this.downSoldier(u);
     else {
+      this.stats.kill(source);
       u.state = 'dead';
       this.fx.burst(u.pos, 14, '#e0453a', 200, 0.4, 4);
       this.fx.burst(u.pos, 8, '#ffffff', 140, 0.3, 3);
@@ -251,8 +334,12 @@ export class Game implements InputHandler {
   onKey(code: string, e: KeyboardEvent) {
     if (code === 'Backquote') { this.ui.toggleTuning(); return; }
     if (code === 'KeyM') { setMuted(!isMuted()); this.ui.rebuildPanels(); return; }
-    if (code === 'Enter' && this.phase !== 'playing') { this.reset(); return; }
-    if (this.phase !== 'playing') return;
+    if (this.phase === 'start') return; // Barracks keys are handled by the menu
+    if (this.phase === 'won' || this.phase === 'failed') {
+      if (code === 'Enter' || code === 'KeyR') this.reset(); // Retry
+      else if (code === 'KeyB' || code === 'Escape') this.toBarracks();
+      return;
+    }
     if (code === 'Escape') { this.targeting = null; return; }
     if (code === 'KeyP') { this.paused = !this.paused; return; }
     const m = /^Digit([1-6])$/.exec(code);
@@ -378,6 +465,7 @@ export class Game implements InputHandler {
       if (best) {
         s.reviveProgress += dt / Math.max(0.1, best.soldierStats.reviveTime); // bleed-out paused while reviving
         if (s.reviveProgress >= 1) {
+          this.stats.revive(best); // whoever completes it gets the revive
           s.state = 'active';
           s.hp = Math.max(1, s.maxHp * R.hpFrac);
           s.reviveProgress = 0;

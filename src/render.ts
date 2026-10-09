@@ -9,6 +9,7 @@ import { OBSTACLES, OUTPOST_ZONE, START_ZONE, WORLD_H, WORLD_W } from './map';
 import { grenadePos } from './abilities';
 import { VIEW_W, VIEW_H } from './view';
 import { DEG, clamp, type Rect } from './util';
+import { CLASSES, type SoldierClassId } from './classes';
 
 const CHAR_SCALE = 1.3; // visual only; collision radius comes from config
 const COL = {
@@ -612,4 +613,26 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+/**
+ * Barracks portrait: the same in-game class drawing (helmet, weapon, pack), standing still,
+ * drawn into a small canvas. Pure presentation; no Unit or game state involved.
+ */
+export function drawClassPortrait(canvas: HTMLCanvasElement, classId: SoldierClassId, aim = 0.55) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const w = canvas.clientWidth || canvas.width, h = canvas.clientHeight || canvas.height;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext('2d')!;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const fake = { moveFrac: 0, walkPhase: 0, aim, classDef: CLASSES[classId], muzzle: 0, suppressing: false, rapidFire: 0, hitFlash: 0 } as unknown as Unit;
+  const s = (h / 62) * (classId === 'heavy' ? 1.06 : 1);
+  const x = w / 2, y = h * 0.86;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath(); ctx.ellipse(x, y + 1, 12 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-x, -y);
+  drawStanding(ctx, fake, x, y, COL.squadHelmet, COL.squadBody);
+  ctx.restore();
 }

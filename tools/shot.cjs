@@ -9,7 +9,7 @@ const OUT = process.env.OUT || '.';
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(process.env.URL || 'http://localhost:4173/');
   await page.screenshot({ path: `${OUT}/0-start.png` });
-  await page.click('[data-a="start"]');
+  await page.click('[data-a="deploy"]');
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${OUT}/1-begin.png` });
   await page.keyboard.down('KeyD');

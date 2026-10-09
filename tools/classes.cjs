@@ -7,8 +7,7 @@ const OUT = process.env.OUT || '.';
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto((process.env.URL || 'http://localhost:4173/') + '?squad=ihm');
-  await page.screenshot({ path: `${OUT}/c0-start-screen.png` });
-  await page.click('[data-a="start"]');
+  await page.waitForTimeout(200); // ?squad= deploys immediately (dev shortcut)
   await page.evaluate(() => {
     const g = window.game; g.invuln = true;
     const p = { x: 1000, y: 760 };
