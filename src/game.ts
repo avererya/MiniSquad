@@ -293,6 +293,7 @@ export class Game implements InputHandler {
     for (const u of [...this.soldiers, ...this.enemies]) {
       u.hitFlash = Math.max(0, u.hitFlash - dt);
       u.rapidFire = Math.max(0, u.rapidFire - dt);
+      u.healFlash = Math.max(0, u.healFlash - dt);
       if (u.ability) u.ability.cooldownLeft = Math.max(0, u.ability.cooldownLeft - dt);
     }
     this.enemies = this.enemies.filter((e) => e.state !== 'dead');

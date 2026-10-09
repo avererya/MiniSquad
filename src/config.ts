@@ -13,12 +13,12 @@ function makeDefaults() {
     infantry: {
       hp: 100,
       damage: 10,
-      accuracy: 4, // full cone angle (deg) when standing still
+      accuracy: 7, // full cone angle (deg) when standing still (v0.1: 4)
       movePenalty: 18, // extra cone angle (deg) at full move speed
       fireRate: 4, // shots per second
       range: 420, // viewport is 1280 wide; keep < 640
       moveSpeed: 150,
-      projectileSpeed: 950,
+      projectileSpeed: 950, // px/s, independent of enemy.projectileSpeed
       abilityCooldown: 8,
       turnRate: 14, // aim turn speed, rad/s
       aimTolerance: 12, // deg: fires only when aim is within this of the target
@@ -27,12 +27,12 @@ function makeDefaults() {
     enemy: {
       hp: 40,
       damage: 7,
-      accuracy: 9,
+      accuracy: 9, // keep wider than infantry.accuracy
       movePenalty: 16,
       fireRate: 1.4,
       range: 380, // must stay <= infantry.range (never fires from off screen)
       moveSpeed: 95,
-      projectileSpeed: 600,
+      projectileSpeed: 390, // px/s; slow enough to sidestep (v0.1: 600)
       turnRate: 6,
       aimTolerance: 15,
       radius: 12,
@@ -81,7 +81,7 @@ function makeDefaults() {
       hpFrac: 0.4,
     },
     pickups: {
-      medkitHeal: 60,
+      medkitHealFrac: 0.2, // each living, standing soldier heals this fraction of max HP
       rapidFireMul: 1.8,
       rapidFireDuration: 8,
     },

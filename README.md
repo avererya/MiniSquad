@@ -6,7 +6,9 @@ This repository holds **Combat Prototype v0.1**, a disposable web feel prototype
 
 ## Status
 
-`prototype-v0.1`: playable, ready for feel playtesting.
+`v0.1.1` (combat tuning after the first mobile playtest; the original build is tagged `prototype-v0.1`).
+
+- v0.1.1: green overhead health bars on friendly soldiers; medkits heal every standing soldier by 20% of max HP; enemy bullets slowed to 390 px/s (from 600) so they can be dodged; Infantry spread widened to 7° (from 4°)
 
 - 1 to 3 Infantry with loose squad following and pathing around obstacles
 - Auto-targeting with line of sight, physical projectiles, an accuracy cone that widens while moving

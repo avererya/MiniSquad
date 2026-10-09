@@ -418,8 +418,19 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
   ctx.font = 'bold 10px sans-serif';
   for (const s of game.soldiers) {
     if (s.state === 'active') {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(s.name, s.pos.x + 1, s.pos.y - 62 + 1);
-      ctx.fillStyle = '#cfe6ff'; ctx.fillText(s.name, s.pos.x, s.pos.y - 62);
+      // green health bar (enemies' bars are red), name tag just above it
+      const w = 32, f = clamp(s.hp / s.maxHp, 0, 1);
+      const bx = s.pos.x - w / 2, byy = s.pos.y - 60;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 1, byy - 1, w + 2, 7);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(bx, byy, w, 5);
+      ctx.fillStyle = s.hitFlash > 0 ? '#ffffff' : f > 0.3 ? '#46d65a' : '#2fa040'; ctx.fillRect(bx, byy, w * f, 5);
+      if (s.healFlash > 0) {
+        ctx.globalAlpha = clamp(s.healFlash / 0.8, 0, 1);
+        ctx.strokeStyle = '#9dff9a'; ctx.lineWidth = 2; ctx.strokeRect(bx - 2.5, byy - 2.5, w + 5, 10);
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(s.name, s.pos.x + 1, s.pos.y - 70 + 1);
+      ctx.fillStyle = '#cfe6ff'; ctx.fillText(s.name, s.pos.x, s.pos.y - 70);
     } else if (s.state === 'downed') {
       const R = CFG.revive;
       const cx = s.pos.x, cy = s.pos.y - 42;

@@ -8,8 +8,8 @@ const SECTIONS: [string, S[]][] = [
   ['Infantry', [
     ['HP', 'infantry.hp', 20, 400, 5],
     ['Damage', 'infantry.damage', 1, 60, 1],
-    ['Accuracy cone (°)', 'infantry.accuracy', 0, 45, 0.5],
-    ['Move penalty (°)', 'infantry.movePenalty', 0, 60, 0.5],
+    ['Bullet spread, still (°)', 'infantry.accuracy', 0, 45, 0.5],
+    ['Moving spread penalty (°)', 'infantry.movePenalty', 0, 60, 0.5],
     ['Fire rate (/s)', 'infantry.fireRate', 0.5, 15, 0.1],
     ['Range', 'infantry.range', 100, 640, 5],
     ['Move speed', 'infantry.moveSpeed', 40, 350, 5],
@@ -20,8 +20,8 @@ const SECTIONS: [string, S[]][] = [
   ['Enemy Rifleman', [
     ['HP', 'enemy.hp', 5, 300, 5],
     ['Damage', 'enemy.damage', 1, 60, 1],
-    ['Accuracy cone (°)', 'enemy.accuracy', 0, 45, 0.5],
-    ['Move penalty (°)', 'enemy.movePenalty', 0, 60, 0.5],
+    ['Bullet spread, still (°)', 'enemy.accuracy', 0, 45, 0.5],
+    ['Moving spread penalty (°)', 'enemy.movePenalty', 0, 60, 0.5],
     ['Fire rate (/s)', 'enemy.fireRate', 0.2, 10, 0.1],
     ['Range', 'enemy.range', 100, 640, 5],
     ['Move speed', 'enemy.moveSpeed', 20, 300, 5],
@@ -62,7 +62,7 @@ const SECTIONS: [string, S[]][] = [
     ['Wave 3 size', 'mission.wave3Size', 0, 15, 1],
     ['Defenders (restart)', 'mission.defenders', 0, 7, 1],
     ['Final wave size', 'mission.finalWaveSize', 0, 20, 1],
-    ['Medkit heal', 'pickups.medkitHeal', 5, 200, 5],
+    ['Medkit squad heal (× max HP)', 'pickups.medkitHealFrac', 0, 1, 0.05],
   ]],
   ['Feel', [
     ['Camera smoothing', 'feel.cameraSmoothing', 1, 20, 0.5],

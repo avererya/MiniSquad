@@ -17,19 +17,20 @@ export interface Pickup { type: PickupType; pos: Vec; bob: number }
 
 export const Medkit: PickupType = {
   kind: 'medkit', color: '#f4f4f4', label: '+',
-  onCollect(game, collector) {
-    let who: Unit | null = collector.hp < collector.maxHp ? collector : null;
-    if (!who) {
-      // most injured active squadmate
-      for (const s of game.soldiers) {
-        if (s.active && s.hp < s.maxHp && (!who || s.hp / s.maxHp < who.hp / who.maxHp)) who = s;
-      }
+  onCollect(game) {
+    // Squad-wide: every standing soldier heals a fraction of their own max HP.
+    // Downed soldiers are not revived and KIA soldiers get nothing.
+    const living = game.soldiers.filter((s) => s.active);
+    if (!living.some((s) => s.hp < s.maxHp)) return false;
+    for (const s of living) {
+      const before = s.hp;
+      s.hp = Math.min(s.maxHp, s.hp + s.maxHp * CFG.pickups.medkitHealFrac);
+      const healed = Math.round(s.hp - before);
+      s.healFlash = 0.8;
+      game.fx.ring(s.pos, 30, 'rgba(120,255,140,0.9)', 0.5);
+      game.fx.burst({ x: s.pos.x, y: s.pos.y - 20 }, 6, '#7dff8a', 70, 0.5, 2.5);
+      if (healed > 0) game.fx.text(s.pos, `+${healed}`, '#7dff8a');
     }
-    if (!who) return false;
-    const before = who.hp;
-    who.hp = Math.min(who.maxHp, who.hp + CFG.pickups.medkitHeal);
-    game.fx.text(who.pos, `+${Math.round(who.hp - before)}`, '#7dff8a');
-    game.fx.ring(who.pos, 30, 'rgba(120,255,140,0.9)', 0.4);
     return true;
   },
 };

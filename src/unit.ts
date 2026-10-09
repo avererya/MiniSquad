@@ -26,6 +26,7 @@ export class Unit {
   hitFlash = 0;
   muzzle = 0;
   rapidFire = 0; // seconds of Rapid Fire boost remaining
+  healFlash = 0; // seconds of medkit glow on the overhead health bar
 
   // squad-only
   name = '';

@@ -11,12 +11,22 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     const g = window.game; const out = {};
     const step = (sec) => { for (let i = 0; i < sec * 60; i++) g.update(1 / 60); };
     const fresh = () => { g.reset(2); g.enemies.forEach(e => e.state = 'dead'); g.enemies = []; g.mission.defenders = [{ active: true }]; };
-    // 1 medkit: damaged soldier walks over it
+    // 1 medkit: squad-wide heal of 20% max HP, capped, no revive for downed, nothing for KIA
     fresh();
     const [a, b] = g.soldiers;
-    a.hp = 30; a.pos = { x: 1300, y: 1060 }; g.anchor = { x: 1300, y: 1060 }; b.pos = { x: 1300, y: 1000 };
+    a.hp = 40; b.hp = 95; a.pos = { x: 1300, y: 1060 }; g.anchor = { x: 1300, y: 1060 }; b.pos = { x: 1300, y: 1000 };
     step(0.1);
-    out.medkit = `hp 30 -> ${Math.round(a.hp)}, medkits left ${g.pickups.filter(p => p.type.kind === 'medkit').length}`;
+    out.medkit = `A 40 -> ${Math.round(a.hp)}, B 95 -> ${Math.round(b.hp)}, medkits left ${g.pickups.filter(p => p.type.kind === 'medkit').length}`;
+    g.reset(3); g.enemies.forEach(e => e.state = 'dead'); g.enemies = []; g.mission.defenders = [{ active: true }];
+    const [c, dn, k] = g.soldiers;
+    c.hp = 70; g.downSoldier(dn); const dnHp = dn.hp; k.state = 'kia'; const kHp = k.hp;
+    dn.pos = { x: 600, y: 300 }; k.pos = { x: 600, y: 360 };
+    c.pos = { x: 1300, y: 1060 }; g.anchor = { x: 1300, y: 1060 };
+    step(0.1);
+    out.medkit2 = `living 70 -> ${Math.round(c.hp)}, downed ${dn.state} hp ${dnHp}->${dn.hp}, kia ${k.state} hp ${kHp}->${k.hp}`;
+    // 1b squad at full HP leaves the medkit on the ground
+    fresh(); g.soldiers[0].pos = { x: 1300, y: 1060 }; g.anchor = { x: 1300, y: 1060 }; step(0.1);
+    out.medkitFull = `full HP squad, medkits left ${g.pickups.filter(p => p.type.kind === 'medkit').length}`;
     // 2 revive
     fresh();
     g.downSoldier(g.soldiers[0]);
@@ -60,6 +70,20 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     g.soldiers[0].pos = { x: 3200, y: 250 }; g.anchor = { x: 3200, y: 250 };
     step(0.2);
     out.extract = `phase ${g.phase}, states ${g.soldiers.map(x => x.state).join(',')}`;
+    // 8 projectile speeds are independent, and enemy bullets use the slower value
+    fresh();
+    const sh = g.soldiers[0]; sh.pos = { x: 1000, y: 900 }; g.soldiers[1].pos = { x: 100, y: 100 }; g.anchor = { ...sh.pos }; g.cam = { ...sh.pos };
+    const en2 = g.spawnEnemy({ x: 1250, y: 900 }); en2.hp = 1e6;
+    g.projectiles = [];
+    let eSpeed = 0, fSpeed = 0;
+    for (let i = 0; i < 600 && !(eSpeed && fSpeed); i++) {
+      g.update(1 / 60);
+      for (const p of g.projectiles) { const v = Math.round(Math.hypot(p.vel.x, p.vel.y)); if (p.team === 'enemy') eSpeed = v; else fSpeed = v; }
+    }
+    out.speeds = `enemy bullet ${eSpeed}, friendly bullet ${fSpeed}`;
+    // 9 stationary vs moving cone
+    sh.moveFrac = 0; const still = sh.cone; sh.moveFrac = 1; const moving = sh.cone; en2.moveFrac = 0;
+    out.spread = `infantry still ${still}°, moving ${moving}°, enemy still ${en2.cone}°`;
     return out;
   });
   for (const [k, v] of Object.entries(res)) console.log(k.padEnd(9), v);
