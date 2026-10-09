@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output (rebuild with npm run build / npm run build:single)
+dist/
+dist-single/
+index-single.html
+*.tsbuildinfo
+
+# env and secrets
+.env
+.env.*
+!.env.example
+
+# logs and caches
+*.log
+npm-debug.log*
+.vite/
+.cache/
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

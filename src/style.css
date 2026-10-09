@@ -1,0 +1,70 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #111; overflow: hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #fff; }
+body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+
+#stage { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; transform-origin: 0 0; overflow: hidden; background: #333; }
+#game { position: absolute; inset: 0; width: 1280px; height: 720px; display: block; touch-action: none; }
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#hud button { pointer-events: auto; font-family: inherit; }
+
+#objective { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(0,0,0,0.55); padding: 8px 18px; border-radius: 10px; min-width: 360px; }
+.obj-text { font-weight: 800; font-size: 18px; letter-spacing: 0.3px; }
+.obj-sub { font-size: 13px; color: #ffd84a; margin-top: 3px; font-weight: 700; }
+.obj-bar { height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.obj-bar div { height: 100%; background: #ffd84a; width: 0; }
+#timer { position: absolute; top: 14px; left: 16px; font-weight: 800; font-size: 18px; text-shadow: 0 1px 2px #000; }
+#topbtns { position: absolute; top: 10px; right: 12px; display: flex; gap: 8px; }
+#topbtns button { width: 44px; height: 44px; border-radius: 10px; border: none; background: rgba(0,0,0,0.55); color: #fff; font-size: 20px; cursor: pointer; }
+#hint { position: absolute; bottom: 108px; right: 16px; background: rgba(0,0,0,0.65); padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; color: #ffb070; }
+
+#panels { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 10px; }
+.panel { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); padding: 6px 10px 6px 6px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); min-width: 190px; }
+.panel .info { flex: 1; }
+.panel .name { font-weight: 900; font-size: 15px; color: #cfe6ff; }
+.panel .hp { height: 9px; background: rgba(255,255,255,0.15); border-radius: 5px; overflow: hidden; margin: 4px 0; }
+.panel .hp .fill { height: 100%; background: #48d65c; transition: width 0.1s; }
+.panel .state { font-size: 12px; font-weight: 800; color: #9be7a5; }
+.panel.downed { border-color: #ff3b3b; animation: pulse 0.6s infinite alternate; }
+.panel.downed .state { color: #ff6060; font-size: 14px; }
+.panel.downed .hp .fill { background: #ff3b3b; }
+.panel.kia { opacity: 0.55; border-color: #555; }
+.panel.kia .state { color: #aaa; }
+@keyframes pulse { from { background: rgba(120,0,0,0.6); } to { background: rgba(0,0,0,0.6); } }
+
+.ability { position: relative; width: 74px; height: 74px; border-radius: 12px; border: 3px solid #2f7ff0; background: #2a3b55; overflow: hidden; cursor: pointer; padding: 0; touch-action: none; }
+.ability.ready { border-color: #ffd84a; box-shadow: 0 0 10px rgba(255,216,74,0.5); }
+.ability.targeting { border-color: #ff7a3a; box-shadow: 0 0 14px #ff7a3a; background: #553020; }
+.ability.disabled { filter: grayscale(1); opacity: 0.5; }
+.ability .portrait { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: 40px; height: 40px; }
+.ability .face { position: absolute; inset: 0; border-radius: 50%; background: #f3c99f; }
+.ability .helmet { position: absolute; left: -3px; right: -3px; top: -3px; height: 23px; border-radius: 23px 23px 0 0; background: #2f7ff0; }
+.ability .cd { position: absolute; left: 0; right: 0; top: 0; background: rgba(0,0,0,0.65); }
+.ability .key { position: absolute; left: 5px; top: 2px; font-size: 13px; font-weight: 900; color: #fff; text-shadow: 0 1px 2px #000; }
+.ability .icon { position: absolute; right: 4px; bottom: 0; font-size: 22px; color: #3d4a2a; text-shadow: 0 0 2px #cfe; }
+
+#overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); pointer-events: auto; }
+.card { background: rgba(20,24,30,0.95); border-radius: 16px; padding: 26px 34px; min-width: 460px; text-align: center; border: 2px solid rgba(255,255,255,0.15); }
+.card h1 { margin: 0 0 6px; font-size: 44px; font-weight: 900; letter-spacing: 2px; }
+.card.won h1 { color: #7dff8a; }
+.card.lost h1 { color: #ff5050; }
+.card .sub { color: #bbb; margin-bottom: 16px; }
+.card .controls { text-align: left; font-size: 14px; line-height: 1.7; margin-bottom: 18px; }
+.card .row { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.08); font-weight: 700; font-size: 17px; }
+.okc { color: #7dff8a; } .kiac { color: #ff5050; }
+.card button.big { margin-top: 18px; font-size: 22px; font-weight: 900; padding: 14px 40px; border-radius: 12px; border: none; background: #ffd84a; color: #222; cursor: pointer; }
+.dim { color: #999; font-size: 12px; margin-top: 6px; }
+
+#tuning { position: fixed; top: 0; right: 0; bottom: 0; width: 330px; overflow-y: auto; background: rgba(15,18,22,0.93); padding: 10px 12px 40px; font-size: 12px; z-index: 10; touch-action: pan-y; user-select: text; }
+#tuning.hidden { display: none; }
+.tune-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 14px; }
+.tune-head .x { margin-left: auto; background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; }
+.tune-sec { border-top: 1px solid rgba(255,255,255,0.1); padding: 6px 0; }
+.tune-title { font-weight: 800; color: #ffd84a; margin-bottom: 4px; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+.tune-row { display: grid; grid-template-columns: 1fr 120px 44px; align-items: center; gap: 6px; padding: 1px 0; }
+.tune-row .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tune-row input { width: 100%; }
+.tune-row .val { text-align: right; font-variant-numeric: tabular-nums; }
+.tune-row .val.changed { color: #ffb347; font-weight: 800; }
+.tune-btns { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.tune-btns button, .tune-btns select { background: #2b3440; color: #fff; border: 1px solid #455; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+#tuning textarea { width: 100%; height: 110px; margin-top: 6px; background: #0b0d10; color: #9fe; border: 1px solid #344; font-family: ui-monospace, monospace; font-size: 11px; }

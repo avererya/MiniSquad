@@ -1,0 +1,37 @@
+// Visual check: real-time play with screenshots of key states.
+const { chromium } = require('/opt/node22/lib/node_modules/playwright');
+const OUT = process.env.OUT || '.';
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(process.env.URL || 'http://localhost:4173/');
+  await page.click('[data-a="start"]');
+  await page.evaluate(() => { window.game.invuln = true; });
+  await page.keyboard.down('KeyD');
+  await page.waitForTimeout(3500);
+  await page.screenshot({ path: `${OUT}/v1-moving-fire.png` });
+  await page.keyboard.up('KeyD');
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: `${OUT}/v2-standing-fire.png` });
+  await page.keyboard.press('Digit1');
+  await page.mouse.move(1000, 300);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${OUT}/v3-targeting.png` });
+  await page.mouse.click(1000, 300);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: `${OUT}/v4-explosion.png` });
+  await page.evaluate(() => { window.game.invuln = false; window.game.debugDownSoldier(); });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${OUT}/v5-downed.png` });
+  await page.keyboard.press('Backquote');
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${OUT}/v6-tuning.png` });
+  await page.keyboard.press('Backquote');
+  await page.evaluate(() => { const g = window.game; g.soldiers.forEach(s => g.downSoldier(s)); });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/v7-fail.png` });
+  console.log('ERRORS', errors);
+  await browser.close();
+})();
