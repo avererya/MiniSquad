@@ -11,17 +11,51 @@ const game = new Game(stage, canvas);
 const hud = new Hud(document.getElementById('hud')!, document.getElementById('tuning')!, game);
 game.ui = hud;
 
+// Fit the 1280x720 stage into the visible viewport, minus safe areas (notch, home bar).
+// Mobile browsers often report stale sizes right after a rotation and may leave the
+// page scrolled, so layout re-runs on every viewport signal and again after a delay.
+const safeProbe = document.createElement('div');
+safeProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+  'padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+document.body.appendChild(safeProbe);
+
+function viewportSize() {
+  const vv = window.visualViewport;
+  // visualViewport tracks the real visible area; ignore it while pinch-zoomed
+  if (vv && vv.width > 0 && vv.height > 0 && Math.abs(vv.scale - 1) < 0.01) return { w: vv.width, h: vv.height };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
 let scale = 1;
 function resize() {
-  scale = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  const { w, h } = viewportSize();
+  document.documentElement.style.setProperty('--app-h', `${h}px`);
+  const cs = getComputedStyle(safeProbe);
+  const st = parseFloat(cs.paddingTop) || 0, sr = parseFloat(cs.paddingRight) || 0;
+  const sb = parseFloat(cs.paddingBottom) || 0, sl = parseFloat(cs.paddingLeft) || 0;
+  const aw = Math.max(1, w - sl - sr), ah = Math.max(1, h - st - sb);
+  scale = Math.min(aw / VIEW_W, ah / VIEW_H);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  stage.style.transform = `translate(${(window.innerWidth - VIEW_W * scale) / 2}px, ${(window.innerHeight - VIEW_H * scale) / 2}px) scale(${scale})`;
-  canvas.width = Math.round(VIEW_W * scale * dpr);
-  canvas.height = Math.round(VIEW_H * scale * dpr);
+  stage.style.transform = `translate(${sl + (aw - VIEW_W * scale) / 2}px, ${st + (ah - VIEW_H * scale) / 2}px) scale(${scale})`;
+  const cw = Math.round(VIEW_W * scale * dpr), ch = Math.round(VIEW_H * scale * dpr);
+  if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
   ctx.setTransform((canvas.width / VIEW_W), 0, 0, (canvas.height / VIEW_H), 0, 0);
 }
-window.addEventListener('resize', resize);
-resize();
+
+let relayoutTimers: number[] = [];
+function scheduleResize() {
+  resize();
+  relayoutTimers.forEach((t) => clearTimeout(t));
+  relayoutTimers = [100, 350].map((ms) => window.setTimeout(resize, ms));
+}
+window.addEventListener('resize', scheduleResize);
+window.addEventListener('orientationchange', scheduleResize);
+window.addEventListener('pageshow', scheduleResize);
+window.visualViewport?.addEventListener('resize', scheduleResize);
+window.visualViewport?.addEventListener('scroll', scheduleResize);
+screen.orientation?.addEventListener?.('change', scheduleResize);
+scheduleResize();
 
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);

@@ -175,6 +175,11 @@ export class Tuning {
       this.refresh();
     }));
     r.appendChild(io);
+
+    const ver = document.createElement('div');
+    ver.className = 'tune-version';
+    ver.textContent = `MiniSquad v${__APP_VERSION__} · ${__APP_COMMIT__}`;
+    r.appendChild(ver);
     this.refresh();
   }
 

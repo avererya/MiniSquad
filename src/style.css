@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: #111; overflow: hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #fff; }
+html, body { margin: 0; height: 100%; height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); background: #111; overflow: hidden; overscroll-behavior: none; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #fff; }
 body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 
 #stage { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; transform-origin: 0 0; overflow: hidden; background: #333; }
@@ -54,7 +54,7 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 .card button.big { margin-top: 18px; font-size: 22px; font-weight: 900; padding: 14px 40px; border-radius: 12px; border: none; background: #ffd84a; color: #222; cursor: pointer; }
 .dim { color: #999; font-size: 12px; margin-top: 6px; }
 
-#tuning { position: fixed; top: 0; right: 0; bottom: 0; width: 330px; overflow-y: auto; background: rgba(15,18,22,0.93); padding: 10px 12px 40px; font-size: 12px; z-index: 10; touch-action: pan-y; user-select: text; }
+#tuning { position: fixed; top: 0; right: 0; bottom: 0; width: calc(330px + env(safe-area-inset-right)); overflow-y: auto; background: rgba(15,18,22,0.93); padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) 12px; font-size: 12px; z-index: 10; touch-action: pan-y; user-select: text; }
 #tuning.hidden { display: none; }
 .tune-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 14px; }
 .tune-head .x { margin-left: auto; background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; }
@@ -68,3 +68,4 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 .tune-btns { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .tune-btns button, .tune-btns select { background: #2b3440; color: #fff; border: 1px solid #455; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
 #tuning textarea { width: 100%; height: 110px; margin-top: 6px; background: #0b0d10; color: #9fe; border: 1px solid #344; font-family: ui-monospace, monospace; font-size: 11px; }
+.tune-version { margin-top: 10px; text-align: right; color: #778; font-size: 10px; font-variant-numeric: tabular-nums; }
