@@ -1,14 +1,15 @@
 // The Barracks roster: six fixed soldiers plus the 3-slot squad selection.
 // Pure state + rules; persistence lives in save.ts, the UI in menus.ts.
-import { CLASSES, effectiveStats, newProgression, type SoldierClassId, type SoldierIdentity } from './classes';
+import { CLASSES, effectiveStats, newProgression, newService, type SoldierClassId, type SoldierIdentity } from './classes';
+import { newTraining } from './progression';
 import { TRAITS, type TraitId } from './traits';
 
 export const SQUAD_SLOTS = 3;
 
 const def = (id: string, name: string, classId: SoldierClassId, traitId: TraitId): SoldierIdentity =>
-  ({ id, name, classId, traitId, mods: {}, progression: newProgression() });
+  ({ id, name, classId, traitId, mods: {}, progression: newProgression(), training: newTraining(), status: 'active', resurrections: 0, service: newService() });
 
-/** The v0.2.2 starting roster. Ids are stable: saves and mission stats refer to them. */
+/** The starting roster (unchanged since v0.2.2). Ids are stable: saves and mission stats refer to them. */
 export function defaultRoster(): SoldierIdentity[] {
   return [
     def('ace', 'Ace', 'infantry', 'sharpshooter'),

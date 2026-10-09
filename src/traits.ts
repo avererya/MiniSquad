@@ -1,9 +1,10 @@
 // Natural traits: one per roster soldier, stored by id only (never as modified numbers).
 //
-// EFFECTIVE STATS are always COMPUTED, never written back:
+// EFFECTIVE STATS are always COMPUTED, never written back (full pipeline: progression.ts):
 //     class base (CFG[class], live, edited by the tuning panel)
+//   + level growth + individual training + squad training (additive % of class base, v0.3)
 //   x trait modifiers (this registry)
-//   x individual modifiers (SoldierIdentity.mods; empty in v0.2.2, where future upgrades go)
+//   x legacy individual multipliers (SoldierIdentity.mods; empty, kept for dev/tests)
 // Because nothing is mutated, a trait can't stack on restart, redeploy or reload, and
 // changing one soldier's individual modifiers never touches another soldier of his class.
 //
@@ -19,13 +20,14 @@ import type { SoldierStats } from './config';
 /** Multiplicative modifiers. A missing key means x1. */
 export interface StatModifiers {
   hpMul?: number;
+  damageMul?: number;
   fireRateMul?: number;
   spreadMul?: number;
   moveSpeedMul?: number;
   reviveTimeMul?: number;
   healMul?: number;
 }
-export const MODIFIER_KEYS = ['hpMul', 'fireRateMul', 'spreadMul', 'moveSpeedMul', 'reviveTimeMul', 'healMul'] as const;
+export const MODIFIER_KEYS = ['hpMul', 'damageMul', 'fireRateMul', 'spreadMul', 'moveSpeedMul', 'reviveTimeMul', 'healMul'] as const;
 
 export type TraitId = 'sharpshooter' | 'quickReflexes' | 'tough' | 'triggerHappy' | 'firstResponder' | 'healer';
 
@@ -52,7 +54,7 @@ export type EffectiveStats = SoldierStats & { healMul: number };
 
 /** Product of several modifier sets (all multiplicative, so order does not matter). */
 export function combineModifiers(...sets: (StatModifiers | null | undefined)[]): Required<StatModifiers> {
-  const out = { hpMul: 1, fireRateMul: 1, spreadMul: 1, moveSpeedMul: 1, reviveTimeMul: 1, healMul: 1 };
+  const out = { hpMul: 1, damageMul: 1, fireRateMul: 1, spreadMul: 1, moveSpeedMul: 1, reviveTimeMul: 1, healMul: 1 };
   for (const s of sets) if (s) for (const k of MODIFIER_KEYS) if (typeof s[k] === 'number') out[k] *= s[k]!;
   return out;
 }
@@ -65,6 +67,7 @@ export function applyModifiers(base: SoldierStats, m: Required<StatModifiers>): 
   return {
     ...base,
     hp: clean(base.hp * m.hpMul),
+    damage: clean(base.damage * m.damageMul),
     fireRate: clean(base.fireRate * m.fireRateMul),
     accuracy: clean(base.accuracy * m.spreadMul),
     movePenalty: clean(base.movePenalty * m.spreadMul),

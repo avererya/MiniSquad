@@ -466,7 +466,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     ace.state = 'kia';
     g.win();
     const res1 = { menu: document.getElementById('menu').className, rows: [...document.querySelectorAll('.r-table tbody tr')].map(r => r.textContent.replace(/\s+/g, ' ').trim()) };
-    check('results: shown on victory with per-soldier rows + KIA status', res1.menu === 'results' && res1.rows.length === 2 && /^Ace.*KIA$/i.test(res1.rows[0]) && /^Havoc.*Standing$/i.test(res1.rows[1]) && /MISSION COMPLETE/.test(document.querySelector('.r-title').textContent),
+    check('results: shown on victory with per-soldier rows + KIA status', res1.menu === 'results' && res1.rows.length === 2 && /^Ace.*KIA.*no XP$/i.test(res1.rows[0]) && /^Havoc.*Standing.*\+\d+ XP$/i.test(res1.rows[1]) && /MISSION COMPLETE/.test(document.querySelector('.r-title').textContent),
       `${res1.menu}: ${res1.rows.join(' | ')}`);
     document.querySelector('[data-a="retry"]').click();
     check('retry: same squad, fresh HP/state/stats/cooldowns', g.phase === 'playing' && g.time === 0 && g.soldiers.map(s => s.identity.id).join() === 'ace,havoc' && g.soldiers.every(s => s.state === 'active' && s.hp === s.maxHp && s.ability.cooldownLeft === 0) && statOf('ace').damage === 0 && document.getElementById('menu').className === 'hidden',

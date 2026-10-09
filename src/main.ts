@@ -6,6 +6,9 @@ import { unlockAudio } from './audio';
 import { findPreset, effectiveStats } from './classes';
 import { CFG, applyConfigJSON, resetConfig } from './config';
 import { loadSave, parseSave, resetSave, writeSave, SAVE_KEY } from './save';
+import * as progression from './progression';
+import { getAccount, setAccount } from './progression';
+import * as economy from './economy';
 import { Roster } from './roster';
 import { TRAITS } from './traits';
 
@@ -16,14 +19,18 @@ const game = new Game(stage, canvas);
 const hud = new Hud(document.getElementById('hud')!, document.getElementById('tuning')!, document.getElementById('menu')!, game);
 game.ui = hud;
 
-// Saved roster + squad selection. Only Barracks selection changes are written back
-// (autosave on change); dev presets and ?squad= deployments never save.
-function useRoster(r: Roster) { r.onChange = () => writeSave(r); game.replaceRoster(r); }
+// Saved roster + squad selection + account (credits, squad training, mission records).
+// Written on Barracks selection changes, purchases and mission settlement; dev presets and
+// ?squad= deployments never save or earn rewards.
 const loaded = loadSave();
+setAccount(loaded.account);
 game.roster = loaded.roster;
-loaded.roster.onChange = () => writeSave(loaded.roster);
-/** Dev: wipe the save back to the six default soldiers (tuning panel, two-step confirm). */
-function resetRosterSave() { useRoster(resetSave()); }
+const persist = () => writeSave(game.roster, getAccount());
+game.persist = persist;
+loaded.roster.onChange = () => { persist(); };
+function useRoster(r: Roster) { r.onChange = () => { persist(); }; game.replaceRoster(r); }
+/** Dev: wipe the save back to the six default soldiers, 0 credits (tuning panel, two-step confirm). */
+function resetRosterSave() { const fresh = resetSave(); setAccount(fresh.account); useRoster(fresh.roster); }
 
 // Fit the 1280x720 stage into the visible viewport, minus safe areas (notch, home bar).
 // Mobile browsers often report stale sizes right after a rotation and may leave the
@@ -83,7 +90,7 @@ const tempIds = sq ? sq.split(/[,+ ]/).map((x) => game.roster.get(x.toLowerCase(
 hud.rebuildPanels();
 if (preset) game.reset(preset.classes);
 else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 3), 'temp');
-else hud.showStart(loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.' : undefined);
+else hud.showStart(loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.' : loaded.status === 'migrated' ? 'Save updated for v0.3: your soldiers and squad were kept.' : undefined);
 
 // fixed-step simulation, render every frame
 const STEP = 1 / 60;
@@ -105,5 +112,6 @@ requestAnimationFrame(frame);
 // config hooks for the headless checks in tools/ (same functions the tuning panel uses)
 Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, __resetConfig: resetConfig });
 // roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
-Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded });
+Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded,
+  __progression: progression, __economy: economy, __account: getAccount, __persist: persist });
 game.resetRosterSave = resetRosterSave;

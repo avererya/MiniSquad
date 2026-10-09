@@ -22,6 +22,8 @@ export default defineConfig(({ mode }) => ({
   build: { outDir: mode === 'single' ? 'dist-single' : 'dist' },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // visible label version: 0.3.0 -> "0.3", 0.3.1 -> "0.3.1"
+    __APP_VERSION_SHORT__: JSON.stringify(pkg.version.replace(/^(\d+\.\d+)\.0$/, '$1')),
     __APP_COMMIT__: JSON.stringify(commitHash()),
   },
 }));

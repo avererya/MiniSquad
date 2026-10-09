@@ -62,7 +62,16 @@ export class HelicopterExtraction implements Extraction {
   }
 }
 
+/** An optional (secondary) objective. Secure the Communications Outpost has none yet. */
+export interface OptionalObjective { id: string; label: string; completed: boolean }
+
 export class Mission {
+  /** Stable mission id: first-completion records and replay rewards are keyed by it. */
+  static readonly ID = 'comms-outpost';
+  static readonly NAME = 'Secure the Communications Outpost';
+  readonly id = Mission.ID;
+  /** Optional objectives (rewarded with XP + Credits when completed). None in this mission. */
+  optional: OptionalObjective[] = [];
   phase: Phase = 'outpost';
   fired = new Set<string>();
   defenders: Unit[] = [];

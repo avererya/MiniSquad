@@ -18,9 +18,9 @@ const OUT = process.env.OUT || '';
 
   await reload();
   let sv = await save();
-  check('first launch: Barracks shown, save v1 written with 6 soldiers', await page.isVisible('#menu.barracks') && sv.version === 1 && sv.roster.length === 6, `version ${sv.version}, roster ${sv.roster.map((s) => s.id)}`);
+  check('first launch: Barracks shown, save v2 written with 6 soldiers', await page.isVisible('#menu.barracks') && sv.version === 2 && sv.account && sv.account.credits === 0 && sv.roster.length === 6, `version ${sv.version}, roster ${sv.roster.map((s) => s.id)}`);
   check('first launch: default squad Ace / Tank / Doc', sv.squad.join() === 'ace,tank,doc', sv.squad.join());
-  check('save holds no runtime/effective stats', sv.roster.every((s) => Object.keys(s).sort().join() === 'classId,id,mods,name,progression,traitId'), Object.keys(sv.roster[0]).join());
+  check('save holds no runtime/effective stats', sv.roster.every((s) => Object.keys(s).sort().join() === 'classId,id,mods,name,progression,resurrections,service,status,training,traitId'), Object.keys(sv.roster[0]).join());
   if (OUT) await page.screenshot({ path: `${OUT}/barracks-desktop.png` });
 
   // selection via the UI
@@ -77,7 +77,7 @@ const OUT = process.env.OUT || '';
   }
   check('Deploy (UI) uses the saved squad; no stacking across 3 reloads x 3 deploys', stacks.every((x) => x === stacks[0]) && stacks[0] === 'havoc:150:7.35:15 ace:100:3:10.8 ranger:100:3:12', stacks[0]);
   sv = await save();
-  check('a mission writes no combat state into the save', JSON.stringify(sv).match(/"hp"|"state"|"kills"|"cooldown"/) === null && sv.squad.join() === 'havoc,ace,ranger');
+  check('a mission writes no combat state into the save', JSON.stringify(sv).match(/"state"|"cooldown"|"maxHp"|"pos"|"fireRate":\d+\./) === null && sv.roster.every((s) => !('hp' in s) && Object.values(s.training).every(Number.isInteger)) && sv.squad.join() === 'havoc,ace,ranger');
 
   // results: victory -> retry via Enter; defeat -> Return to Barracks
   await page.evaluate(() => { const g = window.game; g.soldiers[1].state = 'kia'; g.win(); });
@@ -95,7 +95,7 @@ const OUT = process.env.OUT || '';
   // invalid save recovery
   const cases = [
     ['garbage text', 'not json {', 'reset'],
-    ['future version', JSON.stringify({ version: 99, roster: [], squad: [] }), 'reset'],
+    ['future version (best-effort, backup kept)', JSON.stringify({ version: 99, roster: [], squad: [] }), 'repaired'],
     ['roster not an array', JSON.stringify({ version: 1, roster: 'x', squad: [] }), 'reset'],
     ['bad trait + bad class + crazy mods', null, 'repaired'],
     ['duplicate + unknown squad ids', null, 'repaired'],
@@ -111,9 +111,9 @@ const OUT = process.env.OUT || '';
       traits: window.game.roster.soldiers.map((s) => s.traitId).join(), tankHp: window.__effectiveStats(window.game.roster.get('tank')).hp,
       cards: document.querySelectorAll('.s-card').length, backup: localStorage.getItem('minisquad.save.invalid'), saved: JSON.parse(localStorage.getItem('minisquad.save')),
     }));
-    const okBase = st.status === expectStatus && st.n === 6 && st.cards === 6 && st.traits === 'sharpshooter,quickReflexes,tough,triggerHappy,firstResponder,healer' && st.tankHp === 165 && st.saved.version === 1;
+    const okBase = st.status === expectStatus && st.n === 6 && st.cards === 6 && st.traits === 'sharpshooter,quickReflexes,tough,triggerHappy,firstResponder,healer' && st.tankHp === 165 && st.saved.version === 2;
     const okSlots = name.startsWith('duplicate') ? st.slots === 'tank,,' : true;
-    const okBackup = expectStatus === 'reset' ? st.backup === raw : true;
+    const okBackup = expectStatus === 'reset' || name.startsWith('future') ? st.backup === raw : true;
     check(`invalid save recovers: ${name}`, okBase && okSlots && okBackup, `status ${st.status}, slots ${st.slots}, tank hp ${st.tankHp}${expectStatus === 'reset' ? ', backup kept' : ''}`);
   }
   check('no page errors during save recovery', errors.length === 0, errors.join(' | '));

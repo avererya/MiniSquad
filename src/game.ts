@@ -17,6 +17,8 @@ import { Input, type InputHandler } from './input';
 import { VIEW_W, VIEW_H } from './view';
 import { clamp, dist, rand, type Vec } from './util';
 import { sfx, setMuted, isMuted } from './audio';
+import { getAccount, type MissionReward } from './progression';
+import { newRunId, settleMission, type PersistFn } from './economy';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -75,6 +77,12 @@ export class Game implements InputHandler {
   resetRosterSave: (() => void) | null = null;
   /** Per-soldier mission statistics (Results screen). */
   stats = new MissionStats();
+  /** Id of the current mission run (new on every deploy / retry). Rewards are settled once per id. */
+  runId = '';
+  /** Rewards of the mission that just ended (null: defeat, dev deployment, or nothing yet). */
+  lastReward: MissionReward | null = null;
+  /** Save hook (set by main.ts): writes roster + account. */
+  persist: PersistFn | null = null;
   /** Short feedback line (e.g. why an ability can't be used). */
   notice: { text: string; life: number } | null = null;
   input: Input;
@@ -139,6 +147,8 @@ export class Game implements InputHandler {
   private startMission() {
     const dep = this.deployment;
     this.stats = new MissionStats();
+    this.runId = newRunId();
+    this.lastReward = null;
     this.soldiers = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.scorches = []; this.fx = new Effects(); this.banners = [];
     this.anchor = { ...SQUAD_START }; this.cam = { ...SQUAD_START }; this.spread = 1;
@@ -158,8 +168,24 @@ export class Game implements InputHandler {
     this.ui.rebuildPanels();
   }
 
-  win() { this.phase = 'won'; this.targeting = null; this.ui.showEnd(); }
-  fail() { this.phase = 'failed'; this.targeting = null; this.ui.showEnd(); }
+  win() { if (this.phase !== 'playing') return; this.phase = 'won'; this.targeting = null; this.settle(); this.ui.showEnd(); }
+  fail() { if (this.phase !== 'playing') return; this.phase = 'failed'; this.targeting = null; this.settle(); this.ui.showEnd(); }
+
+  /**
+   * Mission over: settle XP + Credits for ROSTER deployments (Barracks Deploy / Retry), once
+   * per run id, and save immediately. Dev deployments (presets, ?squad=) never earn rewards.
+   */
+  private settle() {
+    if (this.deployment.kind !== 'roster') { this.lastReward = null; return; }
+    const won = this.phase === 'won';
+    const rows = this.stats.rows(this.soldiers);
+    const reward = settleMission(this.roster, getAccount(), {
+      missionId: this.mission.id, runId: this.runId, won,
+      deployed: rows.map((r) => ({ id: r.id, status: r.status, downs: r.downs })),
+      optional: { total: this.mission.optional.length, completed: this.mission.optional.filter((x) => x.completed).length },
+    }, Object.fromEntries(rows.map((r) => [r.id, r.kills])));
+    if (reward) { this.lastReward = reward; this.persist?.(); }
+  }
 
   // ---------------- spawning ----------------
   /**
@@ -268,6 +294,7 @@ export class Game implements InputHandler {
   downSoldier(s: Unit) {
     if (!s.active) return;
     s.state = 'downed';
+    this.stats.down(s);
     s.hp = 0;
     s.bleed = CFG.revive.bleedOut;
     s.reviveProgress = 0;

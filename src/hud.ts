@@ -115,7 +115,7 @@ export class Hud implements GameUI {
       const ab = u.ability!;
       const def = u.classDef!;
       p.fill.style.width = `${Math.max(0, (u.hp / u.maxHp) * 100)}%`;
-      p.hpnum.textContent = `${Math.ceil(Math.max(0, u.hp))}/${u.maxHp}`;
+      p.hpnum.textContent = `${Math.ceil(Math.max(0, u.hp))}/${Math.round(u.maxHp)}`;
       p.cls.textContent = u.rapidFire > 0 && u.active ? `${def.label} · RAPID ${Math.ceil(u.rapidFire)}s` : def.label;
       const abName = SHORT_ABILITY[ab.id] ?? ab.name.toUpperCase();
       let state: string, cls = 'ok';

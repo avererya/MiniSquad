@@ -23,6 +23,8 @@ export interface SoldierMissionStats {
   damage: number;
   healing: number;
   revives: number;
+  /** Times this soldier went down (any revive afterwards included). Drives the "nobody downed" bonus. */
+  downs: number;
 }
 
 export class MissionStats {
@@ -31,7 +33,7 @@ export class MissionStats {
   register(u: Unit) {
     const id = u.identity;
     if (!id || this.bySoldier.has(id.id)) return;
-    this.bySoldier.set(id.id, { id: id.id, name: id.name, classId: id.classId, traitId: id.traitId, kills: 0, damage: 0, healing: 0, revives: 0 });
+    this.bySoldier.set(id.id, { id: id.id, name: id.name, classId: id.classId, traitId: id.traitId, kills: 0, damage: 0, healing: 0, revives: 0, downs: 0 });
   }
 
   private of(u: Unit | null | undefined) {
@@ -42,6 +44,7 @@ export class MissionStats {
   kill(src: Unit | null | undefined) { const r = this.of(src); if (r) r.kills++; }
   heal(src: Unit | null | undefined, amount: number) { const r = this.of(src); if (r && amount > 0) r.healing += amount; }
   revive(src: Unit | null | undefined) { const r = this.of(src); if (r) r.revives++; }
+  down(u: Unit) { const r = this.of(u); if (r) r.downs++; }
 
   static status(u: Unit): FinalStatus { return u.state === 'active' ? 'Standing' : u.state === 'downed' ? 'Downed' : 'KIA'; }
 

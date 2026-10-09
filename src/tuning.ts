@@ -1,4 +1,5 @@
 // In-game tuning panel: live sliders on CFG, JSON export/import, reset, debug actions.
+import { VERSION_LABEL } from './version';
 import { CFG, DEFAULTS, applyConfigJSON, getPath, resetConfig, setPath } from './config';
 import type { Game } from './game';
 import { CLASS_IDS, PRESETS } from './classes';
@@ -126,7 +127,7 @@ export class Tuning {
         <button data-a="spawnE">Spawn enemy group</button>
         <button data-a="down">Down a soldier</button>
         <button data-a="invuln">Invulnerable: off</button>
-        <button data-a="resetSave" class="danger">Reset roster save…</button>
+        <button data-a="resetSave" class="danger">Reset save (roster, credits, training)…</button>
       </div>`;
     this.presetSel = dbg.querySelector('select')!;
     // picking a preset restarts the mission right away with that squad
@@ -144,11 +145,11 @@ export class Tuning {
         case 'resetSave':
           // two-step confirmation: first tap arms it for 4 s, second tap wipes the save
           if (b.dataset.armed) {
-            delete b.dataset.armed; b.textContent = 'Reset roster save…';
+            delete b.dataset.armed; b.textContent = 'Reset save (roster, credits, training)…';
             g.resetRosterSave?.();
           } else {
-            b.dataset.armed = '1'; b.textContent = 'Tap again to reset roster + squad';
-            window.setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Reset roster save…'; } }, 4000);
+            b.dataset.armed = '1'; b.textContent = 'Tap again to reset ALL progress';
+            window.setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Reset save (roster, credits, training)…'; } }, 4000);
           }
           break;
         case 'spawnF': if (g.phase === 'playing') g.spawnSoldier(); break;
@@ -219,7 +220,7 @@ export class Tuning {
 
     const ver = document.createElement('div');
     ver.className = 'tune-version';
-    ver.textContent = `MiniSquad v${__APP_VERSION__} · ${__APP_COMMIT__}`;
+    ver.textContent = VERSION_LABEL;
     r.appendChild(ver);
     this.refresh();
   }
