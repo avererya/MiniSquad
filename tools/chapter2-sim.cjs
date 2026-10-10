@@ -18,6 +18,7 @@
 //   m7-escort     8: Mission 7 prisoner escort (5 soldiers, level 5).
 //   m10-sniper    9: Mission 10, 4 named level 6 + a fresh level 3 Sniper recruit.
 //   m10-nosniper 10: Mission 10, 5 named level 6, no Sniper.
+//   m10-sniper-l6    controlled: as m10-nosniper but a level 6 Sniper replaces Ranger (opt-in, not in the default list).
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const fs = require('fs');
 const URL = process.env.URL || 'http://localhost:4173/';
@@ -165,7 +166,7 @@ async function playOne(page, missionId, ids, opts = {}) {
       for (const s of g.soldiers) {
         const p = prev.get(s);
         if (p !== s.state) {
-          if (s.state === 'downed') { st.downs++; const k = lastHit.get(s) ?? '?'; downBy[k] = (downBy[k] ?? 0) + 1; }
+          if (s.state === 'downed') { st.downs++; const k = lastHit.get(s) ?? '?'; downBy[k] = (downBy[k] ?? 0) + 1; const w = s.identity.classId; st.downCls = st.downCls || {}; st.downCls[w] = (st.downCls[w] ?? 0) + 1; }
           if (p === 'downed' && s.state === 'active') st.revives++;
           if (p === 'downed' && s.state === 'kia') st.bleedouts++;
           prev.set(s, s.state);
@@ -190,7 +191,7 @@ async function playOne(page, missionId, ids, opts = {}) {
       stars: g.lastStars?.stars ?? 0, downs: st.downs, revives: st.revives, kia: g.soldiers.filter((s) => s.state === 'kia').length,
       extracted: g.soldiers.filter((s) => s.state === 'active').length + '/' + g.soldiers.length,
       extractionAt: st.extractionAt === null ? null : +st.extractionAt.toFixed(0),
-      npcDamage: g.npcs?.[0] ? Math.round(st.npcDamage) : null, npcDowns: g.npcs?.[0] ? st.npcDowns : null, npcHits: st.npcHits || null, escortRescues: g.escortRescues,
+      npcDamage: g.npcs?.[0] ? Math.round(st.npcDamage) : null, npcDowns: g.npcs?.[0] ? st.npcDowns : null, npcHits: st.npcHits || null, downCls: st.downCls || null, escortRescues: g.escortRescues,
       boss: st.bossStart === null ? null : { duration: st.bossEnd === null ? null : +(st.bossEnd - st.bossStart).toFixed(0), rockets: m.boss?.rockets ?? 0, bursts: m.boss?.bursts ?? 0, hpLeft: m.boss?.unit.active ? Math.round(m.boss.unit.hp) : 0, damageByClass: bossBy, sniperShare: bossTot ? +((bossBy.sniper ?? 0) / bossTot).toFixed(2) : 0, log: (m.boss?.log ?? []).slice(0, 8) },
       sniperDamageShare: dmg.sniper !== undefined ? +(dmg.sniper / tot).toFixed(2) : null,
       convoy: m.convoy ? { destroyed: m.convoy.destroyed, escaped: m.convoy.escaped } : null,
@@ -257,6 +258,8 @@ const SCENARIOS = {
   'm5-escort': { spec: { squad: L(['doc', 'tank', 'ace'], 4) }, missions: ['bring-them-home'] },
   'm7-escort': { spec: { squad: L(['doc', 'tank', 'ace', 'ranger', 'havoc'], 5) }, missions: ['prison-break'] },
   'm10-sniper': { spec: { sniper: true, squad: [...L(['doc', 'tank', 'ace', 'havoc'], 6, 1), { cls: 'sniper', level: 3 }], squadTrain: 1 }, missions: ['iron-fist'] },
+  // controlled comparison (v0.6.2 finish): same levels as m10-nosniper, a level 6 Sniper in Ranger's slot
+  'm10-sniper-l6': { spec: { sniper: true, squad: [...L(['doc', 'tank', 'ace', 'havoc'], 6, 1), { cls: 'sniper', level: 6 }], squadTrain: 1 }, missions: ['iron-fist'] },
   'm10-nosniper': { spec: { squad: L(['doc', 'tank', 'ace', 'ranger', 'havoc'], 6, 1), squadTrain: 1 }, missions: ['iron-fist'] },
 };
 
@@ -291,7 +294,7 @@ const SCENARIOS = {
         const r = await playOne(page, id, s.ids.slice(0, 5), S.opts || {});
         r.scenario = sc; r.run = i;
         rows.push(r);
-        console.log(JSON.stringify({ sc, i, id, phase: r.phase, t: r.time, stars: r.stars, downs: r.downs, revives: r.revives, kia: r.kia, opt: r.optional, npc: r.npcDamage, npcHits: r.npcHits, boss: r.boss && { d: r.boss.duration, share: r.boss.sniperShare, by: r.boss.damageByClass, hpLeft: r.boss.hpLeft }, downBy: r.downBy, taken: r.taken, convoy: r.convoy, relays: r.relays, fail: r.failReason, err: r.error }));
+        console.log(JSON.stringify({ sc, i, id, phase: r.phase, t: r.time, stars: r.stars, downs: r.downs, revives: r.revives, kia: r.kia, opt: r.optional, npc: r.npcDamage, npcHits: r.npcHits, downCls: r.downCls, boss: r.boss && { d: r.boss.duration, share: r.boss.sniperShare, by: r.boss.damageByClass, hpLeft: r.boss.hpLeft }, downBy: r.downBy, taken: r.taken, convoy: r.convoy, relays: r.relays, fail: r.failReason, err: r.error }));
         // fallen soldiers come back for the next mission of the scenario (fixed-squad scenarios)
         await page.evaluate(() => { const g = window.game, a = window.__account(); a.pendingDecision = null; for (const x of g.roster.soldiers) if (x.status === 'kia') x.status = 'active'; });
       }
