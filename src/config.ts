@@ -100,6 +100,7 @@ function makeDefaults() {
       rocketRadius: 95,
       rocketDamage: 55, // at centre (edge: rocketEdge x this); cover between blast and soldier blocks it
       rocketEdge: 0.4,
+      callPause: 2, // s extra MG rest when he calls reinforcements (rest total = callPause + rest)
       // hidden damage modifiers by source (never shown in game text)
       modInfantry: 0.75, modHeavy: 0.65, modMedic: 0.75, modGrenade: 1.0, modSniper: 1.6,
     },

@@ -693,12 +693,14 @@ function installHelpers() {
     out.minD = Math.round(minD);
     T.calm(); u.hp = u.maxHp * 0.5; T.step(1, pin); out.again = count();
     u.hp = u.maxHp * 0.29; T.step(0.5, pin); out.at29 = count();
+    { let firing = 0; T.step(2, () => { pin(); if (b.phase === 'burst' || b.phase === 'windup') firing++; }); out.pauseFiring = firing; out.pausePhase = b.phase; }
     T.calm(); u.hp = u.maxHp * 0.1; T.step(1, pin); out.after = count();
     out.log = b.log.filter((x) => /call/.test(x.what)).map((x) => x.what).join();
     g.invuln = false;
     return out;
   });
-  check('reinforcement calls at 65% and 30% HP: mixed types, once each (no duplicate triggers)', calls.at66 === 0 && calls.at64 === 4 && /armored/.test(calls.kinds1) && /sniper/.test(calls.kinds1) && calls.again === 0 && calls.at29 === 5 && calls.after === 0 && calls.log === 'call65,call30', JSON.stringify(calls));
+  check('reinforcement calls at 65% and 30% HP: mixed types, once each (no duplicate triggers)', calls.at66 === 0 && calls.at64 === 4 && /armored/.test(calls.kinds1) && /sniper/.test(calls.kinds1) && calls.again === 0 && calls.at29 === 3 && calls.after === 0 && calls.log === 'call65,call30', JSON.stringify(calls));
+  check('boss pauses the MG while calling reinforcements (>= 2 s of rest after the call)', calls.pauseFiring === 0, JSON.stringify({ firingFrames: calls.pauseFiring, phase: calls.pausePhase }));
   check('boss reinforcements arrive through the gates, never on top of the squad (> 300 px)', calls.minD > 300, `${calls.minD} px`);
 
   const mods = await ev(() => {

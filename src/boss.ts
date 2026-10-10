@@ -29,7 +29,9 @@ export interface Rocket { pos: Vec; t: number; target: Unit | null; locked: bool
 /** Reinforcement calls: HP fraction threshold and the wave it brings. */
 export const BOSS_CALLS: { at: number; kinds: EnemyKind[] }[] = [
   { at: 0.65, kinds: ['rifleman', 'rifleman', 'armored', 'sniper'] },
-  { at: 0.30, kinds: ['rifleman', 'rifleman', 'rifleman', 'armored', 'sniper'] },
+  // v0.6.2 tuning: the final call is lighter (it came while the boss was still firing and caused
+  // late squad wipes in the automated sims with the boss under 7% HP)
+  { at: 0.30, kinds: ['rifleman', 'rifleman', 'armored'] },
 ];
 
 export class BossFight {
@@ -100,6 +102,10 @@ export class BossFight {
         game.mission.spawnWave(game, this.gates, half, false, c.kinds.slice(0, half));
         game.mission.spawnWave(game, this.gates, c.kinds.length - half, true, c.kinds.slice(half));
         game.banner('THE WARDEN CALLS REINFORCEMENTS!', '#ffb347', 3);
+        // he radios instead of shooting: a short MG pause (a telegraphed rocket still lands)
+        if (this.phase === 'idle' || this.phase === 'windup' || this.phase === 'burst' || this.phase === 'rest') {
+          this.enter('rest', game); this.t = -CFG.boss.callPause;
+        }
         this.log.push({ t: +game.time.toFixed(2), what: `call${Math.round(c.at * 100)}` });
         sfx('alarm');
       }
