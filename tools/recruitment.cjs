@@ -106,7 +106,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   await fresh();
   await page.click('[data-a="to-barracks"]');
   let sv = await save();
-  check('fresh save is v5 (v0.6) with empty offers until the office is opened', sv.version === 5 && sv.account.recruitment.offers.length === 0 && sv.account.pendingDecision === null && sv.account.recruitment.rosterCap === 12, JSON.stringify(sv.account.recruitment).slice(0, 120));
+  check('fresh save is v6 (v0.6.1) with empty offers until the office is opened', sv.version === 6 && sv.account.recruitment.offers.length === 0 && sv.account.pendingDecision === null && sv.account.recruitment.rosterCap === 12, JSON.stringify(sv.account.recruitment).slice(0, 120));
   check('Barracks shows Squad 2 / 2 and Roster 2 / 12', /SQUAD\s*2 \/ 2/.test(await page.textContent('.b-counts')) && /ROSTER\s*2 \/ 12/.test(await page.textContent('.b-counts')), await page.textContent('.b-counts'));
   await toRecruit();
   const o1 = await offers();
@@ -319,10 +319,11 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   await fresh();
   await page.click('[data-a="to-barracks"]'); await toRecruit();
   const pre = await offers();
-  // clear Mission 1 through the game -> Tank joins -> Heavy Gunner recruitable
+  // clear Mission 1 through the game -> Tank's milestone (v0.6.1: Tank is NOT bought) -> Heavy Gunner recruitable
   await page.evaluate(() => { const g = window.game; g.toCampaign(); g.selectMission('first-contact'); g.deploySelected(); g.win(); });
   await page.click('[data-a="barracks"]');
-  await page.click('[data-a="tab"][data-tab="recruit"]');
+  await page.click('[data-a="rn-visit"]'); // one-time NEW RECRUIT notice -> Recruitment Office
+  await page.waitForTimeout(500);
   const post = await offers();
   check('class unlock: next shown lineup swaps the LAST offer for a Heavy Gunner (free); others unchanged', post[0].id === pre[0].id && post[1].id === pre[1].id && post[2].classId === 'heavy' && post[2].id !== pre[2].id, `${pre.map((o) => o.classId)} -> ${post.map((o) => o.classId)}`);
   if (OUT) await page.screenshot({ path: `${OUT}/recruit-desktop-heavy-introduced.png` });
@@ -333,15 +334,16 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   await fresh();
   await page.click('[data-a="to-barracks"]'); await toRecruit();
   const pre2 = await offers();
-  await page.evaluate(() => { const r = window.game.roster; r.unlock('tank'); r.unlock('doc'); window.__persist(); });
+  // v0.6.1: milestones (not ownership) unlock the classes; notices marked seen so nothing covers the office
+  await page.evaluate(() => { const n = window.__account().named; n.unlocked.push('tank', 'doc'); n.notified.push('tank', 'doc'); window.__persist(); });
   await reload(); await toRecruit();
   const post2 = await offers();
   check('two classes unlocked at once: last two offers become Heavy + Medic, first unchanged', post2[0].id === pre2[0].id && post2.slice(1).map((o) => o.classId).sort().join() === 'heavy,medic', post2.map((o) => o.classId).join());
   // first visit after the unlock (no lineup yet): guaranteed in the first lineup
   await fresh();
-  await page.evaluate(() => { const r = window.game.roster; r.unlock('tank'); window.__persist(); });
+  await page.evaluate(() => { const n = window.__account().named; n.unlocked.push('tank'); n.notified.push('tank'); window.__persist(); });
   await reload(); await page.click('[data-a="to-barracks"]'); await toRecruit();
-  check('first-ever lineup after Tank joined contains a Heavy Gunner', (await offers()).some((o) => o.classId === 'heavy'), (await offers()).map((o) => o.classId).join());
+  check('first-ever lineup after Tank\'s milestone (Tank not bought) contains a Heavy Gunner', (await offers()).some((o) => o.classId === 'heavy'), (await offers()).map((o) => o.classId).join());
   // afterwards: normal randomness (refreshes are not forced)
   const later = await page.evaluate(() => {
     const out = {}; const a = window.__account(); a.credits = 100000;
@@ -359,7 +361,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   // v0.6: the service record gained downs / revives / deaths (0: never tracked before); the v0.3 fields are compared
   const strip = (r) => r.map((s) => ({ id: s.id, name: s.name, classId: s.classId, traitId: s.traitId, xp: s.progression.xp, level: s.progression.level, training: s.training, service: { missions: s.service.missions, victories: s.service.victories, kills: s.service.kills } }));
-  check('v0.4 fixture -> v5: status migrated, no repair notes, pre-v0.5 backup = original text', mig.status === 'migrated' && mig.from === 3 && mig.notes.length === 0 && mig.backup === fx4 && mig.sv.version === 5, `${mig.status} ${mig.notes.join(';')}`);
+  check('v0.4 fixture -> v6: status migrated, no repair notes, pre-v0.5 backup = original text', mig.status === 'migrated' && mig.from === 3 && mig.notes.length === 0 && mig.backup === fx4 && mig.sv.version === 6, `${mig.status} ${mig.notes.join(';')}`);
   check('v0.4 migration keeps soldiers, XP, levels, training, traits, service records exactly', same(strip(mig.sv.roster), strip(src.roster)), '');
   check('v0.4 migration keeps credits, squad training, missions/stars, campaign, unlocks, squad', mig.sv.account.credits === src.account.credits && same(mig.sv.account.squadTraining, src.account.squadTraining) && same(mig.sv.account.missions, src.account.missions) && same(mig.sv.account.campaign, src.account.campaign) && same(mig.sv.unlockedSoldiers, src.unlockedSoldiers) && same(mig.sv.squad, src.squad) && same(mig.sv.account.settledRuns, src.account.settledRuns), `${mig.sv.account.credits} CR, ${mig.sv.unlockedSoldiers}`);
   check('v0.4 migration: no introduction owed for classes already recruitable; migration notice shown', same(mig.sv.account.recruitment.introduced, ['infantry', 'heavy', 'medic']) && /v0\.6/.test(mig.notice || ''), mig.notice);
@@ -376,14 +378,14 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   for (const f of ['v0.3-save.json', 'v0.2.2-save.json']) {
     const raw = FX(f);
     await fresh(raw);
-    const r = await page.evaluate(() => ({ st: window.__loadStatus.status, n: window.game.roster.activeCount(), v: JSON.parse(localStorage.getItem('minisquad.save')).version, b5: !!localStorage.getItem('minisquad.save.pre-v0.5'), b4: !!localStorage.getItem('minisquad.save.pre-v0.4'), b6: !!localStorage.getItem('minisquad.save.pre-v0.6'), intro: window.__account().recruitment.introduced.join() }));
+    const r = await page.evaluate(() => ({ st: window.__loadStatus.status, n: window.game.roster.activeCount(), v: JSON.parse(localStorage.getItem('minisquad.save')).version, b5: !!localStorage.getItem('minisquad.save.pre-v0.5'), b4: !!localStorage.getItem('minisquad.save.pre-v0.4'), b6: !!localStorage.getItem('minisquad.save.pre-v0.6'), b61: !!localStorage.getItem('minisquad.save.pre-v0.6.1'), intro: window.__account().recruitment.introduced.join() }));
     if (f.startsWith('v0.3')) {
       // legacy owner of Tank who never cleared Mission 1: dismiss Tank, Mission 1's card must still render
       const camp = await page.evaluate(() => { window.__economy.dismiss(window.game.roster, window.__account(), 'tank', window.__persist); window.game.ui.showCampaign(); document.querySelector('[data-a="csel"][data-id="first-contact"]').click(); return document.querySelector('.c-detail').textContent.replace(/\s+/g, ' '); });
-      check('legacy save: Mission 1 card still renders "Tank joins" after Tank was dismissed', /Tank joins/.test(camp), camp.slice(0, 200));
+      check('legacy save: Mission 1 card still renders "Unlock Tank + Heavy Gunner recruitment" after Tank was dismissed', /Unlock Tank \+ Heavy Gunner recruitment/.test(camp), camp.slice(0, 200));
       r.n = 6; // counted before the dismissal
     }
-    check(`${f}: migrates to v5, all 6 originals kept (6/12), backups kept, no intro owed`, r.v === 5 && r.n === 6 && r.b5 && r.b4 && r.b6 && (r.st === 'migrated' || r.st === 'repaired') && r.intro === 'infantry,heavy,medic', JSON.stringify(r));
+    check(`${f}: migrates to v6, all 6 originals kept (6/12), backups kept, no intro owed`, r.v === 6 && r.n === 6 && r.b5 && r.b4 && r.b6 && r.b61 && (r.st === 'migrated' || r.st === 'repaired') && r.intro === 'infantry,heavy,medic', JSON.stringify(r));
   }
   // >12 roster from history: keep everyone, block recruiting
   const big = JSON.parse(fx4);

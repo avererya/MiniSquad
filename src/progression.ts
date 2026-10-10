@@ -153,8 +153,12 @@ export const newRecruitment = (introduced: SoldierClassId[] = ['infantry']): Rec
 // ---------------- permanent death (v0.6) ----------------
 // Rules + prices live in casualties.ts, the transactions in economy.ts; the persisted state is
 // declared here (plain data) like the recruitment state above.
-/** Why a soldier fell: bled out, left behind at extraction, or the mission was abandoned (app closed / restarted mid-mission). */
-export type KiaCause = 'bleedout' | 'abandoned' | 'interrupted';
+/**
+ * Why a soldier fell: bled out, left behind at extraction, the mission was abandoned (app closed /
+ * restarted mid-mission) after they had fallen, or (v0.6.1) they were downed when the mission
+ * FAILED (a legitimate gameplay failure never rescues a downed soldier).
+ */
+export type KiaCause = 'bleedout' | 'abandoned' | 'interrupted' | 'failed';
 export interface FallenEntry { id: string; cause: KiaCause }
 /**
  * The blocking post-mission decision (v0.5 reserved `pendingDecision` for it). Created in the
@@ -198,6 +202,23 @@ export interface PhoenixState {
 export interface ActiveRun { runId: string; missionId: string; kia: FallenEntry[] }
 export const newPhoenix = (): PhoenixState => ({ grants: [], pending: null });
 
+// ---------------- named campaign recruits (v0.6.1) ----------------
+/**
+ * Named campaign recruit offers, keyed by the named soldier's stable id (NAMED_RECRUITS in
+ * campaign.ts). `unlocked`: milestone reached (offer exists, generic class / trait unlocked).
+ * `claimed`: the one-time offer is used up for good (bought, or owned / dismissed / honored in
+ * the Memorial before v0.6.1); never removed, so renames, dismissals and the Memorial can't bring
+ * an offer back. `notified`: the one-time "NEW RECRUIT AVAILABLE!" notice was shown.
+ */
+export interface NamedRecruitState {
+  unlocked: string[];
+  claimed: string[];
+  notified: string[];
+  /** Purchases (legacy: owned before v0.6.1, never charged). */
+  history: { key: string; soldierId: string; at: number; cost: number; level: number; legacy?: boolean }[];
+}
+export const newNamedRecruits = (): NamedRecruitState => ({ unlocked: [], claimed: [], notified: [], history: [] });
+
 export interface AccountData {
   credits: number;
   squadTraining: SquadTrainingRanks;
@@ -216,11 +237,13 @@ export interface AccountData {
   phoenix: PhoenixState;
   /** v0.6: journal of the mission in progress (null outside a roster mission with a KIA). */
   activeRun: ActiveRun | null;
+  /** v0.6.1: named campaign recruit offers (unlocked / claimed / notified / purchases). */
+  named: NamedRecruitState;
 }
 export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
 export const newAccount = (): AccountData => ({
   credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(),
-  pendingDecision: null, memorial: [], phoenix: newPhoenix(), activeRun: null,
+  pendingDecision: null, memorial: [], phoenix: newPhoenix(), activeRun: null, named: newNamedRecruits(),
 });
 
 let account: AccountData = newAccount();
@@ -306,7 +329,10 @@ export interface MissionReward {
   stars: number;
   prevBest: number;
   bestStars: number;
+  /** Always empty since v0.6.1: no soldier ever joins the roster for free (kept for older tools). */
   unlockedSoldiers: string[];
+  /** v0.6.1: named campaign recruit offers this clear unlocked NOW (keys; not owned). */
+  unlockedRecruits: string[];
   unlockedMissions: string[];
   xpLines: RewardLine[];
   xpMul: number;
@@ -317,6 +343,8 @@ export interface MissionReward {
   soldiers: SoldierReward[];
   /** v0.6: soldiers who fell in this run (now awaiting a decision). */
   fallen: FallenEntry[];
+  /** v0.6.1: soldiers who came home standing (failed missions included). */
+  survivors: number;
   /** false: a run that paid nothing by rule (mission force-started while locked). */
   rewarded: boolean;
 }

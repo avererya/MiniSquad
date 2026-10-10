@@ -7,8 +7,11 @@
 //  - KIA comes from a bleed-out (20 s, see game.ts), from being left behind at extraction
 //    (the player confirmed extraction while they were downed), or from a mission abandoned
 //    mid-run (app closed / restarted) for soldiers who had ALREADY fallen in it.
-//  - A failed mission kills nobody by itself: soldiers standing or downed when it ends are
-//    recovered; only soldiers who had already fallen stay KIA.
+//  - v0.6.1: a legitimately FAILED mission (total squad defeat, failed objective, timer) never
+//    rescues a downed soldier: standing soldiers (revived ones included) come home, soldiers
+//    downed at that moment become KIA (cause 'failed'), soldiers already KIA stay KIA. This is
+//    applied only when a mission really ends in play (Game.end / settleMission), never to a page
+//    reload / app close (recoverInterruptedRun keeps the v0.6 rule: only the already fallen).
 //  - Every KIA needs a decision before the next mission: Resurrect (Credits) or Memorial
 //    (permanent). Nothing is decided automatically; Credits shortage never auto-memorializes.
 //  - Death is not dismissal: KIA pays nothing and may end in the Memorial; dismissal pays the

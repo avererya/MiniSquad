@@ -568,7 +568,7 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 @media (orientation: landscape) and (max-height: 430px) { .d-prog { display: none; } }
 .r-fallen { display: flex; gap: 0.2em 0.8em; flex-wrap: wrap; justify-content: center; align-items: baseline; font-weight: 800; color: #ffb0a0; margin-bottom: 0.3em; font-size: max(11px, 0.9em); }
 .r-fallen > b { color: #ff6a5a; letter-spacing: 0.08em; }
-.r-fallen small { color: #9aa3ad; }
+.r-fallen small { color: #9aa3ad; font-size: inherit; font-weight: 700; }
 .r-fallen em { flex-basis: 100%; font-style: normal; color: #ffcfb0; font-size: max(11px, 0.9em); }
 @media (orientation: landscape) and (max-height: 430px) {
   .k-card { padding: 0.45em 0.7em; gap: 0.35em; }
@@ -675,4 +675,43 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   .b-slots { grid-template-columns: repeat(6, minmax(0, 1fr)); flex: 1 1 100%; }
   .b-slots .slot { width: auto; height: auto; aspect-ratio: 1; }
   .b-go { flex: 1 1 100%; max-width: none; }
+}
+
+/* ================= v0.6.1: campaign recruits, unlock notice, failure tally ================= */
+.rc-sub { font-weight: 900; letter-spacing: 0.08em; color: #ffd84a; font-size: max(11px, 0.85em); margin-top: 0.15em; }
+.rc-sub small { color: #8f9aa6; letter-spacing: 0; font-weight: 700; font-size: max(11px, 0.9em); }
+.nr-sec { display: flex; flex-direction: column; gap: 0.35em; background: rgba(255,216,74,0.06); border: 2px solid rgba(255,216,74,0.45); border-radius: 0.8em; padding: 0.45em 0.6em; }
+.nr-title { margin-top: 0; }
+.nr-row { display: flex; align-items: center; gap: 0.6em; background: rgba(20,24,30,0.94); border: 1px solid rgba(255,216,74,0.35); border-radius: 0.6em; padding: 0.35em 0.55em; }
+.nr-row .s-port { width: 2.8em; height: 2.8em; flex: none; }
+.nr-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1em; font-size: max(11px, 0.88em); line-height: 1.2; }
+.nr-name { font-weight: 800; color: #cfe6ff; }
+.nr-name b { color: #fff; text-transform: uppercase; font-size: 1.1em; letter-spacing: 0.03em; }
+.nr-trait b { color: #ffd84a; }
+.nr-trait span { color: #c9cfc4; }
+.nr-stats { color: #9fb6d0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nr-stats b { color: #fff; }
+.nr-why { color: #9be7a5; font-weight: 700; }
+.nr-row .rc-buy { margin-top: 0; flex: none; min-width: 9.5em; }
+.nr-soon, .nr-none { color: #8f9aa6; font-weight: 700; font-size: max(11px, 0.82em); }
+.nr-soon small { color: #8f9aa6; font-size: inherit; }
+.rn-notice { border-color: #ffd84a; box-shadow: 0 0 0 3px rgba(255,216,74,0.25), 0 10px 40px rgba(0,0,0,0.6); width: min(30em, 100%); display: flex; flex-direction: column; gap: 0.5em; }
+.rn-kicker { text-align: center; font-weight: 900; letter-spacing: 0.1em; color: #ffd84a; font-size: 1.25em; }
+.rn-cls { color: #9fb6d0; font-size: 0.75em; font-weight: 800; }
+.rn-line { color: #9be7a5; font-weight: 800; font-size: max(11px, 0.9em); margin-top: 0.2em; }
+.r-tally { font-weight: 900; letter-spacing: 0.06em; color: #cfe6ff; margin: -0.1em 0 0.2em; font-size: max(12px, 1.05em); }
+.r-tally.loss { color: #ffb0a0; }
+@media (orientation: portrait) {
+  .nr-row { flex-wrap: wrap; }
+  .nr-row .rc-buy { flex: 1 1 100%; }
+}
+@media (orientation: landscape) and (max-height: 430px) {
+  .nr-sec { padding: 0.3em 0.45em; gap: 0.25em; }
+  .nr-row { padding: 0.25em 0.45em; gap: 0.45em; }
+  .nr-row .s-port { width: 2.3em; height: 2.3em; }
+  .nr-trait span { display: none; }
+  .rn-kicker { font-size: 1.05em; }
+}
+@media (orientation: landscape) and (max-width: 760px) {
+  .nr-row .rc-buy { min-width: 7.5em; font-size: max(12px, 0.9em); }
 }

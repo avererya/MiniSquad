@@ -32,6 +32,19 @@
 // and activeRun (KIA journal of the mission in progress). Older soldiers are always 'active'
 // (KIA was temporary before v0.6, so nobody is converted to KIA by the upgrade). The raw pre-v5
 // save is copied once to SAVE_PRE_V06_KEY before the upgrade.
+//
+// v6 (v0.6.1, deliberate recruitment) adds account.named: named campaign recruit offers by stable
+// key (= named soldier id): `unlocked` (milestone reached), `claimed` (one-time offer used up),
+// `notified` (unlock notice shown) and a purchase `history`. From v6 on, `unlockedSoldiers`
+// means OWNED named soldiers only and is never re-derived from mission records (a first clear no
+// longer awards anyone); the milestones are re-derived into `named.unlocked` instead.
+// MIGRATION from v1-v5 (older versions awarded named soldiers for free): every named soldier
+// those versions gave the player is kept, uncharged, and its offer is CLAIMED (owned, KIA awaiting
+// a decision, dismissed or in the Memorial alike), so nobody is duplicated or charged; a claimed
+// soldier gets a 'legacy' history entry. Milestones already reached are unlocked; an offer is only
+// opened for a milestone whose soldier was never acquired. Notices are not owed for claimed
+// offers. Ownership is decided by soldier id + the old unlock flags / dismissal list / Memorial,
+// never by display name. The raw pre-v6 save is copied once to SAVE_PRE_V061_KEY.
 // Formats are never reset just because they are old. Each field is repaired on its own (bad
 // XP -> derived from level, bad ranks -> clamped, negative credits -> 0, unknown mission ids
 // in the campaign lists dropped) instead of throwing a soldier away.
@@ -42,10 +55,10 @@ import {
   LEVEL_CAP, MAX_XP, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, cleanRank, levelForXp, newAccount,
   newCampaign, newSquadTraining, newTraining, xpForLevel, type AccountData, type CampaignProgress, type MissionRecord, type SquadTrainingRanks, type TrainingRanks,
 } from './progression';
-import { CAMPAIGN, FIRST_MISSION, derivedMissionUnlocks, derivedSoldierUnlocks } from './campaign';
+import { CAMPAIGN, FIRST_MISSION, NAMED_RECRUITS, STARTING_SOLDIERS, derivedMissionUnlocks, derivedRecruitUnlocks, derivedSoldierUnlocks } from './campaign';
 import { type CandidateRecord, type DismissalRecord, type RecruitmentState, ROSTER_CAP, newRecruitment } from './progression';
-import { RECRUIT_ID, generateCandidate, generateName, isTraitValidFor, nameKey, recruitClass, recruitableClasses, takenNames } from './recruitment';
-import { newPhoenix, type ActiveRun, type CasualtyDecision, type FallenEntry, type KiaCause, type MemorialRecord, type PhoenixState } from './progression';
+import { RECRUIT_ID, campaignFlags, generateCandidate, generateName, isTraitValidFor, nameKey, recruitClass, recruitableClasses, takenNames } from './recruitment';
+import { newNamedRecruits, newPhoenix, type NamedRecruitState, type ActiveRun, type CasualtyDecision, type FallenEntry, type KiaCause, type MemorialRecord, type PhoenixState } from './progression';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL } from './casualties';
 
 export const SAVE_KEY = 'minisquad.save';
@@ -56,13 +69,15 @@ export const SAVE_LEGACY_KEY = 'minisquad.save.pre-v0.4';
 export const SAVE_PRE_V05_KEY = 'minisquad.save.pre-v0.5';
 /** One-time copy of any pre-v5 save (v1-v4), taken before it is upgraded to v5 (v0.6). */
 export const SAVE_PRE_V06_KEY = 'minisquad.save.pre-v0.6';
-export const SAVE_VERSION = 5;
+/** One-time copy of any pre-v6 save (v1-v5), taken before it is upgraded to v6 (v0.6.1). */
+export const SAVE_PRE_V061_KEY = 'minisquad.save.pre-v0.6.1';
+export const SAVE_VERSION = 6;
 
-export interface SaveFileV5 {
-  version: 5;
+export interface SaveFileV6 {
+  version: 6;
   roster: SoldierIdentity[];
   squad: (string | null)[];
-  /** Campaign unlock flags of the named soldiers (kept after a dismissal). */
+  /** Named soldiers the player has owned (bought, or awarded before v0.6.1; kept after a dismissal). */
   unlockedSoldiers: string[];
   account: AccountData;
 }
@@ -268,7 +283,7 @@ function cleanAccount(v: unknown, notes: string[], legacy: boolean): AccountData
 }
 
 // ---------------- v5 (v0.6) permanent-death state ----------------
-const CAUSES: KiaCause[] = ['bleedout', 'abandoned', 'interrupted'];
+const CAUSES: KiaCause[] = ['bleedout', 'abandoned', 'interrupted', 'failed'];
 const cleanCause = (v: unknown): KiaCause => (CAUSES.includes(v as KiaCause) ? v as KiaCause : 'bleedout');
 const cleanFallen = (v: unknown): FallenEntry | null => (isObj(v) && typeof v.id === 'string' && v.id ? { id: v.id, cause: cleanCause(v.cause) } : null);
 const str = (v: unknown, d = '') => (typeof v === 'string' && v.length <= 80 ? v : d);
@@ -305,6 +320,19 @@ function cleanActiveRun(v: unknown): ActiveRun | null {
   return { runId: v.runId, missionId: str(v.missionId, ''), kia: v.kia.map(cleanFallen).filter((x): x is FallenEntry => !!x) };
 }
 
+const NAMED_KEYS = NAMED_RECRUITS.map((n) => n.key);
+function cleanNamed(v: unknown, notes: string[]): NamedRecruitState {
+  const n = newNamedRecruits();
+  if (v === undefined) return n;
+  if (!isObj(v)) { notes.push('Named recruit data invalid: rebuilt from campaign progress and ownership.'); return n; }
+  const keys = (x: unknown) => (Array.isArray(x) ? [...new Set(x.filter((k): k is string => typeof k === 'string' && NAMED_KEYS.includes(k)))] : []);
+  n.unlocked = keys(v.unlocked); n.claimed = keys(v.claimed); n.notified = keys(v.notified);
+  if (Array.isArray(v.history)) n.history = v.history.filter(isObj).filter((h) => typeof h.key === 'string' && NAMED_KEYS.includes(h.key)).map((h) => ({
+    key: h.key as string, soldierId: str(h.soldierId, h.key as string), at: num0(h.at), cost: num0(h.cost), level: isInt(h.level) && h.level >= 1 ? Math.min(LEVEL_CAP, h.level) : 1, ...(h.legacy === true ? { legacy: true } : {}),
+  }));
+  return n;
+}
+
 /** Highest recruit id number in use anywhere (so the id counter can never hand out an old id). */
 function maxRecruitSeq(ids: string[]): number {
   let m = 0;
@@ -316,7 +344,7 @@ function storage(): Storage | null {
   try { return window.localStorage; } catch { return null; }
 }
 
-export function serialize(r: Roster, a: AccountData): SaveFileV5 {
+export function serialize(r: Roster, a: AccountData): SaveFileV6 {
   return {
     version: SAVE_VERSION,
     roster: r.soldiers.map((s) => ({ ...s, progression: s.progression ?? newProgression() })),
@@ -330,6 +358,7 @@ export function serialize(r: Roster, a: AccountData): SaveFileV5 {
       memorial: structuredClone(a.memorial),
       phoenix: structuredClone(a.phoenix),
       activeRun: structuredClone(a.activeRun),
+      named: structuredClone(a.named),
     },
   };
 }
@@ -355,7 +384,8 @@ export function writeSave(r: Roster, a: AccountData): WriteResult {
  *    as v3 ('repaired'), so progress is kept wherever it can be understood
  *  - version 4 (v0.5) -> migrated to v5 in place: every soldier is 'active', career fields not
  *    tracked before start at 0, empty Memorial / no pending decision / no Phoenix grant
- *  - version 5 (v0.6) -> loaded; fallen soldiers, the decision queue, Memorial, Phoenix grants
+ *  - version 5 (v0.6) -> migrated to v6: named recruit offers derived (see the v6 notes above)
+ *  - version 6 (v0.6.1) -> loaded; fallen soldiers, the decision queue, Memorial, Phoenix grants
  *    and the mission journal validated against each other (see the repairs below)
  * Unknown (non-recruit) soldier ids are dropped; missing named soldiers are restored unless
  * they were dismissed; recruits are kept (bad fields repaired), never dropped.
@@ -370,10 +400,11 @@ export function parseSave(raw: string | null): LoadResult {
     return { roster: new Roster(), account: newAccount(), notes, status: 'reset', fromVersion: null };
   }
   const version = typeof data.version === 'number' ? data.version : null;
-  const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5;
+  const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === 6;
   const legacy = version === 1 || version === 2;
-  const preRecruit = version !== 4 && version !== 5; // v1-v3 (and unknown): no recruitment state yet
-  const v5 = version === 5; // permanent-death state (only a v5 save can hold a fallen soldier)
+  const preRecruit = version !== 4 && version !== 5 && version !== 6; // v1-v3 (and unknown): no recruitment state yet
+  const v5 = version === 5 || version === 6; // permanent-death state (only a v5+ save can hold a fallen soldier)
+  const v6 = version === 6; // v0.6.1 named recruit offers: owned named soldiers are never re-derived from missions
   if (!known) notes.push(`Save version ${String(data.version)} not recognised: read best-effort (backup kept).`);
 
   const rawAccount = version === 1 ? undefined : data.account;
@@ -452,10 +483,16 @@ export function parseSave(raw: string | null): LoadResult {
     if (account.pendingDecision && account.phoenix.pending) { notes.push('Operation Phoenix grant opened before every decision was made: withdrawn.'); account.phoenix.pending = null; }
   }
 
-  // unlocked soldiers: legacy saves owned everyone; v3+ lists them (repaired from mission records)
+  // owned named soldiers: legacy saves owned everyone; v3-v5 list them (repaired from mission
+  // records: those versions awarded them for the clears); v6 lists them (purchases), never derived
   const done = (id: string) => (account.missions[id]?.completions ?? 0) > 0;
   let unlocked: string[];
-  if (legacy || (!known && !Array.isArray(data.unlockedSoldiers))) unlocked = [...ALL_SOLDIER_IDS];
+  if (v6) {
+    const listed = Array.isArray(data.unlockedSoldiers) ? data.unlockedSoldiers.filter((x): x is string => typeof x === 'string' && ALL_SOLDIER_IDS.includes(x)) : [];
+    if (!Array.isArray(data.unlockedSoldiers)) notes.push('Owned soldiers list missing: starting soldiers kept, purchases restored from the claim history.');
+    else if (listed.length !== data.unlockedSoldiers.length) notes.push('Unknown entries removed from owned soldiers.');
+    unlocked = [...new Set([...STARTING_SOLDIERS, ...listed])];
+  } else if (legacy || (!known && !Array.isArray(data.unlockedSoldiers))) unlocked = [...ALL_SOLDIER_IDS];
   else {
     const derived = derivedSoldierUnlocks(done);
     if (!Array.isArray(data.unlockedSoldiers)) { notes.push('Unlocked soldiers missing: rebuilt from mission records.'); unlocked = derived; }
@@ -470,8 +507,36 @@ export function parseSave(raw: string | null): LoadResult {
   // a dismissed named soldier's unlock flag always stays set
   for (const id of dismissedIds) if (ALL_SOLDIER_IDS.includes(id) && !unlocked.includes(id)) unlocked.push(id);
 
+  // v0.6.1 named recruit offers (by stable key, never by name)
+  const named = v6 && isObj(rawAccount) ? cleanNamed(rawAccount.named, notes) : newNamedRecruits();
+  if (v6 && isObj(rawAccount) && rawAccount.named === undefined) notes.push('Named recruit data missing: rebuilt from campaign progress and ownership.');
+  if (v6) {
+    // a v6 claim whose soldier is still on the roster but not owned (hand edit / lost flag): owned again, never re-sold
+    for (const k of named.claimed) if (!unlocked.includes(k) && soldiers.some((s) => s.id === k)) { unlocked.push(k); notes.push(`${k}: claimed recruit restored to the roster.`); }
+  }
+  {
+    const derived = derivedRecruitUnlocks(done);
+    const missing = derived.filter((k) => !named.unlocked.includes(k));
+    if (v6 && missing.length && rawAccount && isObj((rawAccount as Record<string, unknown>).named)) notes.push(`Recruit offers ${missing.join(', ')} re-unlocked from mission records.`);
+    named.unlocked = NAMED_KEYS.filter((k) => named.unlocked.includes(k) || derived.includes(k));
+    // claimed: owned (incl. KIA awaiting a decision), dismissed or honored: one soldier, never twice
+    const before = new Set(named.claimed);
+    const owned = unlocked.filter((k) => NAMED_KEYS.includes(k));
+    const gone = NAMED_KEYS.filter((k) => dismissedIds.has(k) || memorialIds.has(k));
+    named.claimed = NAMED_KEYS.filter((k) => before.has(k) || owned.includes(k) || gone.includes(k));
+    for (const k of named.claimed) {
+      if (!before.has(k)) {
+        if (v6) notes.push(`${k}: owned, dismissed or honored, offer marked claimed.`);
+        if (!named.history.some((h) => h.key === k)) named.history.push({ key: k, soldierId: k, at: 0, cost: 0, level: 1, legacy: true });
+      }
+      if (!named.notified.includes(k)) named.notified.push(k); // nothing to announce for a soldier already had
+    }
+    named.notified = NAMED_KEYS.filter((k) => named.notified.includes(k));
+  }
+  account.named = named;
+
   // recruitment: pre-v0.5 saves owe no introduction for classes they can already recruit
-  const flags = new Set(unlocked);
+  const flags = campaignFlags(account);
   const rec = cleanRecruitment(preRecruit ? undefined : rawRec, notes, recruitableClasses(flags));
   if (!preRecruit && rawRec === undefined) notes.push('Recruitment data missing: starts empty.');
   const seq = maxRecruitSeq([...soldiers.map((s) => s.id), ...rec.offers.map((o) => o.id), ...rec.dismissed.map((d) => d.id), ...memorial.map((m) => m.soldier.id), ...(account.phoenix.pending?.candidates.map((c) => c.id) ?? [])]);
@@ -502,7 +567,7 @@ export function parseSave(raw: string | null): LoadResult {
     if (px.candidates.length !== before2) notes.push('Operation Phoenix candidates clashing with the roster dropped.');
     if (px.candidates.length < PHOENIX_CANDIDATES) {
       if (px.candidates.length < 3) notes.push('Operation Phoenix candidates topped up.');
-      const ctx = { flags: new Set(unlocked), progress: 1, taken: takenNames([...soldiers.map((s) => s.name), ...px.candidates.map((c) => c.name)], rec), rng: () => 0 };
+      const ctx = { flags: campaignFlags(account), progress: 1, taken: takenNames([...soldiers.map((s) => s.name), ...px.candidates.map((c) => c.name)], rec), rng: () => 0 };
       while (px.candidates.length < PHOENIX_CANDIDATES) px.candidates.push({ ...generateCandidate(rec, ctx, 'infantry'), classId: 'infantry', level: PHOENIX_LEVEL });
     }
   }
@@ -525,7 +590,7 @@ export function loadSave(): LoadResult {
   try { raw = ls ? ls.getItem(SAVE_KEY) : null; } catch { raw = null; }
   const res = parseSave(raw);
   const v = res.fromVersion;
-  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== SAVE_VERSION)
+  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== SAVE_VERSION)
     || (res.status === 'repaired' && v === null);
   if (backup && ls && raw !== null) { try { ls.setItem(SAVE_BACKUP_KEY, raw); } catch { /* full */ } }
   // never lose a legacy roster: keep the original v1/v2 text once, before the upgrade
@@ -534,6 +599,8 @@ export function loadSave(): LoadResult {
   if ((v === 1 || v === 2 || v === 3) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V05_KEY) === null) ls.setItem(SAVE_PRE_V05_KEY, raw); } catch { /* full */ } }
   // v0.6: keep the pre-v5 text once (v1-v4), before the v5 write
   if ((v === 1 || v === 2 || v === 3 || v === 4) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V06_KEY) === null) ls.setItem(SAVE_PRE_V06_KEY, raw); } catch { /* full */ } }
+  // v0.6.1: keep the pre-v6 text once (v1-v5), before the v6 write
+  if ((v === 1 || v === 2 || v === 3 || v === 4 || v === 5) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V061_KEY) === null) ls.setItem(SAVE_PRE_V061_KEY, raw); } catch { /* full */ } }
   if (res.notes.length) console.warn('[MiniSquad save]', res.notes.join(' '));
   writeSave(res.roster, res.account);
   return res;

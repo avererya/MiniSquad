@@ -8,15 +8,20 @@
 //    class-appropriate trait from the trait pool, a starting level from campaign progress.
 //    Stats are never rolled: they come from class + level + trait (+ squad training, which
 //    applies to every soldier) exactly like the roster.
-//  - Recruitable classes: RECRUIT_CLASSES (Infantry from the start; Heavy Gunner once Tank has
-//    joined; Medic once Doc has joined). Havoc / Patch add no class. Random class per offer,
+//  - Recruitable classes: RECRUIT_CLASSES (Infantry from the start; Heavy Gunner from Tank's
+//    milestone, Mission 1; Medic from Doc's milestone, Mission 2). Havoc / Patch add no class.
+//    v0.6.1: these CAMPAIGN FLAGS (campaignFlags) come from the milestones, not from owning the
+//    named soldier (a player who never buys Tank still recruits Heavy Gunners after Mission 1). Random class per offer,
 //    duplicates allowed, no guaranteed spread.
 //  - One-time introduction: when a class first becomes recruitable, the next lineup the player
 //    sees holds at least one offer of it. Offers already on the table: the LAST offer(s) are
 //    swapped for the new class(es), free, when the office is next shown. Saves from before
 //    v0.5 treat the classes they already had as introduced (their first lineup is random).
-//  - Trait pool: a trait can be rolled once a named soldier carrying it has JOINED (campaign
-//    unlock flag, so dismissing that soldier does not remove the trait). Healer: Medics only.
+//  - Trait pool: a trait can be rolled once the milestone of the named soldier carrying it is
+//    reached (v0.6.1; also when that soldier was owned before v0.6.1, so no legacy player loses a
+//    trait). Dismissing / losing the soldier never removes it. Healer: Medics only.
+//  - Named campaign recruits (v0.6.1) are NOT offers here: they have their own permanent section
+//    (economy.namedOffers) and never count toward the one-time class introduction.
 //  - Names: NAME_POOL, never equal (case-insensitive) to a reserved campaign name, a roster
 //    soldier, a current offer, or any name in the used-name registry (every recruited name,
 //    dismissed soldiers' names, names given up by a rename). When the pool is exhausted:
@@ -24,10 +29,10 @@
 //  - Starting level: highest unlocked mission number -> RECRUIT_LEVELS. Fixed at generation.
 import { CLASSES, type SoldierClassId } from './classes';
 import { TRAITS, type TraitId } from './traits';
-import { CAMPAIGN } from './campaign';
+import { CAMPAIGN, STARTING_SOLDIERS } from './campaign';
 import type { AccountData, CandidateRecord, RecruitmentState } from './progression';
 
-/** Recruitable classes: price, dismissal refund, and the named soldier whose arrival unlocks it. */
+/** Recruitable classes: price, dismissal refund, and the named soldier whose MILESTONE unlocks it. */
 export interface RecruitClassDef { classId: SoldierClassId; price: number; refund: number; requires: string | null }
 export const RECRUIT_CLASSES: RecruitClassDef[] = [
   { classId: 'infantry', price: 750, refund: 200, requires: null },
@@ -139,7 +144,15 @@ export function validateName(raw: string, currentName: string | null, taken: Set
   return { ok: true, name };
 }
 
-/** Classes recruitable with these campaign unlock flags (named soldiers who have joined). */
+/**
+ * v0.6.1 campaign flags for the class / trait pools: the starting soldiers, every named recruit
+ * whose milestone was reached, and every named offer already claimed (pre-v0.6.1 ownership).
+ * Never derived from who is in the roster right now.
+ */
+export function campaignFlags(a: Pick<AccountData, 'named'>): Set<string> {
+  return new Set([...STARTING_SOLDIERS, ...a.named.unlocked, ...a.named.claimed]);
+}
+/** Classes recruitable with these campaign flags (see campaignFlags). */
 export function recruitableClasses(flags: Set<string>): SoldierClassId[] {
   return RECRUIT_CLASSES.filter((c) => !c.requires || flags.has(c.requires)).map((c) => c.classId);
 }

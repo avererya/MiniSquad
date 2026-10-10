@@ -18,14 +18,17 @@ import { SQUAD_SLOTS, defaultRoster } from './roster';
 import { drawClassPortrait } from './render';
 import { unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
-import { CAMPAIGN, CAPACITY_TABLE, MISSION_TYPE_LABEL, SOLDIER_UNLOCK, STARTING_SOLDIERS, STAR_TEXT, campaignMission, capacityFor, type CampaignMission } from './campaign';
+import { CAMPAIGN, CAPACITY_TABLE, MISSION_TYPE_LABEL, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
 } from './progression';
-import { buySquadTraining, buyTraining, dismiss, dismissBlock, dismissRefund, enlistPhoenix, lineupKey, memorialize, openOffice, recruit, recruitBlock, refreshOffers, rename, resurrect } from './economy';
+import {
+  buySquadTraining, buyTraining, dismiss, dismissBlock, dismissRefund, enlistPhoenix, lineupKey, lockedNamedRecruits, markRecruitNotified, memorialize, namedOffers, openOffice, pendingRecruitNotice,
+  recruit, recruitBlock, recruitNamed, refreshOffers, rename, resurrect,
+} from './economy';
 import { MEMORIAL_ARM_MS, PHOENIX_RECRUITS, casualtyPosition, costFor, decisionBlock, pendingCasualties } from './casualties';
-import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignProgress, priceOf, startingLevelFor } from './recruitment';
+import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignFlags, campaignProgress, priceOf, startingLevelFor } from './recruitment';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -34,7 +37,7 @@ const cr = (v: number) => v.toLocaleString('en-US');
 const pct = (f: number) => (Math.abs(f) < 1e-9 ? '0%' : `${f > 0 ? '+' : '−'}${num(Math.abs(f * 100))}%`);
 
 type Screen = 'none' | 'campaign' | 'barracks' | 'results' | 'decisions' | 'memorial';
-const CAUSE_TEXT = { bleedout: 'Bled out', abandoned: 'Left behind at extraction', interrupted: 'Fell in an abandoned mission' } as const;
+const CAUSE_TEXT = { bleedout: 'Bled out', abandoned: 'Left behind at extraction', interrupted: 'Fell in an abandoned mission', failed: 'Downed when the mission failed' } as const;
 /** v0.6: taps are ignored this long after a resurrection / Memorial / Phoenix enlistment (the next card can't be hit by a double tap). */
 const DECISION_LOCK_MS = 600;
 const stars = (n: number, of = 3) => `<span class="stars" title="${n}/${of} stars">${'★'.repeat(n)}<i>${'★'.repeat(Math.max(0, of - n))}</i></span>`;
@@ -167,7 +170,38 @@ export class Menus {
           ${this.missionDetailHtml(m)}
         </div>
       </div>
-      ${this.resetOpen ? this.resetHtml() : ''}`;
+      ${this.resetOpen ? this.resetHtml() : this.recruitNoticeHtml()}`;
+    this.drawPortraits(); // the recruit notice's portrait
+  }
+
+  /**
+   * v0.6.1 one-time "NEW RECRUIT AVAILABLE!" notice (Campaign / Barracks, never over the casualty
+   * flow). Shown once per unlock: either button marks it seen (saved); the offer itself stays in
+   * the Recruitment Office until bought. Nothing is bought or added here.
+   */
+  private recruitNoticeHtml() {
+    const n = pendingRecruitNotice(getAccount());
+    const s = n && (this.game.roster.get(n.key) ?? defaultRoster().find((x) => x.id === n.key));
+    if (!n || !s) return '';
+    const t = s.traitId ? TRAITS[s.traitId] : null;
+    return `
+      <div class="m-modal rn-notice-bg" data-a="rn-later-bg" data-id="${n.key}">
+        <div class="d-card x-card rn-notice" role="dialog" aria-label="New recruit available">
+          <div class="rn-kicker">★ NEW RECRUIT AVAILABLE! ★</div>
+          <div class="d-head">
+            <canvas class="d-port" data-cls="${s.classId}"></canvas>
+            <div class="d-id">
+              <div class="d-name">${esc(s.name)} <span class="rn-cls">— ${CLASSES[s.classId].label}</span></div>
+              <div class="d-cls">${t ? `${t.name} · ` : ''}${cr(n.price)} CR</div>
+              <div class="rn-line">${esc(n.notice)}</div>
+            </div>
+          </div>
+          <div class="d-btns">
+            <button class="m-big alt" data-a="rn-later" data-id="${n.key}">LATER</button>
+            <button class="m-big" data-a="rn-visit" data-id="${n.key}">VISIT RECRUITMENT OFFICE</button>
+          </div>
+        </div>
+      </div>`;
   }
 
   /** Player-facing "New Campaign" confirmation: says exactly what is wiped; Cancel / Confirm. */
@@ -194,12 +228,13 @@ export class Menus {
     const prev = CAMPAIGN.find((x) => x.number === m.number - 1);
     const unl = [
       ...m.unlocks.missions.map((id) => `Mission ${campaignMission(id)!.number} unlocks`),
-      ...m.unlocks.soldiers.map((id) => { const d = r.get(id) ?? defaultRoster().find((x) => x.id === id); return d ? `${esc(d.name)} joins (${CLASSES[d.classId].label})` : ''; }).filter(Boolean),
+      // v0.6.1: a first clear unlocks a named recruit OFFER (bought in the Recruitment Office), never a free soldier
+      ...m.unlocks.recruits.map((k) => namedRecruit(k)?.unlockText ?? '').filter(Boolean),
       ...(m.unlocks.capacityNote ? [m.unlocks.capacityNote] : []),
     ];
     if (!m.playable) {
-      const upcoming = defaultRoster().filter((d) => !r.unlocked.has(d.id) && SOLDIER_UNLOCK[d.id] && !SOLDIER_UNLOCK[d.id].by && !STARTING_SOLDIERS.includes(d.id));
-      if (upcoming.length) unl.push(...upcoming.map((d) => `${esc(d.name)} (${CLASSES[d.classId].label}) joins at the Mission 7 milestone`));
+      const upcoming = NAMED_RECRUITS.filter((n) => !campaignMission(n.milestone) && !acc.named.claimed.includes(n.key));
+      if (upcoming.length) unl.push(...upcoming.map((n) => `${esc(n.unlockText)} at the Mission ${n.missionNumber} milestone`));
     }
     const first = rec && rec.completions > 0 ? '<span class="dim">First-clear rewards collected</span>'
       : m.legacyId && acc.missions[m.legacyId]?.firstClearRun
@@ -565,7 +600,9 @@ export class Menus {
         </div>`;
     }).join('');
     const lvl = startingLevelFor(campaignProgress(acc));
-    const prices = RECRUIT_CLASSES.filter((x) => rec.introduced.includes(x.classId) || r.unlocked.has(x.requires ?? '')).map((x) => `${CLASSES[x.classId].label} ${cr(x.price)}`).join(' · ');
+    const flags = campaignFlags(acc);
+    const named = this.namedRecruitsHtml(block);
+    const prices = RECRUIT_CLASSES.filter((x) => rec.introduced.includes(x.classId) || flags.has(x.requires ?? '')).map((x) => `${CLASSES[x.classId].label} ${cr(x.price)}`).join(' · ');
     return `
       <div class="rc-main">
         <div class="rc-bar">
@@ -574,8 +611,46 @@ export class Menus {
           <button class="rc-refresh ${armed ? 'armed' : ''}" data-a="refresh" data-key="${lineupKey(rec)}" ${canRefresh ? '' : 'disabled'} title="${canRefresh ? 'Replace all three candidates' : 'Not enough Credits'}">${armed ? `TAP AGAIN — ${REFRESH_COST} CR` : `↻ REFRESH · ${REFRESH_COST} CR`}</button>
         </div>
         ${block ? `<div class="rc-full">${esc(block)}</div>` : ''}
+        ${named ? `${named}<div class="rc-sub">RANDOM CANDIDATES <small>· Refresh replaces these three only</small></div>` : ''}
         <div class="rc-cards">${cards}</div>
       </div>`;
+  }
+
+  /**
+   * v0.6.1 CAMPAIGN RECRUITS: one compact row per open named offer (name, class, trait, stats,
+   * price, what unlocked it), above the three random candidates. Hidden while no offer is open
+   * (the office stays exactly as in v0.5; upcoming recruits are previewed on the Campaign screen).
+   */
+  private namedRecruitsHtml(block: string | null) {
+    const r = this.game.roster, acc = getAccount();
+    const offers = namedOffers(r, acc), locked = lockedNamedRecruits(acc);
+    if (!offers.length) return '';
+    const rows = offers.map(({ def, soldier: s, level }) => {
+      const t = s.traitId ? TRAITS[s.traitId] : null;
+      const p = newProgression(); p.xp = xpForLevel(level); p.level = level;
+      const st = effectiveStats({ ...s, progression: p });
+      const afford = acc.credits >= def.price;
+      const btn = block ? `<button class="rc-buy full" disabled title="${esc(block)}">${/full/i.test(block) ? 'ROSTER FULL' : 'BLOCKED'}</button>`
+        : `<button class="rc-buy ${afford ? '' : 'poor'}" data-a="recruit-named" data-id="${def.key}" ${afford ? '' : 'disabled'} title="${afford ? `Recruit ${esc(s.name)}` : 'Not enough Credits'}">${afford ? 'RECRUIT · ' : ''}${cr(def.price)} CR</button>`;
+      return `
+        <div class="nr-row" data-id="${def.key}" data-cls="${s.classId}">
+          <canvas class="s-port" data-cls="${s.classId}"></canvas>
+          <div class="nr-id">
+            <div class="nr-name"><b>${esc(s.name)}</b> — ${CLASSES[s.classId].label} <span class="s-lv">LV ${level}</span></div>
+            <div class="nr-trait"><b>${t ? t.name : 'No trait'}</b> ${t ? `<span>${t.desc}</span>` : ''}</div>
+            <div class="nr-stats">HP <b>${num(Math.round(st.hp))}</b> · DMG <b>${num(Math.round(st.damage * 10) / 10)}</b> · RATE <b>${num(Math.round(st.fireRate * 100) / 100)}/s</b> · SPEED <b>${num(Math.round(st.moveSpeed))}</b></div>
+            <div class="nr-why">Unlocked by completing Mission ${def.missionNumber}.</div>
+          </div>
+          ${btn}
+        </div>`;
+    }).join('');
+    const soon = locked.length ? `<div class="nr-soon">🔒 ${locked.map((n) => `${esc(defaultRoster().find((d) => d.id === n.key)?.name ?? n.key)} <small>(Mission ${n.missionNumber})</small>`).join(' · ')}</div>` : '';
+    return `
+        <section class="nr-sec" aria-label="Campaign recruits">
+          <div class="rc-sub nr-title">CAMPAIGN RECRUITS <small>· named soldiers, one each, never rotated out</small></div>
+          ${rows}
+          ${soon}
+        </section>`;
   }
 
   private modalHtml() {
@@ -583,7 +658,7 @@ export class Menus {
     if (this.dismissId && r.get(this.dismissId)) return this.dismissHtml(r.get(this.dismissId)!);
     if (this.renameId && r.get(this.renameId)) return this.renameHtml(r.get(this.renameId)!);
     if (this.detailsId && this.tab === 'roster' && r.get(this.detailsId)) return this.detailsHtml(r.get(this.detailsId)!);
-    return '';
+    return this.recruitNoticeHtml();
   }
 
   private dismissHtml(s: SoldierIdentity) {
@@ -646,6 +721,14 @@ export class Menus {
   private doRecruit(id: string) {
     const g = this.game;
     const res = recruit(g.roster, getAccount(), id, g.persist, { inMission: g.phase !== 'start' });
+    if (res.ok) this.newSoldiers.add(res.soldier.id);
+    this.renderBarracks();
+    this.notice(res.ok ? `${res.soldier.name} joined the roster (−${cr(res.cost)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
+  }
+
+  private doRecruitNamed(key: string) {
+    const g = this.game;
+    const res = recruitNamed(g.roster, getAccount(), key, g.persist, { inMission: g.phase !== 'start' });
     if (res.ok) this.newSoldiers.add(res.soldier.id);
     this.renderBarracks();
     this.notice(res.ok ? `${res.soldier.name} joined the roster (−${cr(res.cost)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
@@ -934,7 +1017,6 @@ export class Menus {
     const m = g.mission;
     this.screen = 'results';
     this.root.className = 'results';
-    if (rw) rw.unlockedSoldiers.forEach((id) => this.newSoldiers.add(id));
     const xpOf = new Map(rw?.soldiers.map((x) => [x.id, x]) ?? []);
     const rows = g.stats.rows(g.soldiers).map((r) => {
       const x = xpOf.get(r.id);
@@ -954,7 +1036,7 @@ export class Menus {
     const levelUps = rw?.soldiers.filter((x) => x.levelsGained > 0).map((x) =>
       `<div class="r-lvl">▲ ${esc(x.name.toUpperCase())} — LV ${x.before.level} → LV ${x.after.level} — +${x.xp} XP</div>`).join('') ?? '';
     const unlocks = rw ? [
-      ...rw.unlockedSoldiers.map((id) => { const s = g.roster.get(id)!; return `<div class="r-unl soldier">★ NEW SOLDIER JOINED: <b>${esc(s.name.toUpperCase())}</b> (${CLASSES[s.classId].label})</div>`; }),
+      ...rw.unlockedRecruits.map((k) => { const s = g.roster.get(k) ?? defaultRoster().find((d) => d.id === k); return s ? `<div class="r-unl soldier">★ NEW RECRUIT AVAILABLE: <b>${esc(s.name.toUpperCase())}</b> (${CLASSES[s.classId].label}) · Recruitment Office</div>` : ''; }),
       ...rw.unlockedMissions.map((id) => { const c = campaignMission(id)!; return `<div class="r-unl">▶ MISSION ${c.number} UNLOCKED: <b>${esc(c.name)}</b>${capacityFor(c.number) > capacityFor(m.def.number) ? ` · squad size ${capacityFor(c.number)}` : ''}</div>`; }),
       ...(rw.legacyFirstClearPaid ? ['<div class="r-unl dim">First-clear Credit bonus was already paid for this map in v0.3 (Comms Outpost)</div>'] : []),
       ...(rw.firstClear && m.def.unlocks.capacityNote ? [`<div class="r-unl">▲ ${esc(m.def.unlocks.capacityNote.toUpperCase())}</div>`] : []),
@@ -979,7 +1061,11 @@ export class Menus {
     const tag = rw && won ? (rw.firstClear ? '<span class="r-tag first">FIRST CLEAR</span>' : '<span class="r-tag">REPLAY</span>') : '';
     const why = won ? 'The squad made it out.' : m.failReason || 'The whole squad is down.';
     // v0.6: fallen soldiers (permanent) and the pending decision
-    const fallenRows = g.stats.rows(g.soldiers).filter((r) => r.status === 'KIA');
+    const allRows = g.stats.rows(g.soldiers);
+    const fallenRows = allRows.filter((r) => r.status === 'KIA');
+    // v0.6.1: what happened to every deployed soldier ("1 Survivor · 2 KIA")
+    const nSurv = allRows.filter((r) => r.status === 'Standing').length;
+    const tally = allRows.length ? `<div class="r-tally ${fallenRows.length ? 'loss' : ''}">${nSurv} Survivor${nSurv === 1 ? '' : 's'} · ${fallenRows.length} KIA</div>` : '';
     const pending = g.deployment.kind === 'roster' && !!decisionBlock(getAccount());
     const fallenHtml = fallenRows.length ? `<div class="r-fallen"><b>FALLEN</b> ${fallenRows.map((r) => `<span>✝ ${esc(r.name)} <small>${CAUSE_TEXT[r.cause ?? 'bleedout']}</small></span>`).join('')}${g.deployment.kind === 'roster' ? '<em>Permanent: decide Resurrect or Memorial before the next mission.</em>' : ''}</div>` : '';
     this.root.innerHTML = `
@@ -987,6 +1073,7 @@ export class Menus {
         <div class="r-card ${won ? 'won' : 'lost'}">
           <div class="r-mission">MISSION ${m.def.number} · ${esc(m.name.toUpperCase())}</div>
           <div class="r-title">${won ? 'MISSION COMPLETE' : 'MISSION FAILED'} ${tag}</div>
+          ${tally}
           <div class="r-stars">${stars(starN)}${newBest ? '<span class="r-tag first">NEW BEST</span>' : ''}<div class="r-crit">${crit}</div></div>
           <div class="r-sub">${why} · Mission time <b>${fmtTime(g.time)}</b></div>
           ${opts ? `<div class="r-opts"><b>OPTIONAL</b> ${opts}</div>` : ''}
@@ -1054,6 +1141,24 @@ export class Menus {
       }
       case 'memorial': e.stopPropagation(); this.showMemorial(el.dataset.from === 'campaign' ? 'campaign' : 'barracks'); return;
       case 'memorial-back': e.stopPropagation(); if (this.memorialBack === 'campaign') this.showCampaign(); else this.showBarracks(); return;
+      case 'rn-visit': case 'rn-later': case 'rn-later-bg': {
+        if (a === 'rn-later-bg' && e.target !== el) return;
+        e.stopPropagation();
+        markRecruitNotified(getAccount(), id!, g.persist);
+        this.txLockUntil = performance.now() + RECRUIT_LOCK_MS; // the tap can't fall through to the screen below
+        if (a === 'rn-visit') { this.tab = 'recruit'; this.detailsId = null; this.targetSlot = null; this.showBarracks(); return; }
+        if (this.screen === 'barracks') this.renderBarracks(); else this.renderCampaign();
+        return;
+      }
+      case 'recruit-named': {
+        e.stopPropagation();
+        const now = performance.now(), key = `${a}:${id ?? ''}`;
+        if (key === this.lastBuy.key && now - this.lastBuy.t < PROGRESSION.purchaseLockMs) return;
+        this.lastBuy = { key, t: now };
+        this.txLockUntil = now + RECRUIT_LOCK_MS;
+        this.doRecruitNamed(id!);
+        return;
+      }
       case 'recruit': case 'refresh': case 'dismiss-confirm': {
         e.stopPropagation();
         const now = performance.now(), key = `${a}:${id ?? el.dataset.key ?? ''}`;

@@ -490,12 +490,23 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     check('retry: same squad, fresh HP/state/stats/cooldowns', g.phase === 'playing' && g.time === 0 && g.soldiers.map(s => s.identity.id).join() === 'ace,havoc' && g.soldiers.every(s => s.state === 'active' && s.hp === s.maxHp && s.ability.cooldownLeft === 0) && statOf('ace').damage === 0 && document.getElementById('menu').className === 'hidden',
       `${g.phase} ${g.soldiers.map(s => `${s.name}:${s.state}:${s.hp}`).join(' ')} stats ace dmg ${statOf('ace').damage}`);
     g.soldiers.forEach(s => g.downSoldier(s)); step(0.05);
-    const failed = g.phase === 'failed' && /MISSION FAILED/.test(document.querySelector('.r-title')?.textContent || '') && [...document.querySelectorAll('.r-status')].every(x => x.textContent === 'Downed');
+    // v0.6.1: a legitimate failure never rescues the downed: the whole squad was down -> all KIA (cause 'failed')
+    const failed = g.phase === 'failed' && /MISSION FAILED/.test(document.querySelector('.r-title')?.textContent || '') && [...document.querySelectorAll('.r-status')].every(x => x.textContent === 'KIA')
+      && /0 Survivors · 2 KIA/.test(document.querySelector('.r-tally')?.textContent || '');
+    const failQ = window.__account().pendingDecision?.queue ?? [];
+    check('v0.6.1: total defeat -> Results "MISSION FAILED · 0 Survivors · 2 KIA", both queued (cause failed), only Resolve', failed && failQ.map(q => q.id + ':' + q.cause).join() === 'ace:failed,havoc:failed' && [...document.querySelectorAll('.r-btns button')].map(b => b.dataset.a).join() === 'resolve' && R.soldiers.filter(s => s.status === 'kia').length === 2,
+      `${document.querySelector('.r-tally')?.textContent} ${failQ.map(q => q.id + ':' + q.cause).join()}`);
     await new Promise((r) => setTimeout(r, 700)); // v0.6: menu taps are ignored for 600 ms after a resurrection (double-tap guard)
-    document.querySelector('[data-a="barracks"]').click();
+    window.__account().credits += 2000 + 3500;
+    document.querySelector('[data-a="resolve"]').click();
+    document.querySelector('[data-a="resurrect"]').click();
+    await new Promise((r) => setTimeout(r, 700));
+    document.querySelector('[data-a="resurrect"]').click();
+    await new Promise((r) => setTimeout(r, 700));
+    g.toBarracks();
     const cards = [...document.querySelectorAll('.s-card')];
-    check('defeat -> results (Downed) -> Return to Barracks', failed && g.phase === 'start' && document.getElementById('menu').className === 'barracks' && cards.length === 6, `failed ok ${failed}, phase ${g.phase}, cards ${cards.length}`);
-    check('v0.6: soldiers downed when a mission fails are recovered (no KIA, no decision)', !window.__account().pendingDecision && cards.every(c => /AVAILABLE|IN SQUAD|TRAINED/.test(c.textContent)) && R.soldiers.every(s => s.status === 'active'), cards.map(c => c.querySelector('.s-status').textContent).join(','));
+    check('defeat -> casualties resolved (Resurrect x2) -> Barracks', g.phase === 'start' && document.getElementById('menu').className === 'barracks' && cards.length === 6 && !window.__account().pendingDecision, `phase ${g.phase}, menu ${document.getElementById('menu').className}, cards ${cards.length}`);
+    check('v0.6.1: resurrected soldiers active again after the failed mission', cards.every(c => /AVAILABLE|IN SQUAD|TRAINED/.test(c.textContent)) && R.soldiers.every(s => s.status === 'active'), cards.map(c => c.querySelector('.s-status').textContent).join(','));
     const dep = g.deploy([byId('ace')]);
     check('resurrected soldier redeploys at full health', dep.ok && g.soldiers[0]?.state === 'active' && g.soldiers[0]?.hp === 100, `${JSON.stringify(dep)} ${g.soldiers[0]?.state} ${g.soldiers[0]?.hp}`);
 

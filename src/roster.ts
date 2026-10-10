@@ -3,7 +3,11 @@
 // mission allows its own number, see campaign.ts). Pure state + rules; persistence lives in
 // save.ts, the UI in menus.ts.
 //
-// OWNERSHIP (v0.5): `unlocked` holds the campaign UNLOCK FLAGS of named soldiers (ever joined).
+// OWNERSHIP (v0.6.1): `unlocked` holds the OWNERSHIP flags of named soldiers (ever joined:
+// bought as a named campaign recruit, or awarded for free before v0.6.1). A campaign milestone
+// no longer sets it (it opens a recruit offer, account.named). Unbought named soldiers stay in
+// `soldiers` as locked records (never shown as roster cards) until bought.
+// (v0.5 wording:) `unlocked` holds the campaign UNLOCK FLAGS of named soldiers (ever joined).
 // A flag is never removed: a dismissed named soldier stays flagged (so their trait stays in the
 // recruit pool and replaying their unlock mission never brings them back) but is no longer in
 // `soldiers`. A soldier is OWNED (selectable, deployable, counts toward the roster cap) when

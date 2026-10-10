@@ -101,6 +101,8 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       const crBefore = A().credits, xpBefore = byId('ace').progression.xp;
       g.reset(); clearEnemies(); g.soldiers.forEach((s) => g.downSoldier(s)); step(0.05);
       check('defeat: no XP, no Credits, Results say so', g.phase === 'failed' && A().credits === crBefore && byId('ace').progression.xp === xpBefore && /No XP or Credits/.test(document.getElementById('menu').textContent), `${g.phase}, credits ${A().credits}`);
+      // v0.6.1: the wiped squad is KIA (a failure never rescues the downed): resurrect them (Credits topped up, net 0)
+      { let d; while ((d = A().pendingDecision) && d.queue.length) { const s = byId(d.queue[0].id); A().credits += window.__casualties.costFor(s); E.resurrect(R, A(), s.id, null); } }
       // dev deployments never earn
       g.reset(['infantry', 'heavy']); clearEnemies(); g.win();
       const crGen = A().credits;
@@ -228,6 +230,9 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     sv = await save();
     check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
     check('UI: Campaign header shows credits + version "MiniSquad v0.6.1 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.6\.1 · [0-9a-f]{7,}$|^MiniSquad v0\.6\.1 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    // v0.6.1: the one-time NEW RECRUIT AVAILABLE notice (Tank) is up after the first clear: dismiss it
+    check('UI: one-time Tank recruit notice shown after the first clear', await page.isVisible('.rn-notice'), '');
+    await page.click('[data-a="rn-later"]'); await page.waitForTimeout(500);
     await page.click('[data-a="csel"][data-id="first-contact"]'); // the campaign moved on to M2: replay M1
     await page.click('[data-a="deploy"]');
     await page.evaluate(() => window.game.win());
@@ -237,6 +242,8 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.evaluate(() => window.game.win());
     sv = await save();
     check('UI: 3 replays via Enter / Retry button: exactly +650 each (1000 + 1950)', sv.account.credits === 2950 && sv.account.missions['first-contact'].completions === 4, `credits ${sv.account.credits}, completions ${sv.account.missions['first-contact'].completions}`);
+    // v0.6.1: Tank is a purchasable campaign recruit now: buy him (Credits topped up first, net 0)
+    await page.evaluate(() => { const a = window.__account(); a.credits += 1000; window.__economy.recruitNamed(window.game.roster, a, 'tank', window.__persist); });
     await page.click('[data-a="barracks"]');
     // training tab: rapid taps
     await page.click('[data-tab="training"]');
@@ -285,7 +292,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const notice = await page.textContent('.m-notice').catch(() => '');
     await page.click('[data-a="to-barracks"]');
     const m = await page.evaluate(() => ({ status: window.__loadStatus.status, slots: window.game.roster.slots.join(), saved: JSON.parse(localStorage.getItem('minisquad.save')), notice: document.querySelector('.m-notice').textContent, cards: document.querySelectorAll('.s-card').length }));
-    check('UI: v0.2.2 save migrated in place on load (squad kept, v5 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 5 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
+    check('UI: v0.2.2 save migrated in place on load (squad kept, v6 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 6 && m.saved.account.named.claimed.length === 4 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
     const backup = await page.evaluate(() => localStorage.getItem('minisquad.save.pre-v0.4'));
     check('UI: the original v0.2.2 save text is kept once as a pre-v0.4 backup', backup === V022raw, `backup ${backup ? backup.length : 0} chars`);
     check('B: no page errors', errors.length === 0, errors.join(' | '));

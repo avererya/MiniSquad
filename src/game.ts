@@ -274,6 +274,7 @@ export class Game implements InputHandler {
   fail() { if (this.phase !== 'playing') return; this.phase = 'failed'; this.end(false); }
   private end(won: boolean) {
     this.targeting = null;
+    if (!won) this.downedFallOnFailure();
     this.mission.finalize(this, won);
     const rows = this.stats.rows(this.soldiers);
     const opt = this.mission.optional;
@@ -470,6 +471,23 @@ export class Game implements InputHandler {
     }
     const ev: MissionEvent = s.npc ? { type: 'npcKia', unit: s } : { type: 'soldierKia', unit: s };
     this.mission.emit(this, ev);
+  }
+  /**
+   * v0.6.1: a mission that legitimately FAILED (whole squad down, captive lost, any objective /
+   * timer failure that calls fail()) never rescues anyone: every squad soldier still downed is KIA
+   * (cause 'failed'); standing soldiers (revived ones too) come home; soldiers already KIA stay KIA
+   * (no second death). The mission is over, so nothing is emitted and the bleed-out rules are
+   * untouched. Never used for an abandoned / interrupted mission (closing or reloading the app).
+   * The roster changes in settleMission (which applies the same rule), exactly once.
+   */
+  private downedFallOnFailure() {
+    for (const s of this.soldiers) {
+      if (s.npc || s.state !== 'downed') continue;
+      s.state = 'kia';
+      s.kiaCause = 'failed';
+      s.bleed = 0;
+      s.reviving = false; s.reviver = null; s.reviveProgress = 0;
+    }
   }
   /** Extraction confirmed while this soldier was downed: left behind (KIA, abandoned). */
   abandonSoldier(s: Unit) { if (s.state === 'downed') this.kia(s, 'abandoned'); }

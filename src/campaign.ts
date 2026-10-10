@@ -7,9 +7,11 @@
 //    clear) unlocks what its `unlocks` lists (next mission, soldiers, a 4th slot, ...).
 //    Completed missions can be replayed forever (replay rewards, see progression.ts).
 //  - Deployment capacity is per mission NUMBER (table below), independent of roster size.
-//  - Soldiers: a new save owns Ace + Ranger; Tank joins when Mission 2 becomes available
-//    (first clear of Mission 1), Doc when Mission 3 does (clear of Mission 2), Havoc on clearing
-//    Mission 5. Patch is reserved for the Mission 7 milestone (not in v0.4).
+//  - Soldiers (v0.6.1): a new save owns ONLY Ace + Ranger. A first clear never adds a soldier:
+//    it unlocks a named campaign RECRUIT OFFER (Tank: Mission 1, Doc: Mission 2, Havoc: Mission 5,
+//    Patch: Mission 7, a future milestone) that the player may buy in the Recruitment Office
+//    (NAMED_RECRUITS below). The same milestone unlocks the generic class / trait for random
+//    recruits, whether or not the named soldier is ever bought.
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
@@ -40,7 +42,8 @@ export interface OptionalDef {
   replaces?: 'fullExtraction';
 }
 
-export interface Unlocks { missions: string[]; soldiers: string[]; capacityNote?: string }
+/** `recruits`: named campaign recruit offers (NAMED_RECRUITS keys) this first clear unlocks (never a free soldier). */
+export interface Unlocks { missions: string[]; recruits: string[]; capacityNote?: string }
 
 export interface CampaignMission {
   id: string; // stable: records, first clears, stars and unlocks are keyed by it
@@ -85,7 +88,7 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Eliminate the three enemy patrols', 'Reach the extraction zone'],
     optional: [], stars: { two: 'fullExtraction', three: 'noDowns' },
     teaches: 'Movement, auto-fire, Grenade, extraction',
-    unlocks: { missions: ['heavy-support'], soldiers: ['tank'] },
+    unlocks: { missions: ['heavy-support'], recruits: ['tank'] },
   },
   {
     id: 'heavy-support', number: 2, name: 'Heavy Support', type: 'sabotage', playable: true,
@@ -93,7 +96,7 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Destroy the enemy supply depot', 'Reach the extraction zone'],
     optional: [{ id: 'mg-nest', label: 'Eliminate the guarded MG nest' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Heavy Gunner: Suppressive Fire',
-    unlocks: { missions: ['field-medicine'], soldiers: ['doc'] },
+    unlocks: { missions: ['field-medicine'], recruits: ['doc'] },
   },
   {
     id: 'field-medicine', number: 3, name: 'Field Medicine', type: 'capture', playable: true,
@@ -101,7 +104,7 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Clear the outpost defenders', 'Hold the outpost', 'Survive until extraction'],
     optional: [{ id: 'all-extracted', label: 'Extract every soldier', replaces: 'fullExtraction' }], stars: { two: 'optionals', three: 'noDowns' },
     teaches: 'Medic: Field Treatment and fast revives',
-    unlocks: { missions: ['red-canyon'], soldiers: [] },
+    unlocks: { missions: ['red-canyon'], recruits: [] },
     legacyId: 'comms-outpost',
   },
   {
@@ -110,7 +113,7 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Advance into the canyon', 'Survive the ambush', 'Reach the extraction zone'],
     optional: [], stars: { two: 'fullExtraction', three: 'noDowns' },
     teaches: 'Revive under fire: 20 s bleed-out',
-    unlocks: { missions: ['bring-them-home'], soldiers: [] },
+    unlocks: { missions: ['bring-them-home'], recruits: [] },
   },
   {
     id: 'bring-them-home', number: 5, name: 'Bring Them Home', type: 'rescue', playable: true,
@@ -118,12 +121,12 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Clear the compound guards', 'Free the captive', 'Escort the captive to extraction'],
     optional: [{ id: 'captive-unharmed', label: 'The captive takes no damage' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Escort and positioning',
-    unlocks: { missions: [], soldiers: ['havoc'], capacityNote: 'Squad size 4 for Mission 6' },
+    unlocks: { missions: [], recruits: ['havoc'], capacityNote: 'Squad size 4 for Mission 6' },
   },
   {
     id: 'mission-6', number: 6, name: 'Coming soon', type: 'elimination', playable: false,
     briefing: 'The next operation is being planned.', primary: ['Not available in v0.4'], optional: [],
-    stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: 'Four-soldier squads', unlocks: { missions: [], soldiers: [] },
+    stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: 'Four-soldier squads', unlocks: { missions: [], recruits: [] },
   },
 ];
 
@@ -133,16 +136,45 @@ export const FIRST_MISSION = CAMPAIGN[0].id;
 export const campaignMission = (id: string): CampaignMission | undefined => CAMPAIGN.find((m) => m.id === id);
 export const capacityOf = (id: string): number => capacityFor(campaignMission(id)?.number ?? 1);
 
-/** Soldiers a brand-new save owns. */
+/**
+ * v0.6.1 NAMED CAMPAIGN RECRUITS. A milestone (first clear of `milestone`) unlocks a permanent
+ * Recruitment Office offer for this named soldier (`key` = their stable soldier id, also the
+ * offer key: claims are tracked by it, never by the display name). The same milestone unlocks the
+ * generic class (`newClass`) and the soldier's trait for random recruits, independently of the
+ * purchase. Patch's milestone is Mission 7, which is not in the game yet.
+ */
+export interface NamedRecruitDef {
+  key: string;
+  /** Mission id whose first clear unlocks the offer (Mission 7 does not exist yet). */
+  milestone: string;
+  missionNumber: number;
+  price: number;
+  /** True when this milestone also makes the soldier's class recruitable (Tank, Doc). */
+  newClass: boolean;
+  /** Campaign screen first-clear text. */
+  unlockText: string;
+  /** Second line of the unlock notification. */
+  notice: string;
+}
+export const NAMED_RECRUIT_PRICE = 1000;
+export const NAMED_RECRUITS: NamedRecruitDef[] = [
+  { key: 'tank', milestone: 'first-contact', missionNumber: 1, price: NAMED_RECRUIT_PRICE, newClass: true, unlockText: 'Unlock Tank + Heavy Gunner recruitment', notice: 'Heavy Gunners can now be recruited.' },
+  { key: 'doc', milestone: 'heavy-support', missionNumber: 2, price: NAMED_RECRUIT_PRICE, newClass: true, unlockText: 'Unlock Doc + Medic recruitment', notice: 'Medics can now be recruited.' },
+  { key: 'havoc', milestone: 'bring-them-home', missionNumber: 5, price: NAMED_RECRUIT_PRICE, newClass: false, unlockText: 'Unlock Havoc + Trigger Happy trait', notice: 'New named recruit · Trigger Happy trait now available for recruits.' },
+  { key: 'patch', milestone: 'mission-7', missionNumber: 7, price: NAMED_RECRUIT_PRICE, newClass: false, unlockText: 'Unlock Patch + Healer trait', notice: 'New named recruit · Healer trait now available for Medic recruits.' },
+];
+export const namedRecruit = (key: string) => NAMED_RECRUITS.find((n) => n.key === key);
+
+/** Soldiers a brand-new save owns (the only free soldiers). */
 export const STARTING_SOLDIERS = ['ace', 'ranger'];
-/** How each other soldier is unlocked (shown on locked Barracks cards). */
+/** How each named soldier becomes available (locked named soldiers are never shown as roster cards). */
 export const SOLDIER_UNLOCK: Record<string, { by: string | null; text: string }> = {
   ace: { by: null, text: 'Starting soldier' },
   ranger: { by: null, text: 'Starting soldier' },
-  tank: { by: 'first-contact', text: 'Joins when Mission 2 unlocks (clear Mission 1)' },
-  doc: { by: 'heavy-support', text: 'Joins when Mission 3 unlocks (clear Mission 2)' },
-  havoc: { by: 'bring-them-home', text: 'Joins after clearing Mission 5' },
-  patch: { by: null, text: 'Joins at the Mission 7 milestone (future update)' },
+  tank: { by: 'first-contact', text: 'Recruit in the Recruitment Office after clearing Mission 1' },
+  doc: { by: 'heavy-support', text: 'Recruit in the Recruitment Office after clearing Mission 2' },
+  havoc: { by: 'bring-them-home', text: 'Recruit in the Recruitment Office after clearing Mission 5' },
+  patch: { by: null, text: 'Recruit at the Mission 7 milestone (future update)' },
 };
 
 /** Mission ids unlocked by clearing `cleared` (the campaign's own rules, used for repair). */
@@ -151,11 +183,18 @@ export function derivedMissionUnlocks(completed: (id: string) => boolean): strin
   for (const m of CAMPAIGN) if (completed(m.id)) m.unlocks.missions.forEach((x) => out.add(x));
   return [...out];
 }
-/** Soldier ids the campaign has unlocked for these completions (starting soldiers included). */
+/**
+ * PRE-v0.6.1 rule, used only to migrate older saves: soldiers those versions AWARDED (joined the
+ * roster for free) for these completions (starting soldiers included).
+ */
 export function derivedSoldierUnlocks(completed: (id: string) => boolean): string[] {
   const out = new Set<string>(STARTING_SOLDIERS);
-  for (const m of CAMPAIGN) if (completed(m.id)) m.unlocks.soldiers.forEach((x) => out.add(x));
+  for (const m of CAMPAIGN) if (completed(m.id)) m.unlocks.recruits.forEach((x) => out.add(x));
   return [...out];
+}
+/** v0.6.1: named recruit offers (keys) whose milestone these completions reached. */
+export function derivedRecruitUnlocks(completed: (id: string) => boolean): string[] {
+  return NAMED_RECRUITS.filter((n) => completed(n.milestone)).map((n) => n.key);
 }
 
 // ---------------- stars ----------------

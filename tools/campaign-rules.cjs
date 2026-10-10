@@ -70,7 +70,9 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
       step(0.5); step(7);
       check('M1: walk in -> countdown -> extraction -> win', g.phase === 'won', `${g.phase} ${m1.phase}`);
       let rw = g.lastReward;
-      check('M1 first clear: 3 stars, unlocks Tank + Mission 2', rw && rw.firstClear && rw.stars === 3 && rw.unlockedSoldiers.join() === 'tank' && rw.unlockedMissions.join() === 'heavy-support' && R().isUnlocked('tank') && A().campaign.unlockedMissions.includes('heavy-support'), rw && JSON.stringify({ s: rw.stars, u: rw.unlockedSoldiers, m: rw.unlockedMissions }));
+      check('M1 first clear: 3 stars, unlocks the Tank OFFER (not Tank) + Mission 2', rw && rw.firstClear && rw.stars === 3 && rw.unlockedRecruits.join() === 'tank' && rw.unlockedSoldiers.length === 0 && rw.unlockedMissions.join() === 'heavy-support' && !R().isUnlocked('tank') && A().campaign.unlockedMissions.includes('heavy-support'), rw && JSON.stringify({ s: rw.stars, u: rw.unlockedRecruits, m: rw.unlockedMissions }));
+      // v0.6.1: buy Tank deliberately (1,000 CR, funded separately so the reward checks below stay exact)
+      A().credits += 1000; const buyTank = window.__economy.recruitNamed(R(), A(), 'tank', null);
       check('Campaign moves on to Mission 2 after the first clear', A().campaign.selectedMission === 'heavy-support', A().campaign.selectedMission);
       check('M1 has no optional objectives; 1000 CR first clear', m1.optional.length === 0 && rw.credits === 1000, rw.credits);
       // replay with a revive: 2 stars, nothing unlocked again
@@ -81,14 +83,16 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
       let t = 0; while (b1.state === 'downed' && t < 12) { g.update(1 / 60); t += 1 / 60; }
       g.win();
       rw = g.lastReward;
-      check('M1 replay, one revive: 2 stars (full extraction), best stays 3, nothing re-unlocked', rw.stars === 2 && rw.bestStars === 3 && A().missions['first-contact'].bestStars === 3 && !rw.firstClear && rw.unlockedSoldiers.length === 0 && rw.unlockedMissions.length === 0, `stars ${rw.stars}, best ${rw.bestStars}`);
+      check('M1 replay, one revive: 2 stars (full extraction), best stays 3, nothing re-unlocked', rw.stars === 2 && rw.bestStars === 3 && A().missions['first-contact'].bestStars === 3 && !rw.firstClear && rw.unlockedRecruits.length === 0 && rw.unlockedMissions.length === 0 && buyTank.ok && R().isUnlocked('tank'), `stars ${rw.stars}, best ${rw.bestStars}`);
       g.reset(); clearEnemies(); g.soldiers[1].state = 'kia'; g.win();
       check('M1 replay with a KIA: 1 star', g.lastReward.stars === 1 && A().missions['first-contact'].bestStars === 3, g.lastReward.stars);
       resolveFree();
       g.reset(); clearEnemies(); g.soldiers.forEach((s) => g.downSoldier(s)); step(0.05);
       check('defeat: 0 stars, best never lowered, no reward', g.phase === 'failed' && g.lastStars.stars === 0 && A().missions['first-contact'].bestStars === 3 && g.lastReward.credits === 0, `${g.phase} ${g.lastStars.stars}`);
+      // v0.6.1: the wiped squad is KIA (failure never rescues the downed): decide before going on
       const runs = A().settledRuns.length; g.win(); g.ui.showEnd();
       check('settled once per run (no double reward on repeated end)', A().settledRuns.length === runs, '');
+      resolveFree();
 
       // ---- M2: sabotage + optional MG nest ----
       check('Mission 2 selectable now', g.selectMission('heavy-support'), '');
@@ -111,11 +115,12 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
       clearEnemies(); g.win();
       rw = g.lastReward;
       const optXp = rw.xpLines.find((l) => /Optional/.test(l.label)), optCr = rw.creditLines.find((l) => /Optional/.test(l.label));
-      check('M2 optional pays +25 XP / +150 CR, 3 stars, unlocks Doc + Mission 3', optXp?.amount === 25 && optCr?.amount === 150 && rw.stars === 3 && rw.unlockedSoldiers.join() === 'doc' && rw.unlockedMissions.join() === 'field-medicine', `${optXp?.amount} XP ${optCr?.amount} CR stars ${rw.stars}`);
+      check('M2 optional pays +25 XP / +150 CR, 3 stars, unlocks Doc + Mission 3', optXp?.amount === 25 && optCr?.amount === 150 && rw.stars === 3 && rw.unlockedRecruits.join() === 'doc' && !R().isUnlocked('doc') && rw.unlockedMissions.join() === 'field-medicine', `${optXp?.amount} XP ${optCr?.amount} CR stars ${rw.stars}`);
       g.reset(); clearEnemies(); g.win();
       rw = g.lastReward;
       check('M2 replay without the nest: optional 0/1 pays nothing, 1 star', rw.stars === 1 && rw.xpLines.find((l) => /Optional/.test(l.label)).amount === 0 && g.mission.optional[0].completed === false, `stars ${rw.stars}`);
 
+      A().credits += 1000; window.__economy.recruitNamed(R(), A(), 'doc', null);
       // ---- M3: overlap rule ----
       g.selectMission('field-medicine');
       R().select('doc', 2, 3);
@@ -175,7 +180,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
         g.update(1 / 60);
       }
       const zz = m5.script.extraction.zone, inZ = (u) => u.pos.x >= zz.x && u.pos.x <= zz.x + zz.w && u.pos.y >= zz.y && u.pos.y <= zz.y + zz.h;
-      check('M5: everyone + captive in the zone -> win, unlocks Havoc + squad size 4', g.phase === 'won' && g.lastReward.unlockedSoldiers.join() === 'havoc' && g.lastReward.stars === 1, `${g.phase} ${m5.phase} ${g.lastReward?.unlockedSoldiers} npc in zone ${inZ(npc)} soldiers ${g.soldiers.map(inZ)} npc ${Math.round(npc.pos.x)},${Math.round(npc.pos.y)}`);
+      check('M5: everyone + captive in the zone -> win, unlocks Havoc + squad size 4', g.phase === 'won' && g.lastReward.unlockedRecruits.join() === 'havoc' && !R().isUnlocked('havoc') && g.lastReward.stars === 1, `${g.phase} ${m5.phase} ${g.lastReward?.unlockedRecruits} npc in zone ${inZ(npc)} soldiers ${g.soldiers.map(inZ)} npc ${Math.round(npc.pos.x)},${Math.round(npc.pos.y)}`);
       g.reset(); clearEnemies(); killTag('compound');
       const n2 = g.mission.npc; allTo({ x: n2.pos.x - 40, y: n2.pos.y + 30 }); step(CFG.escort.freeTime + 0.3);
       g.invuln = false; g.downSoldier(n2); n2.bleed = 0.01; g.soldiers.forEach((s) => (s.pos = { x: s.pos.x - 400, y: s.pos.y + 600 })); step(0.1);
@@ -276,7 +281,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     const old = JSON.parse(V03);
     let sv = await save();
     const st = await page.evaluate(() => ({ status: window.__loadStatus.status, from: window.__loadStatus.fromVersion, notice: document.querySelector('.m-notice')?.textContent || '' }));
-    check('v0.3 save migrated to v5 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 5 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
+    check('v0.3 save migrated to v6 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 6 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
     const xpSame = old.roster.every((s) => { const n = sv.roster.find((x) => x.id === s.id); return n.progression.xp === s.progression.xp && JSON.stringify(n.training) === JSON.stringify(s.training); });
     check('v0.3 save: credits, XP, training, squad training, settled runs kept', sv.account.credits === old.account.credits && xpSame && JSON.stringify(sv.account.squadTraining) === JSON.stringify(old.account.squadTraining) && sv.account.settledRuns.length === old.account.settledRuns.length, `credits ${sv.account.credits}`);
     check('v0.3 save: all 6 soldiers unlocked, campaign starts at Mission 1', sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.join() === 'first-contact' && sv.account.campaign.selectedMission === 'first-contact', `${sv.unlockedSoldiers} ${JSON.stringify(sv.account.campaign)}`);
@@ -339,13 +344,17 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     await page.waitForTimeout(100);
     const unl = await page.evaluate(() => [...document.querySelectorAll('.r-unl')].map((e) => e.textContent.trim()));
     if (OUT) await page.screenshot({ path: `${OUT}/results-first-clear-unlocks-desktop.png` });
-    check('Results: NEW SOLDIER JOINED: TANK + Mission 2 unlocked', unl.some((x) => /NEW SOLDIER JOINED: TANK/.test(x)) && unl.some((x) => /MISSION 2 UNLOCKED/.test(x)), unl.join(' | '));
+    check('Results: NEW RECRUIT AVAILABLE: TANK + Mission 2 unlocked (no "joined")', unl.some((x) => /NEW RECRUIT AVAILABLE: TANK/.test(x)) && unl.some((x) => /MISSION 2 UNLOCKED/.test(x)) && !unl.some((x) => /JOINED/.test(x)), unl.join(' | '));
     await page.click('[data-a="campaign"]');
     const sel = await page.evaluate(() => document.querySelector('.c-row.on')?.dataset.id);
     check('Campaign after the first clear: Mission 2 selected, M1 completed', sel === 'heavy-support' && await page.isVisible('.c-row.completed[data-id="first-contact"]'), sel);
     if (OUT) await page.screenshot({ path: `${OUT}/campaign-desktop-after-m1.png` });
-    await page.click('[data-a="to-barracks"]');
-    check('Barracks: Tank card unlocked with a NEW badge', await page.isVisible('.s-card.new[data-id="tank"] .s-new') && !(await page.isVisible('.s-card.locked[data-id="tank"]')), '');
+    // v0.6.1: one-time notice -> Recruitment Office (Tank is an offer there, not a roster card)
+    const notice = (await page.textContent('.rn-notice')).replace(/\s+/g, ' ');
+    check('Campaign after the first clear: NEW RECRUIT AVAILABLE notice (Tank — Heavy Gunner)', /NEW RECRUIT AVAILABLE/.test(notice) && /Tank/.test(notice) && /Heavy Gunner/.test(notice) && /Heavy Gunners can now be recruited/.test(notice), notice.slice(0, 120));
+    await page.click('[data-a="rn-visit"]');
+    await page.waitForTimeout(500);
+    check('Notice -> Recruitment Office with the Tank campaign recruit; Tank not in the roster', await page.isVisible('.nr-row[data-id="tank"]') && !(await page.evaluate(() => window.game.roster.isUnlocked('tank'))), '');
     if (OUT) await page.screenshot({ path: `${OUT}/barracks-desktop-tank-joined.png` });
     check('C: no page errors', errors.length === 0, errors.join(' | '));
     await ctx.close();

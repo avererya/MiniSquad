@@ -1,0 +1,403 @@
+{
+ "version": 5,
+ "roster": [
+  {
+   "id": "ace",
+   "name": "Ace",
+   "classId": "infantry",
+   "traitId": "sharpshooter",
+   "mods": {},
+   "progression": {
+    "level": 6,
+    "xp": 1013,
+    "upgrades": [],
+    "specialization": null,
+    "tier": "recruit",
+    "elitePath": null,
+    "eliteLevel": 0
+   },
+   "training": {
+    "accuracy": 0,
+    "damage": 1,
+    "hp": 1,
+    "fireRate": 0,
+    "moveSpeed": 0
+   },
+   "status": "active",
+   "resurrections": 0,
+   "service": {
+    "missions": 9,
+    "victories": 8,
+    "kills": 34,
+    "downs": 0,
+    "revives": 0,
+    "deaths": 0
+   }
+  },
+  {
+   "id": "ranger",
+   "name": "Ranger",
+   "classId": "infantry",
+   "traitId": "quickReflexes",
+   "mods": {},
+   "progression": {
+    "level": 3,
+    "xp": 450,
+    "upgrades": [],
+    "specialization": null,
+    "tier": "recruit",
+    "elitePath": null,
+    "eliteLevel": 0
+   },
+   "training": {
+    "accuracy": 0,
+    "damage": 0,
+    "hp": 0,
+    "fireRate": 0,
+    "moveSpeed": 0
+   },
+   "status": "active",
+   "resurrections": 0,
+   "service": {
+    "missions": 3,
+    "victories": 3,
+    "kills": 7,
+    "downs": 0,
+    "revives": 0,
+    "deaths": 0
+   }
+  },
+  {
+   "id": "tank",
+   "name": "Bulldozer",
+   "classId": "heavy",
+   "traitId": "tough",
+   "mods": {},
+   "progression": {
+    "level": 3,
+    "xp": 413,
+    "upgrades": [],
+    "specialization": null,
+    "tier": "recruit",
+    "elitePath": null,
+    "eliteLevel": 0
+   },
+   "training": {
+    "accuracy": 0,
+    "damage": 0,
+    "hp": 0,
+    "fireRate": 0,
+    "moveSpeed": 0
+   },
+   "status": "kia",
+   "resurrections": 0,
+   "service": {
+    "missions": 5,
+    "victories": 4,
+    "kills": 37,
+    "downs": 1,
+    "revives": 0,
+    "deaths": 1
+   }
+  },
+  {
+   "id": "patch",
+   "name": "Patch",
+   "classId": "medic",
+   "traitId": "healer",
+   "mods": {},
+   "progression": {
+    "level": 1,
+    "xp": 0,
+    "upgrades": [],
+    "specialization": null,
+    "tier": "recruit",
+    "elitePath": null,
+    "eliteLevel": 0
+   },
+   "training": {
+    "accuracy": 0,
+    "damage": 0,
+    "hp": 0,
+    "fireRate": 0,
+    "moveSpeed": 0
+   },
+   "status": "active",
+   "resurrections": 0,
+   "service": {
+    "missions": 0,
+    "victories": 0,
+    "kills": 0,
+    "downs": 0,
+    "revives": 0,
+    "deaths": 0
+   }
+  },
+  {
+   "id": "rc-1",
+   "name": "Lt Biscuit",
+   "classId": "heavy",
+   "traitId": "quickReflexes",
+   "mods": {},
+   "progression": {
+    "level": 1,
+    "xp": 0,
+    "upgrades": [],
+    "specialization": null,
+    "tier": "recruit",
+    "elitePath": null,
+    "eliteLevel": 0
+   },
+   "training": {
+    "accuracy": 0,
+    "damage": 0,
+    "hp": 0,
+    "fireRate": 0,
+    "moveSpeed": 0
+   },
+   "status": "active",
+   "resurrections": 0,
+   "service": {
+    "missions": 0,
+    "victories": 0,
+    "kills": 0,
+    "downs": 0,
+    "revives": 0,
+    "deaths": 0
+   }
+  },
+  {
+   "id": "rc-3",
+   "name": "Ghost",
+   "classId": "medic",
+   "traitId": "tough",
+   "mods": {},
+   "progression": {
+    "level": 1,
+    "xp": 0,
+    "upgrades": [],
+    "specialization": null,
+    "tier": "recruit",
+    "elitePath": null,
+    "eliteLevel": 0
+   },
+   "training": {
+    "accuracy": 1,
+    "damage": 0,
+    "hp": 0,
+    "fireRate": 0,
+    "moveSpeed": 0
+   },
+   "status": "active",
+   "resurrections": 0,
+   "service": {
+    "missions": 0,
+    "victories": 0,
+    "kills": 0,
+    "downs": 0,
+    "revives": 0,
+    "deaths": 0
+   }
+  }
+ ],
+ "squad": [
+  "ace",
+  "ranger",
+  "rc-1",
+  null,
+  null,
+  null
+ ],
+ "unlockedSoldiers": [
+  "ace",
+  "ranger",
+  "tank",
+  "havoc",
+  "doc"
+ ],
+ "account": {
+  "credits": 2800,
+  "squadTraining": {
+   "hp": 1,
+   "damage": 0,
+   "accuracy": 0,
+   "fireRate": 0
+  },
+  "missions": {
+   "first-contact": {
+    "completions": 2,
+    "firstClearRun": "mv1w3gkl-fujorz",
+    "bestStars": 3
+   },
+   "heavy-support": {
+    "completions": 1,
+    "firstClearRun": "mv1w3gkm-ekxcay",
+    "bestStars": 2
+   },
+   "field-medicine": {
+    "completions": 3,
+    "firstClearRun": "mv1w3gkm-lv8k0w",
+    "bestStars": 1
+   },
+   "red-canyon": {
+    "completions": 1,
+    "firstClearRun": "mv2c70sm-rc78dl",
+    "bestStars": 3
+   },
+   "bring-them-home": {
+    "completions": 1,
+    "firstClearRun": "mv2c70t5-7nyeve",
+    "bestStars": 1
+   }
+  },
+  "settledRuns": [
+   "mv1w3gkl-fujorz",
+   "mv1w3gkm-ekxcay",
+   "mv1w3gkm-i1o05k",
+   "mv1w3gkm-lv8k0w",
+   "mv1w3gkm-odklwy",
+   "mv2c70sm-rc78dl",
+   "mv2c70t5-7nyeve",
+   "mv2c70tn-awpinr",
+   "mv2c71p2-p0ryw9"
+  ],
+  "campaign": {
+   "unlockedMissions": [
+    "first-contact",
+    "heavy-support",
+    "field-medicine",
+    "red-canyon",
+    "bring-them-home"
+   ],
+   "selectedMission": "field-medicine"
+  },
+  "recruitment": {
+   "offers": [
+    {
+     "id": "rc-7",
+     "name": "Nova",
+     "classId": "infantry",
+     "traitId": "quickReflexes",
+     "level": 1
+    },
+    {
+     "id": "rc-8",
+     "name": "Blaze",
+     "classId": "infantry",
+     "traitId": "firstResponder",
+     "level": 1
+    },
+    {
+     "id": "rc-9",
+     "name": "Brick",
+     "classId": "heavy",
+     "traitId": "quickReflexes",
+     "level": 1
+    }
+   ],
+   "nextSeq": 10,
+   "usedNames": [
+    "Pebble",
+    "Shadow",
+    "Ghost",
+    "Lt Biscuit",
+    "Tank",
+    "Havoc",
+    "Doc"
+   ],
+   "introduced": [
+    "infantry",
+    "heavy",
+    "medic"
+   ],
+   "dismissed": [
+    {
+     "eventId": "dm-mv1w3gkp-rc-2",
+     "id": "rc-2",
+     "name": "Shadow",
+     "classId": "medic",
+     "level": 1,
+     "at": 1791606237865,
+     "refund": 250,
+     "restorable": false
+    },
+    {
+     "eventId": "dm-mv2c70tl-havoc",
+     "id": "havoc",
+     "name": "Havoc",
+     "classId": "heavy",
+     "level": 1,
+     "at": 1791633277929,
+     "refund": 250,
+     "restorable": false
+    }
+   ],
+   "rosterCap": 12,
+   "recruited": 3,
+   "refreshes": 1
+  },
+  "pendingDecision": {
+   "kind": "casualties",
+   "runId": "mv2c71p2-p0ryw9",
+   "missionId": "field-medicine",
+   "at": 1791633280169,
+   "queue": [
+    {
+     "id": "tank",
+     "cause": "bleedout"
+    }
+   ],
+   "total": 1,
+   "resolved": []
+  },
+  "memorial": [
+   {
+    "eventId": "mm-mv2c71p1-doc",
+    "soldier": {
+     "id": "doc",
+     "name": "Doc",
+     "classId": "medic",
+     "traitId": "firstResponder",
+     "mods": {},
+     "progression": {
+      "level": 1,
+      "xp": 125,
+      "upgrades": [],
+      "specialization": null,
+      "tier": "recruit",
+      "elitePath": null,
+      "eliteLevel": 0
+     },
+     "training": {
+      "accuracy": 0,
+      "damage": 0,
+      "hp": 0,
+      "fireRate": 0,
+      "moveSpeed": 0
+     },
+     "status": "kia",
+     "resurrections": 0,
+     "service": {
+      "missions": 3,
+      "victories": 2,
+      "kills": 3,
+      "downs": 1,
+      "revives": 0,
+      "deaths": 1
+     }
+    },
+    "missionId": "field-medicine",
+    "runId": "mv2c70tn-awpinr",
+    "cause": "bleedout",
+    "at": 1791633279061,
+    "cost": 1000,
+    "affordable": false
+   }
+  ],
+  "phoenix": {
+   "grants": [],
+   "pending": null
+  },
+  "activeRun": null
+ }
+}

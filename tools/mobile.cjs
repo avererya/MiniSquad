@@ -176,7 +176,8 @@ const DEVICES = [
     await page.waitForTimeout(100);
     const rt = await page.evaluate(() => ({ phase: window.game.phase, ids: window.game.soldiers.map((s) => `${s.identity.id}:${s.state}:${s.hp}`).join() }));
     check(`${dev.name}: Retry restarts with the same squad, fresh HP`, rt.phase === 'playing' && rt.ids === 'ace:active:100,havoc:active:150,doc:active:80', JSON.stringify(rt));
-    await page.evaluate(() => { const g = window.game; g.invuln = false; g.soldiers.forEach((s) => g.downSoldier(s)); });
+    // v0.6.1: a squad wipe is now KIA (covered by tools/failure-recruit-mobile.cjs); a failed objective with the squad standing keeps these buttons
+    await page.evaluate(() => { const g = window.game; g.mission.failReason = 'Objective failed.'; g.fail(); });
     await page.waitForTimeout(150);
     Rl = await menuLayout(RESULT_SEL);
     check(`${dev.name} landscape: defeat Results fit`, Rl.n === 4 && Rl.boxes.every((b) => b.inside && b.aligned), '');

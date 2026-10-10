@@ -15,7 +15,7 @@ import * as campaign from './campaign';
 import * as recruitment from './recruitment';
 import * as casualties from './casualties';
 import { SimClock } from './clock';
-import { CAMPAIGN } from './campaign';
+import { CAMPAIGN, namedRecruit } from './campaign';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -54,7 +54,10 @@ function resetRosterSave(notice?: string): boolean {
 function debugUnlockAll() {
   const a = getAccount();
   a.campaign.unlockedMissions = CAMPAIGN.filter((m) => m.playable).map((m) => m.id);
-  for (const s of game.roster.soldiers) game.roster.unlock(s.id);
+  for (const s of game.roster.soldiers) {
+    // dev: every named soldier joins and their offer counts as claimed (no Credits, no notice)
+    if (game.roster.unlock(s.id) && namedRecruit(s.id)) for (const l of [a.named.unlocked, a.named.claimed, a.named.notified]) if (!l.includes(s.id)) l.push(s.id);
+  }
   persist();
   useRoster(game.roster, 'DEBUG: all missions and soldiers unlocked (saved).');
 }
@@ -120,7 +123,9 @@ if (preset) game.reset(preset.classes);
 else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 6), 'temp');
 else {
   const msg = loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.'
-    : loaded.status === 'migrated' ? (loaded.fromVersion === 4
+    : loaded.status === 'migrated' ? (loaded.fromVersion === 5
+      ? 'Save updated for v0.6.1: every soldier you have was kept (nothing charged). New: campaign milestones now unlock named recruits you choose to buy in the Recruitment Office.'
+      : loaded.fromVersion === 4
       ? 'Save updated for v0.6: everything was kept. New: KIA is now permanent — fallen soldiers can be resurrected or honored in the Memorial.'
       : loaded.fromVersion === 3
         ? 'Save updated for v0.6: all your soldiers, XP, training, Credits and campaign progress were kept. New: the Recruitment Office and permanent KIA.'

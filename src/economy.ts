@@ -10,7 +10,7 @@
 //  - Purchases carry the rank the button was drawn for (expectedRank): a stale or repeated event
 //    for an already-bought rank is refused. The UI also ignores taps within purchaseLockMs.
 import type { Roster } from './roster';
-import { campaignMission } from './campaign';
+import { NAMED_RECRUITS, campaignMission, namedRecruit, type NamedRecruitDef } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, TRAINING, addXp, computeMissionRewards, levelForXp, newTraining, nextCost, xpForLevel,
   type AccountData, type CandidateRecord, type CasualtyDecision, type DismissalRecord, type FallenEntry, type KiaCause, type MemorialRecord, type MissionOutcome, type MissionReward,
@@ -18,7 +18,7 @@ import {
 } from './progression';
 import { newProgression, newService, type SoldierIdentity } from './classes';
 import {
-  REFRESH_COST, campaignProgress, ensureOffers, generateCandidate, nameKey, newLineup, pendingIntroductions, priceOf, refundOf, takenNames, validateName,
+  REFRESH_COST, campaignFlags, campaignProgress, ensureOffers, generateCandidate, nameKey, newLineup, pendingIntroductions, priceOf, refundOf, startingLevelFor, takenNames, validateName,
   type GenContext,
 } from './recruitment';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL, PHOENIX_RECRUITS, costFor, decisionBlock, pendingCasualties, phoenixEligible } from './casualties';
@@ -39,6 +39,14 @@ export function newRunId(): string {
  * id: returns null (and changes nothing) for a run that was already settled.
  * `rewards: false` (a mission force-started while locked, dev tools): no XP / Credits / stars /
  * unlocks, but deaths and the career record still count (a roster soldier really fought).
+ *
+ * v0.6.1 MISSION FAILURE: when the mission is lost (`won: false`: total squad defeat, a failed
+ * objective such as a lost captive, a timer failure), every soldier still DOWNED becomes KIA
+ * (cause 'failed'); standing soldiers (revived ones included) come home; soldiers already KIA stay
+ * KIA (one death, one casualty entry). This transaction only runs for a mission that really ended
+ * in play: closing / reloading the app mid-mission goes through recoverInterruptedRun instead,
+ * which keeps the v0.6 behaviour (only soldiers who had already fallen are lost).
+ * v0.6.1 first clears unlock named recruit OFFERS (account.named), never a free soldier.
  */
 export function settleMission(roster: Roster, account: AccountData, o: MissionOutcome, kills: Record<string, number> = {}, opts: { rewards?: boolean; now?: number } = {}): MissionReward | null {
   if (account.settledRuns.includes(o.runId)) return null;
@@ -53,9 +61,13 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
   const calc = pay ? computeMissionRewards(o, firstClear, legacyPaid) : computeMissionRewards({ ...o, won: false }, false);
   const soldiers: SoldierReward[] = [];
   const fallen: FallenEntry[] = [];
-  for (const d of o.deployed) {
+  let survivors = 0;
+  for (const d0 of o.deployed) {
+    // a legitimate failure never rescues a downed soldier
+    const d = !o.won && d0.status === 'Downed' ? { ...d0, status: 'KIA' as const, cause: 'failed' as const } : d0;
     const s = roster.get(d.id);
     if (!s || !s.progression) continue;
+    if (d.status === 'Standing') survivors++;
     const p = s.progression;
     const before = { level: p.level, xp: p.xp };
     const eligible = pay && o.won && d.status === 'Standing';
@@ -75,7 +87,7 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
     soldiers.push({ id: s.id, name: s.name, status: d.status, eligible, xp, gained: res.gained, before, after: { level: p.level, xp: p.xp }, levelsGained: p.level - before.level, capped: res.gained < xp });
   }
   account.credits += calc.credits;
-  const unlockedSoldiers: string[] = [], unlockedMissions: string[] = [];
+  const unlockedSoldiers: string[] = [], unlockedMissions: string[] = [], unlockedRecruits: string[] = [];
   if (pay && o.won) {
     rec.completions++;
     if (firstClear) rec.firstClearRun = o.runId;
@@ -84,7 +96,7 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
     // campaign unlocks (idempotent: only what is new is reported)
     if (def) {
       for (const m of def.unlocks.missions) if (!account.campaign.unlockedMissions.includes(m)) { account.campaign.unlockedMissions.push(m); unlockedMissions.push(m); }
-      for (const id of def.unlocks.soldiers) if (roster.unlock(id)) unlockedSoldiers.push(id);
+      for (const key of def.unlocks.recruits) if (unlockRecruitOffer(account, key)) unlockedRecruits.push(key);
     }
   }
   addCasualties(account, o.runId, o.missionId, fallen, opts.now);
@@ -92,10 +104,17 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
   markSettled(account, o.runId);
   return {
     runId: o.runId, missionId: o.missionId, won: o.won, firstClear, legacyFirstClearPaid: firstClear && legacyPaid,
-    stars: pay && o.won ? Math.max(0, Math.min(3, o.stars ?? 1)) : 0, prevBest, bestStars: rec.bestStars, unlockedSoldiers, unlockedMissions,
+    stars: pay && o.won ? Math.max(0, Math.min(3, o.stars ?? 1)) : 0, prevBest, bestStars: rec.bestStars, unlockedSoldiers, unlockedRecruits, unlockedMissions,
     xpLines: calc.xpLines, xpMul: calc.xpMul, xpEach: calc.xpEach,
-    creditLines: calc.creditLines, credits: calc.credits, creditsAfter: account.credits, soldiers, fallen, rewarded: pay,
+    creditLines: calc.creditLines, credits: calc.credits, creditsAfter: account.credits, soldiers, fallen, survivors, rewarded: pay,
   };
+}
+
+/** Milestone reached: open the named recruit offer (true only the first time; never adds a soldier). */
+export function unlockRecruitOffer(account: AccountData, key: string): boolean {
+  if (!namedRecruit(key) || account.named.unlocked.includes(key)) return false;
+  account.named.unlocked.push(key);
+  return true;
 }
 
 function markSettled(account: AccountData, runId: string) {
@@ -208,11 +227,13 @@ function snapshot(roster: Roster, account: AccountData) {
   return {
     credits: account.credits, soldiers: structuredClone(roster.soldiers), slots: [...roster.slots], rec: structuredClone(account.recruitment),
     pending: structuredClone(account.pendingDecision), memorial: [...account.memorial], phoenix: structuredClone(account.phoenix),
+    named: structuredClone(account.named), unlocked: new Set(roster.unlocked),
   };
 }
 function restore(roster: Roster, account: AccountData, s: ReturnType<typeof snapshot>) {
   account.credits = s.credits; roster.soldiers = s.soldiers; roster.slots = s.slots; account.recruitment = s.rec;
   account.pendingDecision = s.pending; account.memorial = s.memorial; account.phoenix = s.phoenix;
+  account.named = s.named; roster.unlocked = s.unlocked;
 }
 function commit(roster: Roster, account: AccountData, snap: ReturnType<typeof snapshot>, persist: PersistFn | null, what: string): { ok: true; saved: boolean } | { ok: false; reason: string } {
   const w = persist ? persist() : 'ok';
@@ -222,7 +243,7 @@ function commit(roster: Roster, account: AccountData, snap: ReturnType<typeof sn
 
 /** Generation context for the current roster/account (rng injectable for tests). */
 export function genContext(roster: Roster, account: AccountData, rng: () => number = Math.random, extraTaken: string[] = []): GenContext {
-  return { flags: roster.unlocked, progress: campaignProgress(account), taken: takenNames(roster.soldiers.map((s) => s.name), account.recruitment, extraTaken), rng };
+  return { flags: campaignFlags(account), progress: campaignProgress(account), taken: takenNames(roster.soldiers.map((s) => s.name), account.recruitment, extraTaken), rng };
 }
 
 /** Office shown: make sure three offers exist and pending class introductions happened (free). Saves if anything changed. */
@@ -264,11 +285,74 @@ export function recruit(roster: Roster, account: AccountData, candidateId: strin
   rec.recruited++;
   // replace only this offer (the other two stay exactly as they are)
   rec.offers.splice(slot, 1);
-  const next = generateCandidate(rec, genContext(roster, account, opts.rng, [c.name]), pendingIntroductions(rec, roster.unlocked)[0]);
+  const next = generateCandidate(rec, genContext(roster, account, opts.rng, [c.name]), pendingIntroductions(rec, campaignFlags(account))[0]);
   rec.offers.splice(slot, 0, next);
   const r = commit(roster, account, snap, persist, 'recruitment');
   return r.ok ? { ...r, soldier, cost } : r;
 }
+
+// ---------------- v0.6.1: named campaign recruits ----------------
+// One permanent offer per named soldier (Tank, Doc, Havoc, Patch), opened by its milestone,
+// separate from the three random offers (a Refresh never touches it and it never counts as a
+// class introduction). Bought at most once, enforced by the offer key (the soldier's stable id),
+// never by a display name: a rename, dismissal or Memorial can't reopen it.
+
+export interface NamedOffer { def: NamedRecruitDef; soldier: SoldierIdentity; level: number }
+
+/** Offers on the table right now: milestone reached, not claimed, the (locked) named soldier still exists. */
+export function namedOffers(roster: Roster, account: AccountData): NamedOffer[] {
+  const level = startingLevelFor(campaignProgress(account));
+  return NAMED_RECRUITS.filter((n) => account.named.unlocked.includes(n.key) && !account.named.claimed.includes(n.key))
+    .map((n) => ({ def: n, soldier: roster.get(n.key)!, level }))
+    .filter((o) => !!o.soldier && !roster.isUnlocked(o.def.key));
+}
+/** Named recruits whose milestone has not been reached yet (and that were never claimed). */
+export const lockedNamedRecruits = (account: AccountData): NamedRecruitDef[] =>
+  NAMED_RECRUITS.filter((n) => !account.named.unlocked.includes(n.key) && !account.named.claimed.includes(n.key));
+
+/**
+ * Buy a named campaign recruit: offer open -> no pending decision -> roster not full -> Credits ->
+ * deduct -> the soldier joins (owned) at the current recruit starting level (recruitment.ts
+ * level scaling), keeping their name, class and natural trait -> offer claimed for good -> save.
+ * Refused without any change (no charge) when blocked.
+ */
+export function recruitNamed(roster: Roster, account: AccountData, key: string, persist: PersistFn | null, opts: { inMission?: boolean; now?: number } = {}): TxResult<{ soldier: SoldierIdentity; cost: number }> {
+  if (opts.inMission) return { ok: false, reason: 'Not during a mission' };
+  const def = namedRecruit(key);
+  if (!def) return { ok: false, reason: 'Unknown recruit' };
+  if (account.named.claimed.includes(key) || roster.isUnlocked(key)) return { ok: false, reason: 'Already recruited' };
+  if (!account.named.unlocked.includes(key)) return { ok: false, reason: `Not available yet: clear Mission ${def.missionNumber}` };
+  const s = roster.get(key);
+  if (!s) return { ok: false, reason: 'Already recruited' };
+  const block = recruitBlock(roster, account);
+  if (block) return { ok: false, reason: block };
+  const cost = def.price;
+  if (account.credits < cost) return { ok: false, reason: `Not enough Credits (${cost} needed)` };
+  const snap = snapshot(roster, account);
+  const level = startingLevelFor(campaignProgress(account));
+  account.credits -= cost;
+  const p = s.progression ?? newProgression();
+  if (p.xp < xpForLevel(level)) { p.xp = xpForLevel(level); p.level = levelForXp(p.xp); }
+  s.progression = p;
+  s.status = 'active';
+  roster.unlock(key);
+  account.named.claimed.push(key);
+  if (!account.named.notified.includes(key)) account.named.notified.push(key);
+  account.named.history.push({ key, soldierId: s.id, at: opts.now ?? Date.now(), cost, level: p.level });
+  account.recruitment.recruited++;
+  const r = commit(roster, account, snap, persist, 'recruitment');
+  return r.ok ? { ...r, soldier: s, cost } : r;
+}
+
+/** The one-time unlock notice was shown (dismissed or followed): never shown again. */
+export function markRecruitNotified(account: AccountData, key: string, persist: PersistFn | null) {
+  if (account.named.notified.includes(key)) return;
+  account.named.notified.push(key);
+  persist?.();
+}
+/** The first named recruit whose unlock notice is still owed (null = none). */
+export const pendingRecruitNotice = (account: AccountData): NamedRecruitDef | null =>
+  NAMED_RECRUITS.find((n) => account.named.unlocked.includes(n.key) && !account.named.notified.includes(n.key) && !account.named.claimed.includes(n.key)) ?? null;
 
 /** Key of the lineup a Refresh button was drawn for (stale / repeated taps are refused). */
 export const lineupKey = (rec: AccountData['recruitment']) => rec.offers.map((o) => o.id).join(',');
