@@ -203,7 +203,7 @@ export class BossFight {
     this.enter('rest', game);
   }
 
-  /** Slow advance: keep ~300 px from the nearest soldier, never leave the arena, stand still while firing. */
+  /** Slow advance: keep ~300 px from the nearest soldier (closer when cover blocks every shot), never leave the arena, stand still while firing. */
   private move(game: Game, dt: number) {
     const u = this.unit;
     let vx = 0, vy = 0;
@@ -212,7 +212,9 @@ export class BossFight {
       const near = vs.sort((a, b) => dist(a.pos, u.pos) - dist(b.pos, u.pos))[0];
       if (near) {
         const d = dist(near.pos, u.pos);
-        const want = d > 340 ? 1 : d < 220 ? -1 : 0;
+        // no clear shot at anyone (cover between): close in until he has one (he never camps behind a block)
+        const los = this.victims(game).some((v) => dist(v.pos, u.pos) <= CFG.boss.range && game.world.clear(u.pos, v.pos));
+        const want = !los ? 1 : d > 340 ? 1 : d < 220 ? -1 : 0;
         let goal: Vec = { x: u.pos.x + ((near.pos.x - u.pos.x) / d) * 80 * want, y: u.pos.y + ((near.pos.y - u.pos.y) / d) * 80 * want };
         const A = this.arena, m = 70;
         goal = { x: clamp(goal.x, A.x + m, A.x + A.w - m), y: clamp(goal.y, A.y + m, A.y + A.h - m) };
@@ -246,11 +248,12 @@ export class BossFight {
     game.fx.shake = Math.max(game.fx.shake, 26);
     game.scorches.push({ ...p, r: 90 });
     game.mission.wrecks.push({ id: 'warden', pos: { ...p }, kind: 'warden' });
-    game.banner('THE IRON WARDEN IS DOWN!', '#7dff8a', 4);
     sfx('boom');
     // survivors rout: they stop fighting and leave (no surprise wipe while extracting)
     for (const e of game.enemies) if (e.active && !e.structure && !e.vehicle && e !== this.unit) { e.routed = true; e.target = null; e.guard = false; }
     game.mission.emit(game, { type: 'bossDefeated', unit: this.unit });
+    // (after the objective's own banner, so this one is what the player sees)
+    game.banner('THE IRON WARDEN IS DOWN! — PROCEED TO EXTRACTION', '#7dff8a', 4.5);
   }
 
   /** Where the windup cone points (render): null when not winding up / firing. */

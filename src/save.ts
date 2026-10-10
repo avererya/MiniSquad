@@ -559,7 +559,7 @@ export function parseSave(raw: string | null): LoadResult {
     const list = (x: unknown) => (Array.isArray(x) ? x.filter((c): c is string => typeof c === 'string' && c in CLASS_UNLOCK_TEXT) : []);
     const stored = isObj(raw) ? list(raw.unlocked) : [];
     const derived = derivedClassUnlocks(done);
-    for (const c of stored) if (!derived.includes(c)) notes.push(`Class ${c}: unlocked without its milestone, kept.`);
+    // (a stored unlock without its milestone record, e.g. a dev save, is kept as is: it never grants a soldier)
     cu.unlocked = [...new Set([...stored, ...derived])];
     cu.notified = isObj(raw) ? list(raw.notified).filter((c) => cu.unlocked.includes(c)) : [...cu.unlocked];
     account.classUnlocks = cu;
