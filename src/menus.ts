@@ -18,7 +18,7 @@ import { SQUAD_SLOTS, defaultRoster } from './roster';
 import { drawClassPortrait } from './render';
 import { unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
-import { CAMPAIGN, CAPACITY_TABLE, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
+import { CAMPAIGN, CAPACITY_TABLE, CHAPTERS, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
@@ -143,14 +143,18 @@ export class Menus {
     const acc = getAccount();
     const total = CAMPAIGN.filter((m) => m.playable).length * 3;
     const got = CAMPAIGN.reduce((a, m) => a + (acc.missions[m.id]?.bestStars ?? 0), 0);
-    let chap = 0;
-    const list = CAMPAIGN.map((m) => {
+    // v0.6.2: one chapter at a time (Chapter 1: Missions 1-5, Chapter 2: Behind Enemy Lines, 6-10,
+    // Chapter 3: coming soon), switched with the chapter tabs; the shown chapter is the selected mission's
+    const sel0 = campaignMission(this.campaignSel) ?? CAMPAIGN[0];
+    const chap = chapterOf(sel0.number).number;
+    const tabs = CHAPTERS.map((c) => {
+      const ms = CAMPAIGN.filter((m) => chapterOf(m.number).number === c.number);
+      const st = ms.reduce((a, m) => a + (acc.missions[m.id]?.bestStars ?? 0), 0), max = ms.filter((m) => m.playable).length * 3;
+      return `<button class="c-tab ${c.number === chap ? 'on' : ''}" data-a="cchap" data-ch="${c.number}" title="Chapter ${c.number}: ${esc(c.name)}">CH ${c.number}${max ? ` <small>★${st}/${max}</small>` : ' <small>SOON</small>'}</button>`;
+    }).join('');
+    const list = `<div class="c-tabs">${tabs}</div>` + CAMPAIGN.filter((m) => chapterOf(m.number).number === chap).map((m) => {
       const st = this.missionState(m), best = acc.missions[m.id]?.bestStars ?? 0;
-      const c = chapterOf(m.number);
-      // v0.6.2: chapter headers (Chapter 1: Missions 1-5, Chapter 2: Behind Enemy Lines, 6-10)
-      const head = c.number !== chap ? `<div class="c-chap">CHAPTER ${c.number} · ${esc(c.name.toUpperCase())}</div>` : '';
-      chap = c.number;
-      return `${head}<button class="c-row ${st} ${m.id === this.campaignSel ? 'on' : ''}" data-a="csel" data-id="${m.id}">
+      return `<button class="c-row ${st} ${m.id === this.campaignSel ? 'on' : ''}" data-a="csel" data-id="${m.id}">
         <span class="c-num">${m.playable ? m.number : '…'}</span>
         <span class="c-name"><b>${esc(m.name)}</b><small>${m.playable ? MISSION_TYPE_LABEL[m.type] : 'Future update'}</small></span>
         <span class="c-state">${st === 'locked' ? '🔒' : st === 'soon' ? '' : stars(best)}</span>
@@ -278,7 +282,7 @@ export class Menus {
     const block = st === 'locked' || st === 'soon' ? 'Mission locked' : this.game.roster.deployBlock(cap);
     return `
       <section class="c-detail ${st}">
-        <div class="c-kicker">MISSION ${m.playable ? m.number : '—'} · ${m.playable ? MISSION_TYPE_LABEL[m.type].toUpperCase() : 'FUTURE'} <span class="c-chip ${st}">${chip}</span></div>
+        <div class="c-kicker">${chapterOf(m.number).name && m.playable ? `<span class="c-kchap">CHAPTER ${chapterOf(m.number).number}: ${esc(chapterOf(m.number).name.toUpperCase())} · </span>` : ''}MISSION ${m.playable ? m.number : '—'} · ${m.playable ? MISSION_TYPE_LABEL[m.type].toUpperCase() : 'FUTURE'} <span class="c-chip ${st}">${chip}</span></div>
         <div class="c-title">${esc(m.name)} ${m.playable ? stars(best) : ''}</div>
         <div class="c-brief">${esc(m.briefing)}</div>
         <div class="c-grid">
@@ -1233,6 +1237,17 @@ export class Menus {
         this.newSoldiers.clear(); this.tab = 'roster'; this.detailsId = null; this.dismissId = null; this.renameId = null; this.targetSlot = null; this.trainId = 'ace';
         const ok = g.resetRosterSave?.('New campaign started: Ace and Ranger, Mission 1. Your previous save was backed up on this device.') ?? false;
         if (!ok) { this.renderCampaign(); this.notice('Could not back up the current save: nothing was wiped.'); }
+        return;
+      }
+      case 'cchap': {
+        // chapter tab: show that chapter (selects its first unlocked mission, else its first mission)
+        const n = Number(el.dataset.ch);
+        const ms = CAMPAIGN.filter((m) => chapterOf(m.number).number === n);
+        const pick = ms.find((m) => m.id === g.missionId) ?? [...ms].reverse().find((m) => m.playable && this.missionState(m) !== 'locked') ?? ms[0];
+        if (!pick) return;
+        this.campaignSel = pick.id;
+        if (pick.playable && this.missionState(pick) !== 'locked') g.selectMission(pick.id);
+        this.renderCampaign();
         return;
       }
       case 'csel': {

@@ -176,11 +176,14 @@ export function mergeSoldier(def: SoldierIdentity, v: Record<string, unknown>, n
   return s;
 }
 
+/** v0.6.2: set by parseSave: the save predates the Sniper class (v1-v6), so a 'sniper' recruit is invalid (no free Sniper). */
+let preSniper = false;
+
 /** A saved recruit: own class + trait (validated), progression, training. Never dropped for a bad field. */
 function cleanRecruit(v: Record<string, unknown>, notes: string[], keepKia = false): SoldierIdentity {
   const id = v.id as string;
   let classId = v.classId as SoldierIdentity['classId'];
-  if (!(CLASS_IDS as string[]).includes(classId)) { notes.push(`Recruit ${id}: class ${String(v.classId)} invalid, set to Infantry.`); classId = 'infantry'; }
+  if (!(CLASS_IDS as string[]).includes(classId) || (preSniper && classId === 'sniper')) { notes.push(`Recruit ${id}: class ${String(v.classId)} invalid, set to Infantry.`); classId = 'infantry'; }
   let traitId = v.traitId as SoldierIdentity['traitId'];
   if (!isTraitValidFor(traitId, classId)) { notes.push(`Recruit ${id}: trait ${String(v.traitId)} invalid, set to Sharpshooter.`); traitId = 'sharpshooter'; }
   const base: SoldierIdentity = { id, name: '', classId, traitId, mods: {}, progression: newProgression(), training: newTraining(), status: 'active', resurrections: 0, service: newService() };
@@ -410,6 +413,7 @@ export function parseSave(raw: string | null): LoadResult {
     return { roster: new Roster(), account: newAccount(), notes, status: 'reset', fromVersion: null };
   }
   const version = typeof data.version === 'number' ? data.version : null;
+  preSniper = version !== null && version < 7;
   const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === 6 || version === 7;
   const legacy = version === 1 || version === 2;
   const preRecruit = version !== 4 && version !== 5 && version !== 6 && version !== 7; // v1-v3 (and unknown): no recruitment state yet

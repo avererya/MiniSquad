@@ -281,7 +281,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     const old = JSON.parse(V03);
     let sv = await save();
     const st = await page.evaluate(() => ({ status: window.__loadStatus.status, from: window.__loadStatus.fromVersion, notice: document.querySelector('.m-notice')?.textContent || '' }));
-    check('v0.3 save migrated to v6 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 6 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
+    check('v0.3 save migrated to v7 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 7 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
     const xpSame = old.roster.every((s) => { const n = sv.roster.find((x) => x.id === s.id); return n.progression.xp === s.progression.xp && JSON.stringify(n.training) === JSON.stringify(s.training); });
     check('v0.3 save: credits, XP, training, squad training, settled runs kept', sv.account.credits === old.account.credits && xpSame && JSON.stringify(sv.account.squadTraining) === JSON.stringify(old.account.squadTraining) && sv.account.settledRuns.length === old.account.settledRuns.length, `credits ${sv.account.credits}`);
     check('v0.3 save: all 6 soldiers unlocked, campaign starts at Mission 1', sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.join() === 'first-contact' && sv.account.campaign.selectedMission === 'first-contact', `${sv.unlockedSoldiers} ${JSON.stringify(sv.account.campaign)}`);
@@ -332,7 +332,12 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(URL); await page.waitForTimeout(200);
     const rows = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
-    check('Campaign lists M1-M5 + a future slot; M1 available, M2-M5 locked', rows.length === 6 && /first-contact:available/.test(rows[0]) && rows.slice(1, 5).every((r) => /locked/.test(r)) && /soon/.test(rows[5]), rows.join(' '));
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('.c-tab')].map((t) => t.textContent.replace(/\s+/g, ' ').trim()));
+    check('Campaign shows Chapter 1 (M1-M5; M1 available, M2-M5 locked) + chapter tabs CH 1 / CH 2 / CH 3 SOON', rows.length === 5 && /first-contact:available/.test(rows[0]) && rows.slice(1, 5).every((r) => /locked/.test(r)) && tabs.length === 3 && /CH 1/.test(tabs[0]) && /CH 2/.test(tabs[1]) && /SOON/.test(tabs[2]), rows.join(' ') + ' | ' + tabs.join(','));
+    await page.click('[data-a="cchap"][data-ch="2"]');
+    const rows2 = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
+    check('Chapter 2 tab: Missions 6-10 listed, all locked on a fresh save', rows2.length === 5 && rows2[0].startsWith('bridgehead') && rows2[4].startsWith('iron-fist') && rows2.every((r) => /locked/.test(r)), rows2.join(' '));
+    await page.click('[data-a="cchap"][data-ch="1"]');
     await page.click('[data-a="csel"][data-id="red-canyon"]');
     const lockTxt = await page.textContent('.c-detail');
     check('locked mission shows how to unlock it, Deploy disabled', /Clear Mission 3/.test(lockTxt) && await page.isDisabled('.c-btns [data-a="deploy"]'), lockTxt.replace(/\s+/g, ' ').slice(0, 80));

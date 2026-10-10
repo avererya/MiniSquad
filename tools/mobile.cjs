@@ -38,13 +38,14 @@ const DEVICES = [
       return { vw, vh, n: els.length, boxes, fontPx, minFont, menuScroll: m.scrollHeight > m.clientHeight + 1, hOverflow: de.scrollWidth > vw + 1 || m.scrollWidth > m.clientWidth + 1 };
     }, sel);
     // ---------- Campaign ----------
-    const CAMPAIGN_SEL = '.c-row, .c-btns [data-a="deploy"], .c-btns [data-a="to-barracks"]';
+    // v0.6.2: one chapter at a time (5 mission rows) + 3 chapter tabs
+    const CAMPAIGN_SEL = '.c-row, .c-tab, .c-btns [data-a="deploy"], .c-btns [data-a="to-barracks"]';
     let C = await menuLayout(CAMPAIGN_SEL);
-    check(`${dev.name} portrait: Campaign usable (6 rows, no sideways scroll)`, C.n === 8 && !C.hOverflow && C.minFont >= 11, `min font ${C.minFont}px, vertical scroll ${C.menuScroll}`);
+    check(`${dev.name} portrait: Campaign usable (5 rows + 3 chapter tabs, no sideways scroll)`, C.n === 10 && !C.hOverflow && C.minFont >= 11, `min font ${C.minFont}px, vertical scroll ${C.menuScroll}`);
     await page.screenshot({ path: `${OUT}/m-${dev.name}-portrait-campaign.png` });
     const campaignChecks = async (tag) => {
       const L = await menuLayout(CAMPAIGN_SEL);
-      check(`${dev.name} ${tag}: Campaign rows + Deploy/Squad on screen, tappable`, L.n === 8 && L.boxes.every((b) => b.inside && b.aligned) && !L.hOverflow && !L.menuScroll && L.boxes.slice(-2).every((b) => b.h >= 30), `min font ${L.minFont}px, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}, scroll ${L.menuScroll}`);
+      check(`${dev.name} ${tag}: Campaign rows + chapter tabs + Deploy/Squad on screen, tappable`, L.n === 10 && L.boxes.every((b) => b.inside && b.aligned) && !L.hOverflow && !L.menuScroll && L.boxes.slice(-2).every((b) => b.h >= 30), `min font ${L.minFont}px, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}, scroll ${L.menuScroll}`);
       check(`${dev.name} ${tag}: Campaign text >= 11px`, L.minFont >= 11, `${L.minFont}px`);
     };
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);

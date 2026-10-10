@@ -738,7 +738,14 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 .ability[data-ability="focus"] .icon { color: #ff5050; text-shadow: 0 0 2px #fff; font-weight: 900; }
 .cls-sniper .helmet { left: -8px; right: -8px; top: 1px; height: 13px; border-radius: 50% 50% 30% 30%; background: #6b6b3a; border-bottom: 3px solid #4a4a28; }
 .cls-sniper .badge { display: block; left: -2px; right: -2px; top: 17px; height: 5px; background: #2b2b2b; border-radius: 2px; }
-.c-chap { font-size: 0.72em; font-weight: 900; letter-spacing: 0.12em; color: #ffd84a; padding: 0.35em 0.2em 0.05em; flex: 1 1 100%; }
+.c-tabs { display: flex; gap: 0.3em; flex: 1 1 100%; }
+.c-tab { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; border: 2px solid rgba(255,255,255,0.12); background: rgba(20,24,30,0.92); color: #cfe6ff; border-radius: 0.5em; font-weight: 900; padding: 0.15em 0.3em; min-height: 32px; white-space: nowrap; }
+.c-tab small { color: #ffd84a; font-weight: 800; }
+.c-tab.on { border-color: #ffd84a; background: rgba(60,52,20,0.95); color: #ffd84a; }
+.c-kchap { color: #ffd84a; }
+@media (max-width: 1000px) { .c-tab small { display: none; } }
 @media (orientation: landscape) and (max-height: 430px) {
-  .c-chap { padding: 0.15em 0.2em 0; font-size: 0.66em; }
+  .c-tab { min-height: 30px; padding: 0.05em 0.25em; }
+  .c-tab small { display: none; }
+  .c-kchap { display: none; }
 }

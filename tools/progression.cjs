@@ -229,7 +229,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.reload(); await page.waitForTimeout(200); // reload while on Results
     sv = await save();
     check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
-    check('UI: Campaign header shows credits + version "MiniSquad v0.6.1 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.6\.1 · [0-9a-f]{7,}$|^MiniSquad v0\.6\.1 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    check('UI: Campaign header shows credits + version "MiniSquad v0.6.2 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.6\.2 · [0-9a-f]{7,}$|^MiniSquad v0\.6\.2 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
     // v0.6.1: the one-time NEW RECRUIT AVAILABLE notice (Tank) is up after the first clear: dismiss it
     check('UI: one-time Tank recruit notice shown after the first clear', await page.isVisible('.rn-notice'), '');
     await page.click('[data-a="rn-later"]'); await page.waitForTimeout(500);
@@ -292,7 +292,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const notice = await page.textContent('.m-notice').catch(() => '');
     await page.click('[data-a="to-barracks"]');
     const m = await page.evaluate(() => ({ status: window.__loadStatus.status, slots: window.game.roster.slots.join(), saved: JSON.parse(localStorage.getItem('minisquad.save')), notice: document.querySelector('.m-notice').textContent, cards: document.querySelectorAll('.s-card').length }));
-    check('UI: v0.2.2 save migrated in place on load (squad kept, v6 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 6 && m.saved.account.named.claimed.length === 4 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
+    check('UI: v0.2.2 save migrated in place on load (squad kept, v7 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 7 && m.saved.account.named.claimed.length === 4 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
     const backup = await page.evaluate(() => localStorage.getItem('minisquad.save.pre-v0.4'));
     check('UI: the original v0.2.2 save text is kept once as a pre-v0.4 backup', backup === V022raw, `backup ${backup ? backup.length : 0} chars`);
     check('B: no page errors', errors.length === 0, errors.join(' | '));

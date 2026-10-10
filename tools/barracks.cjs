@@ -21,7 +21,7 @@ const OUT = process.env.OUT || '';
 
   await reload();
   let sv = await save();
-  check('first launch: Campaign shown, save v6 written with 6 named soldier records', await page.isVisible('#menu.campaign') && sv.version === 6 && sv.account && sv.account.credits === 0 && sv.roster.length === 6, `version ${sv.version}, roster ${sv.roster.map((s) => s.id)}`);
+  check('first launch: Campaign shown, save v7 written with 6 named soldier records', await page.isVisible('#menu.campaign') && sv.version === 7 && sv.account && sv.account.credits === 0 && sv.roster.length === 6, `version ${sv.version}, roster ${sv.roster.map((s) => s.id)}`);
   check('first launch: Ace + Ranger unlocked and selected; Mission 1 only', sv.squad.filter(Boolean).join() === 'ace,ranger' && sv.unlockedSoldiers.join() === 'ace,ranger' && sv.account.campaign.unlockedMissions.join() === 'first-contact' && sv.account.campaign.selectedMission === 'first-contact', `${sv.squad} · ${sv.unlockedSoldiers} · ${JSON.stringify(sv.account.campaign)}`);
   check('save holds no runtime/effective stats', sv.roster.every((s) => Object.keys(s).sort().join() === 'classId,id,mods,name,progression,resurrections,service,status,training,traitId'), Object.keys(sv.roster[0]).join());
   await toBarracks();
@@ -33,8 +33,9 @@ const OUT = process.env.OUT || '';
   check('a locked soldier can never be selected (API)', !lockedSel.ok && /locked/i.test(lockedSel.reason) && (await slots()) === 'ace,ranger', lockedSel.reason);
   await page.click('[data-a="to-campaign"]');
   const previews = [];
-  for (const id of ['first-contact', 'heavy-support', 'bring-them-home', 'mission-6']) { await page.click(`[data-a="csel"][data-id="${id}"]`); previews.push(await page.textContent('.c-first')); }
-  check('Campaign previews named recruit unlocks (Tank M1, Doc M2, Havoc M5, Patch at M7), no "joins"', /Unlock Tank \+ Heavy Gunner recruitment/.test(previews[0]) && /Unlock Doc \+ Medic recruitment/.test(previews[1]) && /Unlock Havoc \+ Trigger Happy trait/.test(previews[2]) && /Unlock Patch \+ Healer trait at the Mission 7/.test(previews[3]) && !previews.some((p) => /joins/i.test(p)), previews.map((x) => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | '));
+  for (const id of ['first-contact', 'heavy-support', 'bring-them-home', 'prison-break']) { await page.click(`[data-a="cchap"][data-ch="${id === 'prison-break' ? 2 : 1}"]`); await page.click(`[data-a="csel"][data-id="${id}"]`); previews.push(await page.textContent('.c-first')); }
+  check('Campaign previews named recruit unlocks (Tank M1, Doc M2, Havoc M5, Patch at M7 Prison Break), no "joins"', /Unlock Tank \+ Heavy Gunner recruitment/.test(previews[0]) && /Unlock Doc \+ Medic recruitment/.test(previews[1]) && /Unlock Havoc \+ Trigger Happy trait/.test(previews[2]) && /Unlock Patch \+ Healer trait/.test(previews[3]) && !previews.some((p) => /joins/i.test(p)), previews.map((x) => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | '));
+  await page.click('[data-a="cchap"][data-ch="1"]');
   await page.click('[data-a="csel"][data-id="first-contact"]');
   await toBarracks();
   const sq = await page.evaluate(() => ({ all: document.querySelectorAll('.b-slots .slot').length, open: document.querySelectorAll('.b-slots .slot:not(.locked)').length, locked: document.querySelectorAll('.b-slots .slot.locked').length, deploy: document.querySelectorAll('[data-a="deploy"]').length }));
@@ -49,7 +50,7 @@ const OUT = process.env.OUT || '';
   await page.click('[data-a="unlockAll"]');
   await page.keyboard.press('Backquote');
   sv = await save();
-  check('debug unlock all: labelled "modifies save", 2 taps, saved', /modifies save/i.test(lbl0) && /again/i.test(armedTxt) && stillLocked === 2 && sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.length === 5, `${lbl0} / ${armedTxt} / ${sv.unlockedSoldiers.length} soldiers, ${sv.account.campaign.unlockedMissions.length} missions`);
+  check('debug unlock all: labelled "modifies save", 2 taps, saved', /modifies save/i.test(lbl0) && /again/i.test(armedTxt) && stillLocked === 2 && sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.length === 10, `${lbl0} / ${armedTxt} / ${sv.unlockedSoldiers.length} soldiers, ${sv.account.campaign.unlockedMissions.length} missions`);
   // pick Mission 3 (squad cap 3) on the Campaign screen, then back to the Barracks
   await page.click('[data-a="to-campaign"]');
   await page.click('[data-a="csel"][data-id="field-medicine"]');
@@ -163,7 +164,7 @@ const OUT = process.env.OUT || '';
       traits: window.game.roster.soldiers.map((s) => s.traitId).join(), tankHp: window.__effectiveStats(window.game.roster.get('tank')).hp,
       cards: document.querySelectorAll('.s-card').length, backup: localStorage.getItem('minisquad.save.invalid'), saved: JSON.parse(localStorage.getItem('minisquad.save')),
     }));
-    const okBase = st.status === expectStatus && st.n === 6 && st.cards === (name.startsWith('unknown') || expectStatus === 'reset' ? 2 : 6) && st.traits === 'sharpshooter,quickReflexes,tough,triggerHappy,firstResponder,healer' && st.tankHp === 165 && st.saved.version === 6;
+    const okBase = st.status === expectStatus && st.n === 6 && st.cards === (name.startsWith('unknown') || expectStatus === 'reset' ? 2 : 6) && st.traits === 'sharpshooter,quickReflexes,tough,triggerHappy,firstResponder,healer' && st.tankHp === 165 && st.saved.version === 7;
     const okSlots = name.startsWith('duplicate') ? st.slots === 'tank' : name.startsWith('unknown') ? st.slots === 'ace' && st.saved.unlockedSoldiers.join() === 'ace,ranger' && st.saved.account.campaign.unlockedMissions.join() === 'first-contact,red-canyon' && st.saved.account.campaign.selectedMission === 'first-contact' : true;
     const okBackup = expectStatus === 'reset' || name.startsWith('future') ? st.backup === raw : true;
     check(`invalid save recovers: ${name}`, okBase && okSlots && okBackup, `status ${st.status}, slots ${st.slots}, tank hp ${st.tankHp}${expectStatus === 'reset' ? ', backup kept' : ''}${name.startsWith('unknown') ? ' ' + JSON.stringify(st.saved.account.campaign) : ''}`);
@@ -205,7 +206,7 @@ const OUT = process.env.OUT || '';
   await page.dblclick('[data-a="reset-confirm"]');
   await page.waitForTimeout(100);
   const rs = await page.evaluate(() => ({ sv: JSON.parse(localStorage.getItem('minisquad.save')), bk: JSON.parse(localStorage.getItem('minisquad.save.pre-reset')), notice: document.querySelector('.m-notice').textContent, owned: window.game.roster.owned().map((s) => s.id).join() }));
-  check('New Campaign (double-tapped): genuine fresh save: Ace + Ranger, M1, 0 CR, no recruits/offers/stars', rs.owned === 'ace,ranger' && rs.sv.version === 6 && rs.sv.account.named.unlocked.length === 0 && rs.sv.account.named.claimed.length === 0 && rs.sv.account.credits === 0 && rs.sv.roster.length === 6 && rs.sv.unlockedSoldiers.join() === 'ace,ranger' && rs.sv.account.campaign.unlockedMissions.join() === 'first-contact' && Object.keys(rs.sv.account.missions).length === 0 && rs.sv.account.recruitment.offers.length === 0 && rs.sv.account.recruitment.usedNames.length === 0 && rs.sv.account.squadTraining.hp === 0 && rs.sv.roster.every((s) => s.progression.xp === 0) && /New campaign started/.test(rs.notice), JSON.stringify(rs.sv.account).slice(0, 160));
+  check('New Campaign (double-tapped): genuine fresh save: Ace + Ranger, M1, 0 CR, no recruits/offers/stars', rs.owned === 'ace,ranger' && rs.sv.version === 7 && rs.sv.account.named.unlocked.length === 0 && rs.sv.account.named.claimed.length === 0 && rs.sv.account.credits === 0 && rs.sv.roster.length === 6 && rs.sv.unlockedSoldiers.join() === 'ace,ranger' && rs.sv.account.campaign.unlockedMissions.join() === 'first-contact' && Object.keys(rs.sv.account.missions).length === 0 && rs.sv.account.recruitment.offers.length === 0 && rs.sv.account.recruitment.usedNames.length === 0 && rs.sv.account.squadTraining.hp === 0 && rs.sv.roster.every((s) => s.progression.xp === 0) && /New campaign started/.test(rs.notice), JSON.stringify(rs.sv.account).slice(0, 160));
   check('New Campaign: old save backed up once under minisquad.save.pre-reset (not overwritten by the 2nd tap)', rs.bk && rs.bk.save === beforeReset && rs.bk.at > 0, rs.bk ? rs.bk.save.length + ' chars' : 'none');
 
   check('no page errors', errors.length === 0, errors.join(' | '));

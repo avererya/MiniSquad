@@ -257,22 +257,20 @@ function installHelpers() {
   check('[R18] traits unlock at milestones without ownership (Trigger Happy after M5; Healer not before M7)', r4.th && !r4.healer, JSON.stringify(r4));
   check('[R21] 4-soldier squads still unlock after Mission 5 with only 2 soldiers owned; nothing auto-filled', r4.cap6 === 4 && /Squad size 4/.test(r4.note) && r4.owned === 2 && r4.slots === 1, JSON.stringify(r4));
   // Campaign screen wording
-  const camp = await ev(() => { T.g.ui.showCampaign(); const out = {}; for (const id of ['first-contact', 'heavy-support', 'bring-them-home', 'mission-6']) { document.querySelector(`[data-a="csel"][data-id="${id}"]`).click(); out[id] = document.querySelector('.c-first').textContent.replace(/\s+/g, ' '); } return out; });
+  const camp = await ev(() => { T.g.ui.showCampaign(); const out = {}; for (const id of ['first-contact', 'heavy-support', 'bring-them-home', 'prison-break']) { document.querySelector(`[data-a="cchap"][data-ch="${id === 'prison-break' ? 2 : 1}"]`).click(); document.querySelector(`[data-a="csel"][data-id="${id}"]`).click(); out[id] = document.querySelector('.c-first').textContent.replace(/\s+/g, ' '); } return out; });
   await fresh();
-  const campNew = await ev(() => { const out = {}; for (const id of ['first-contact', 'heavy-support', 'bring-them-home', 'mission-6']) { document.querySelector(`[data-a="csel"][data-id="${id}"]`).click(); out[id] = document.querySelector('.c-first').textContent.replace(/\s+/g, ' '); } return out; });
-  check('Campaign first-clear text: "Unlock Tank + Heavy Gunner recruitment", "Unlock Doc + Medic recruitment", "Unlock Havoc + Trigger Happy trait", "Unlock Patch + Healer trait"', /Unlock Tank \+ Heavy Gunner recruitment/.test(campNew['first-contact']) && /Unlock Doc \+ Medic recruitment/.test(campNew['heavy-support']) && /Unlock Havoc \+ Trigger Happy trait/.test(campNew['bring-them-home']) && /Unlock Patch \+ Healer trait/.test(campNew['mission-6']), JSON.stringify(campNew).slice(0, 220));
+  const campNew = await ev(() => { const out = {}; for (const id of ['first-contact', 'heavy-support', 'bring-them-home', 'prison-break']) { document.querySelector(`[data-a="cchap"][data-ch="${id === 'prison-break' ? 2 : 1}"]`).click(); document.querySelector(`[data-a="csel"][data-id="${id}"]`).click(); out[id] = document.querySelector('.c-first').textContent.replace(/\s+/g, ' '); } return out; });
+  check('Campaign first-clear text: "Unlock Tank + Heavy Gunner recruitment", "Unlock Doc + Medic recruitment", "Unlock Havoc + Trigger Happy trait", "Unlock Patch + Healer trait"', /Unlock Tank \+ Heavy Gunner recruitment/.test(campNew['first-contact']) && /Unlock Doc \+ Medic recruitment/.test(campNew['heavy-support']) && /Unlock Havoc \+ Trigger Happy trait/.test(campNew['bring-them-home']) && /Unlock Patch \+ Healer trait/.test(campNew['prison-break']), JSON.stringify(campNew).slice(0, 220));
   check('Campaign text never says a soldier joins / is added / is free', ![...Object.values(camp), ...Object.values(campNew)].some((t) => /joins|added|free heavy|awarded/i.test(t)), '');
-  // [R5] Mission 7 (not in the game yet): its milestone rule, simulated with a temporary mission 7 record
+  // [R5] Mission 7 (v0.6.2: Prison Break): its first clear is Patch's milestone
   const r5 = await ev(() => {
     const C = window.__campaign;
     const def = C.namedRecruit('patch');
-    C.CAMPAIGN.push({ id: 'mission-7', number: 7, name: 'Test 7', type: 'elimination', playable: false, briefing: '', primary: [], optional: [], stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: '', unlocks: { missions: [], recruits: ['patch'] } });
-    const rw = T.E.settleMission(T.R, T.a, { missionId: 'mission-7', runId: 'test-m7', won: true, deployed: [{ id: 'ace', status: 'Standing', downs: 0 }], optional: { total: 0, completed: 0 } });
-    C.CAMPAIGN.pop();
+    const rw = T.E.settleMission(T.R, T.a, { missionId: 'prison-break', runId: 'test-m7', won: true, deployed: [{ id: 'ace', status: 'Standing', downs: 0 }], optional: { total: 0, completed: 0 } });
     const f = window.__recruitment.campaignFlags(T.a);
     return { milestone: def.milestone, unl: rw.unlockedRecruits.join(), patch: T.R.isUnlocked('patch'), offers: T.offers().join(), healerMedic: window.__recruitment.traitPool('medic', f).includes('healer'), healerInf: window.__recruitment.traitPool('infantry', f).includes('healer'), owned: T.R.activeCount() };
   });
-  check('[R5] Mission 7 milestone unlocks the Patch offer (not Patch); Healer for Medic recruits only', r5.milestone === 'mission-7' && r5.unl === 'patch' && !r5.patch && r5.offers === 'patch' && r5.healerMedic && !r5.healerInf && r5.owned === 2, JSON.stringify(r5));
+  check('[R5] Mission 7 milestone unlocks the Patch offer (not Patch); Healer for Medic recruits only', r5.milestone === 'prison-break' && r5.unl === 'patch' && !r5.patch && r5.offers === 'patch' && r5.healerMedic && !r5.healerInf && r5.owned === 2, JSON.stringify(r5));
   // [R15] full roster blocks the purchase without charging
   await fresh();
   const r15 = await ev(() => {
@@ -300,7 +298,7 @@ function installHelpers() {
     named: T.a.named, offers: T.offers().join(), menu: document.getElementById('menu').className,
   }));
   const src6 = JSON.parse(fx6);
-  check('[R22] genuine v0.6 save -> v6: migrated, no repair notes, raw save backed up under pre-v0.6.1', m6.st === 'migrated' && m6.from === 5 && m6.notes.length === 0 && m6.bk === fx6 && m6.v === 6, `${m6.st} ${m6.from} ${m6.notes.join(';')}`);
+  check('[R22] genuine v0.6 save -> v7: migrated, no repair notes, raw save backed up under pre-v0.6.1', m6.st === 'migrated' && m6.from === 5 && m6.notes.length === 0 && m6.bk === fx6 && m6.v === 7, `${m6.st} ${m6.from} ${m6.notes.join(';')}`);
   check('[R22] previously awarded soldiers kept as they were (renamed Tank "Bulldozer" KIA awaiting a decision, recruits), Credits unchanged (no charge)', m6.owned === 'ace:Ace:active,ranger:Ranger:active,tank:Bulldozer:kia,rc-1:Lt Biscuit:active,rc-3:Ghost:active' && m6.cr === src6.account.credits && m6.q === 'tank' && m6.mem === 'doc' && m6.menu === 'decisions', `${m6.owned} · ${m6.cr} CR`);
   check('[R23][R24] claimed: Tank (pending KIA, renamed), Doc (Memorial), Havoc (dismissed); Patch locked; no duplicate offers', m6.named.claimed.join() === 'tank,doc,havoc' && m6.named.unlocked.join() === 'tank,doc,havoc' && m6.offers === '' && !m6.named.claimed.includes('patch') && m6.named.history.every((h) => h.legacy && h.cost === 0), JSON.stringify(m6.named).slice(0, 220));
   const m6b = await ev(() => { T.a.credits = 0; T.resolve('memorial'); return { offers: T.offers().join(), claimed: T.a.named.claimed.join() }; });
@@ -311,7 +309,7 @@ function installHelpers() {
     await fresh(FX(f));
     const m = await ev(() => ({ owned: T.R.owned().map((s) => s.id).join(), claimed: T.a.named.claimed.join(), offers: T.offers().join(), v: T.store().version, notice: !!document.querySelector('.rn-notice'), healer: window.__recruitment.traitPool('medic', window.__recruitment.campaignFlags(T.a)).includes('healer'), patch: T.R.isUnlocked('patch') }));
     const okOwned = owned ? m.owned === owned && m.claimed === claimed : m.offers === '' && m.claimed.split(',').every((k) => m.owned.split(',').includes(k));
-    check(`[R23] ${f}: previously awarded named soldiers kept + claimed, no duplicate offers, no notice${m.patch ? ', Healer kept' : ''}`, okOwned && m.offers === '' && m.v === 6 && !m.notice && (!m.patch || m.healer), JSON.stringify(m));
+    check(`[R23] ${f}: previously awarded named soldiers kept + claimed, no duplicate offers, no notice${m.patch ? ', Healer kept' : ''}`, okOwned && m.offers === '' && m.v === 7 && !m.notice && (!m.patch || m.healer), JSON.stringify(m));
   }
   // ambiguous / damaged v6 data: milestone done, never acquired -> the offer exists (no free soldier)
   await fresh();
@@ -329,7 +327,7 @@ function installHelpers() {
   await ev(() => { T.a.credits = 0; T.resolve('memorial'); T.g.ui.showCampaign(); });
   await page.click('[data-a="reset-open"]'); await page.click('[data-a="reset-confirm"]'); await page.waitForTimeout(150);
   const r25 = await ev(() => ({ owned: T.R.owned().map((s) => s.id).join(), named: JSON.stringify(T.store().account.named), offers: T.offers().join(), v: T.store().version, bk: !!localStorage.getItem('minisquad.save.pre-reset') }));
-  check('[R25] New Campaign: Ace + Ranger only, all named offers locked / unclaimed, previous save backed up', r25.owned === 'ace,ranger' && r25.named === '{"unlocked":[],"claimed":[],"notified":[],"history":[]}' && r25.offers === '' && r25.v === 6 && r25.bk, JSON.stringify(r25));
+  check('[R25] New Campaign: Ace + Ranger only, all named offers locked / unclaimed, previous save backed up', r25.owned === 'ace,ranger' && r25.named === '{"unlocked":[],"claimed":[],"notified":[],"history":[]}' && r25.offers === '' && r25.v === 7 && r25.bk, JSON.stringify(r25));
 
   check('no page errors', errors.length === 0, errors.join(' | '));
   console.log(`\n${total - fails}/${total} passed${fails ? `, ${fails} FAILED` : ''}`);

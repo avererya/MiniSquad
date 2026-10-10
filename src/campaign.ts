@@ -23,7 +23,7 @@ export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
 
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
 export const CHAPTERS: { number: number; name: string; from: number; to: number }[] = [
-  { number: 1, name: 'Boot Camp', from: 1, to: 5 },
+  { number: 1, name: '', from: 1, to: 5 }, // (Chapter 1 was never given a name)
   { number: 2, name: 'Behind Enemy Lines', from: 6, to: 10 },
   { number: 3, name: 'Coming soon', from: 11, to: Infinity },
 ];
