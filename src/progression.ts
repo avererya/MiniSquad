@@ -219,6 +219,14 @@ export interface NamedRecruitState {
 }
 export const newNamedRecruits = (): NamedRecruitState => ({ unlocked: [], claimed: [], notified: [], history: [] });
 
+/**
+ * v0.6.2 class unlocks (Unlocks.classes in campaign.ts: the Sniper after Mission 9). `unlocked`:
+ * the class is recruitable for good (campaign flag `class:<id>`). `notified`: the one-time
+ * "NEW CLASS UNLOCKED!" notice was shown. Never grants a soldier.
+ */
+export interface ClassUnlockState { unlocked: string[]; notified: string[] }
+export const newClassUnlocks = (): ClassUnlockState => ({ unlocked: [], notified: [] });
+
 export interface AccountData {
   credits: number;
   squadTraining: SquadTrainingRanks;
@@ -239,11 +247,14 @@ export interface AccountData {
   activeRun: ActiveRun | null;
   /** v0.6.1: named campaign recruit offers (unlocked / claimed / notified / purchases). */
   named: NamedRecruitState;
+  /** v0.6.2: classes unlocked by campaign milestones (Sniper). */
+  classUnlocks: ClassUnlockState;
 }
 export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
 export const newAccount = (): AccountData => ({
   credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(),
   pendingDecision: null, memorial: [], phoenix: newPhoenix(), activeRun: null, named: newNamedRecruits(),
+  classUnlocks: newClassUnlocks(),
 });
 
 let account: AccountData = newAccount();
@@ -333,6 +344,8 @@ export interface MissionReward {
   unlockedSoldiers: string[];
   /** v0.6.1: named campaign recruit offers this clear unlocked NOW (keys; not owned). */
   unlockedRecruits: string[];
+  /** v0.6.2: classes this clear made recruitable NOW (e.g. 'sniper'). */
+  unlockedClasses: string[];
   unlockedMissions: string[];
   xpLines: RewardLine[];
   xpMul: number;

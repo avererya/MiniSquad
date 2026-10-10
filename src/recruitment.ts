@@ -11,7 +11,8 @@
 //  - Recruitable classes: RECRUIT_CLASSES (Infantry from the start; Heavy Gunner from Tank's
 //    milestone, Mission 1; Medic from Doc's milestone, Mission 2). Havoc / Patch add no class.
 //    v0.6.1: these CAMPAIGN FLAGS (campaignFlags) come from the milestones, not from owning the
-//    named soldier (a player who never buys Tank still recruits Heavy Gunners after Mission 1). Random class per offer,
+//    named soldier (a player who never buys Tank still recruits Heavy Gunners after Mission 1).
+//    v0.6.2: Sniper from Mission 9's first clear (flag 'class:sniper'; 1250 CR, refund 300). Random class per offer,
 //    duplicates allowed, no guaranteed spread.
 //  - One-time introduction: when a class first becomes recruitable, the next lineup the player
 //    sees holds at least one offer of it. Offers already on the table: the LAST offer(s) are
@@ -38,6 +39,8 @@ export const RECRUIT_CLASSES: RecruitClassDef[] = [
   { classId: 'infantry', price: 750, refund: 200, requires: null },
   { classId: 'heavy', price: 1000, refund: 250, requires: 'tank' },
   { classId: 'medic', price: 1000, refund: 250, requires: 'doc' },
+  // v0.6.2: unlocked by Mission 9's first clear (campaign flag, never a free soldier)
+  { classId: 'sniper', price: 1250, refund: 300, requires: 'class:sniper' },
 ];
 export const recruitClass = (c: SoldierClassId) => RECRUIT_CLASSES.find((x) => x.classId === c);
 export const priceOf = (c: SoldierClassId) => recruitClass(c)?.price ?? Infinity;
@@ -54,13 +57,18 @@ export const RECRUIT_LOCK_MS = 450;
  * Trait pool for recruits: the named soldier whose JOIN (unlock flag) makes the trait available,
  * and which classes may roll it (null = every class; each of these traits works for any class).
  */
+const GENERIC: SoldierClassId[] = ['infantry', 'heavy', 'medic'];
 export const RECRUIT_TRAITS: { traitId: TraitId; requires: string; classes: SoldierClassId[] | null }[] = [
-  { traitId: 'sharpshooter', requires: 'ace', classes: null },
-  { traitId: 'quickReflexes', requires: 'ranger', classes: null },
-  { traitId: 'tough', requires: 'tank', classes: null },
-  { traitId: 'firstResponder', requires: 'doc', classes: null },
-  { traitId: 'triggerHappy', requires: 'havoc', classes: null },
+  // v0.6.2: the original traits stay with the original classes (Snipers roll Sniper traits only)
+  { traitId: 'sharpshooter', requires: 'ace', classes: GENERIC },
+  { traitId: 'quickReflexes', requires: 'ranger', classes: GENERIC },
+  { traitId: 'tough', requires: 'tank', classes: GENERIC },
+  { traitId: 'firstResponder', requires: 'doc', classes: GENERIC },
+  { traitId: 'triggerHappy', requires: 'havoc', classes: GENERIC },
   { traitId: 'healer', requires: 'patch', classes: ['medic'] },
+  { traitId: 'eagleEye', requires: 'class:sniper', classes: ['sniper'] },
+  { traitId: 'steadyHands', requires: 'class:sniper', classes: ['sniper'] },
+  { traitId: 'deadCalm', requires: 'class:sniper', classes: ['sniper'] },
 ];
 
 /** Starting level by campaign progress (highest unlocked mission number). */
@@ -149,8 +157,8 @@ export function validateName(raw: string, currentName: string | null, taken: Set
  * whose milestone was reached, and every named offer already claimed (pre-v0.6.1 ownership).
  * Never derived from who is in the roster right now.
  */
-export function campaignFlags(a: Pick<AccountData, 'named'>): Set<string> {
-  return new Set([...STARTING_SOLDIERS, ...a.named.unlocked, ...a.named.claimed]);
+export function campaignFlags(a: Pick<AccountData, 'named'> & Partial<Pick<AccountData, 'classUnlocks'>>): Set<string> {
+  return new Set([...STARTING_SOLDIERS, ...a.named.unlocked, ...a.named.claimed, ...(a.classUnlocks?.unlocked ?? []).map((c) => `class:${c}`)]);
 }
 /** Classes recruitable with these campaign flags (see campaignFlags). */
 export function recruitableClasses(flags: Set<string>): SoldierClassId[] {

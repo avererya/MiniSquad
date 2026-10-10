@@ -45,6 +45,12 @@
 // opened for a milestone whose soldier was never acquired. Notices are not owed for claimed
 // offers. Ownership is decided by soldier id + the old unlock flags / dismissal list / Memorial,
 // never by display name. The raw pre-v6 save is copied once to SAVE_PRE_V061_KEY.
+//
+// v7 (v0.6.2, Chapter 2) adds account.classUnlocks {unlocked, notified}: classes unlocked by a
+// campaign milestone (the Sniper, Mission 9's first clear), re-derived from mission records on
+// load. Nothing else changes: an older save keeps every soldier, credit, star and unlock, a
+// Mission 5 clear now also unlocks Mission 6 (no repair note), and no Sniper is ever granted.
+// The raw pre-v7 save is copied once to SAVE_PRE_V062_KEY.
 // Formats are never reset just because they are old. Each field is repaired on its own (bad
 // XP -> derived from level, bad ranks -> clamped, negative credits -> 0, unknown mission ids
 // in the campaign lists dropped) instead of throwing a soldier away.
@@ -55,10 +61,10 @@ import {
   LEVEL_CAP, MAX_XP, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, cleanRank, levelForXp, newAccount,
   newCampaign, newSquadTraining, newTraining, xpForLevel, type AccountData, type CampaignProgress, type MissionRecord, type SquadTrainingRanks, type TrainingRanks,
 } from './progression';
-import { CAMPAIGN, FIRST_MISSION, NAMED_RECRUITS, STARTING_SOLDIERS, derivedMissionUnlocks, derivedRecruitUnlocks, derivedSoldierUnlocks } from './campaign';
+import { CAMPAIGN, CLASS_UNLOCK_TEXT, FIRST_MISSION, NAMED_RECRUITS, STARTING_SOLDIERS, derivedClassUnlocks, derivedMissionUnlocks, derivedRecruitUnlocks, derivedSoldierUnlocks } from './campaign';
 import { type CandidateRecord, type DismissalRecord, type RecruitmentState, ROSTER_CAP, newRecruitment } from './progression';
 import { RECRUIT_ID, campaignFlags, generateCandidate, generateName, isTraitValidFor, nameKey, recruitClass, recruitableClasses, takenNames } from './recruitment';
-import { newNamedRecruits, newPhoenix, type NamedRecruitState, type ActiveRun, type CasualtyDecision, type FallenEntry, type KiaCause, type MemorialRecord, type PhoenixState } from './progression';
+import { newClassUnlocks, newNamedRecruits, newPhoenix, type NamedRecruitState, type ActiveRun, type CasualtyDecision, type FallenEntry, type KiaCause, type MemorialRecord, type PhoenixState } from './progression';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL } from './casualties';
 
 export const SAVE_KEY = 'minisquad.save';
@@ -71,10 +77,12 @@ export const SAVE_PRE_V05_KEY = 'minisquad.save.pre-v0.5';
 export const SAVE_PRE_V06_KEY = 'minisquad.save.pre-v0.6';
 /** One-time copy of any pre-v6 save (v1-v5), taken before it is upgraded to v6 (v0.6.1). */
 export const SAVE_PRE_V061_KEY = 'minisquad.save.pre-v0.6.1';
-export const SAVE_VERSION = 6;
+/** One-time copy of any pre-v7 save (v1-v6), taken before it is upgraded to v7 (v0.6.2). */
+export const SAVE_PRE_V062_KEY = 'minisquad.save.pre-v0.6.2';
+export const SAVE_VERSION = 7;
 
-export interface SaveFileV6 {
-  version: 6;
+export interface SaveFileV7 {
+  version: 7;
   roster: SoldierIdentity[];
   squad: (string | null)[];
   /** Named soldiers the player has owned (bought, or awarded before v0.6.1; kept after a dismissal). */
@@ -233,7 +241,8 @@ type SoldierRecord = SoldierIdentity;
 const PLAYABLE_IDS = new Set(CAMPAIGN.filter((m) => m.playable).map((m) => m.id));
 
 /** Campaign lists: known playable ids only, plus whatever the completed missions unlock (repair). */
-function cleanCampaign(v: unknown, missions: Record<string, MissionRecord>, notes: string[], legacy: boolean): CampaignProgress {
+/** `expected`: ids an older format could not list yet (v0.6.2: Mission 6 after a Mission 5 clear), unlocked without a repair note. */
+function cleanCampaign(v: unknown, missions: Record<string, MissionRecord>, notes: string[], legacy: boolean, expected: string[] = []): CampaignProgress {
   const c = newCampaign();
   const done = (id: string) => (missions[id]?.completions ?? 0) > 0;
   const derived = derivedMissionUnlocks(done);
@@ -244,7 +253,7 @@ function cleanCampaign(v: unknown, missions: Record<string, MissionRecord>, note
   const bad = listed.filter((x) => !PLAYABLE_IDS.has(x));
   if (bad.length) notes.push(`Unknown missions ${bad.join(', ')} removed from the campaign.`);
   const merged = [...new Set([...listed.filter((x) => PLAYABLE_IDS.has(x)), ...derived])];
-  const missing = derived.filter((x) => !listed.includes(x));
+  const missing = derived.filter((x) => !listed.includes(x) && !expected.includes(x));
   if (missing.length && Array.isArray(v.unlockedMissions)) notes.push(`Missions ${missing.join(', ')} re-unlocked from mission records.`);
   c.unlockedMissions = CAMPAIGN.map((m) => m.id).filter((id) => merged.includes(id)); // campaign order
   if (typeof v.selectedMission === 'string' && c.unlockedMissions.includes(v.selectedMission)) c.selectedMission = v.selectedMission;
@@ -252,7 +261,7 @@ function cleanCampaign(v: unknown, missions: Record<string, MissionRecord>, note
   return c;
 }
 
-function cleanAccount(v: unknown, notes: string[], legacy: boolean): AccountData {
+function cleanAccount(v: unknown, notes: string[], legacy: boolean, expected: string[] = []): AccountData {
   const a = newAccount();
   if (v === undefined) return a;
   if (!isObj(v)) { notes.push('Account invalid: credits and squad training reset.'); return a; }
@@ -278,7 +287,7 @@ function cleanAccount(v: unknown, notes: string[], legacy: boolean): AccountData
   if (Array.isArray(v.settledRuns)) {
     a.settledRuns = [...new Set(v.settledRuns.filter((x): x is string => typeof x === 'string' && x.length <= 64))].slice(-PROGRESSION.rememberRuns);
   }
-  a.campaign = cleanCampaign(v.campaign, a.missions, notes, legacy);
+  a.campaign = cleanCampaign(v.campaign, a.missions, notes, legacy, expected);
   return a;
 }
 
@@ -344,7 +353,7 @@ function storage(): Storage | null {
   try { return window.localStorage; } catch { return null; }
 }
 
-export function serialize(r: Roster, a: AccountData): SaveFileV6 {
+export function serialize(r: Roster, a: AccountData): SaveFileV7 {
   return {
     version: SAVE_VERSION,
     roster: r.soldiers.map((s) => ({ ...s, progression: s.progression ?? newProgression() })),
@@ -359,6 +368,7 @@ export function serialize(r: Roster, a: AccountData): SaveFileV6 {
       phoenix: structuredClone(a.phoenix),
       activeRun: structuredClone(a.activeRun),
       named: structuredClone(a.named),
+      classUnlocks: structuredClone(a.classUnlocks),
     },
   };
 }
@@ -400,11 +410,12 @@ export function parseSave(raw: string | null): LoadResult {
     return { roster: new Roster(), account: newAccount(), notes, status: 'reset', fromVersion: null };
   }
   const version = typeof data.version === 'number' ? data.version : null;
-  const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === 6;
+  const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === 6 || version === 7;
   const legacy = version === 1 || version === 2;
-  const preRecruit = version !== 4 && version !== 5 && version !== 6; // v1-v3 (and unknown): no recruitment state yet
-  const v5 = version === 5 || version === 6; // permanent-death state (only a v5+ save can hold a fallen soldier)
-  const v6 = version === 6; // v0.6.1 named recruit offers: owned named soldiers are never re-derived from missions
+  const preRecruit = version !== 4 && version !== 5 && version !== 6 && version !== 7; // v1-v3 (and unknown): no recruitment state yet
+  const v5 = version === 5 || version === 6 || version === 7; // permanent-death state (only a v5+ save can hold a fallen soldier)
+  const v6 = version === 6 || version === 7; // v0.6.1 named recruit offers: owned named soldiers are never re-derived from missions
+  const v7 = version === 7; // v0.6.2 class unlocks (Sniper)
   if (!known) notes.push(`Save version ${String(data.version)} not recognised: read best-effort (backup kept).`);
 
   const rawAccount = version === 1 ? undefined : data.account;
@@ -456,7 +467,7 @@ export function parseSave(raw: string | null): LoadResult {
     if (memorialIds.has(id)) { notes.push(`Recruit ${id} is in the Memorial: roster copy dropped.`); continue; }
     soldiers.push(cleanRecruit(saved.get(id)!, notes, v5));
   }
-  const account = cleanAccount(rawAccount, notes, legacy);
+  const account = cleanAccount(rawAccount, notes, legacy, version !== null && version < 7 ? ['bridgehead'] : []);
   account.memorial = memorial;
   if (v5 && isObj(rawAccount)) {
     account.pendingDecision = cleanPending(rawAccount.pendingDecision, notes);
@@ -535,10 +546,31 @@ export function parseSave(raw: string | null): LoadResult {
   }
   account.named = named;
 
+  // v0.6.2 class unlocks: re-derived from mission records (never a free soldier); notices for
+  // classes a migrated save already had are never owed (no older version could clear Mission 9)
+  {
+    const raw = v7 && isObj(rawAccount) ? rawAccount.classUnlocks : undefined;
+    if (v7 && isObj(rawAccount) && raw === undefined) notes.push('Class unlock data missing: rebuilt from campaign progress.');
+    const cu = newClassUnlocks();
+    const list = (x: unknown) => (Array.isArray(x) ? x.filter((c): c is string => typeof c === 'string' && c in CLASS_UNLOCK_TEXT) : []);
+    const stored = isObj(raw) ? list(raw.unlocked) : [];
+    const derived = derivedClassUnlocks(done);
+    for (const c of stored) if (!derived.includes(c)) notes.push(`Class ${c}: unlocked without its milestone, kept.`);
+    cu.unlocked = [...new Set([...stored, ...derived])];
+    cu.notified = isObj(raw) ? list(raw.notified).filter((c) => cu.unlocked.includes(c)) : [...cu.unlocked];
+    account.classUnlocks = cu;
+  }
+
   // recruitment: pre-v0.5 saves owe no introduction for classes they can already recruit
   const flags = campaignFlags(account);
   const rec = cleanRecruitment(preRecruit ? undefined : rawRec, notes, recruitableClasses(flags));
   if (!preRecruit && rawRec === undefined) notes.push('Recruitment data missing: starts empty.');
+  {
+    // v0.6.2: an offer of a class that is not recruitable (yet) is dropped (e.g. a Sniper before Mission 9)
+    const ok = recruitableClasses(flags), n0 = rec.offers.length;
+    rec.offers = rec.offers.filter((o) => ok.includes(o.classId));
+    if (rec.offers.length !== n0) notes.push('Recruitment offers of locked classes dropped.');
+  }
   const seq = maxRecruitSeq([...soldiers.map((s) => s.id), ...rec.offers.map((o) => o.id), ...rec.dismissed.map((d) => d.id), ...memorial.map((m) => m.soldier.id), ...(account.phoenix.pending?.candidates.map((c) => c.id) ?? [])]);
   if (rec.nextSeq <= seq) { if (!preRecruit && rec.nextSeq !== 1) notes.push('Recruit id counter raised past existing ids.'); rec.nextSeq = seq + 1; }
   // offers can't collide with the roster (id or name) or reuse a registered name
@@ -590,7 +622,7 @@ export function loadSave(): LoadResult {
   try { raw = ls ? ls.getItem(SAVE_KEY) : null; } catch { raw = null; }
   const res = parseSave(raw);
   const v = res.fromVersion;
-  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== SAVE_VERSION)
+  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6 && v !== SAVE_VERSION)
     || (res.status === 'repaired' && v === null);
   if (backup && ls && raw !== null) { try { ls.setItem(SAVE_BACKUP_KEY, raw); } catch { /* full */ } }
   // never lose a legacy roster: keep the original v1/v2 text once, before the upgrade
@@ -601,6 +633,8 @@ export function loadSave(): LoadResult {
   if ((v === 1 || v === 2 || v === 3 || v === 4) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V06_KEY) === null) ls.setItem(SAVE_PRE_V06_KEY, raw); } catch { /* full */ } }
   // v0.6.1: keep the pre-v6 text once (v1-v5), before the v6 write
   if ((v === 1 || v === 2 || v === 3 || v === 4 || v === 5) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V061_KEY) === null) ls.setItem(SAVE_PRE_V061_KEY, raw); } catch { /* full */ } }
+  // v0.6.2: keep the pre-v7 text once (v1-v6), before the v7 write
+  if (v !== null && v >= 1 && v <= 6 && Number.isInteger(v) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V062_KEY) === null) ls.setItem(SAVE_PRE_V062_KEY, raw); } catch { /* full */ } }
   if (res.notes.length) console.warn('[MiniSquad save]', res.notes.join(' '));
   writeSave(res.roster, res.account);
   return res;

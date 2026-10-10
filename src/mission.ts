@@ -267,7 +267,7 @@ export class Mission {
     for (const t of this.script.triggers) {
       if (this.fired.has(t.id) || !centre || !t.when(this, game)) continue;
       this.fired.add(t.id);
-      this.spawnWave(game, t.points, t.size(), t.second);
+      this.spawnWave(game, t.points, t.size(), t.second, t.kinds);
       if (t.banner) game.banner(t.banner, '#ffb347', 3);
     }
     for (const o of this.optionals) if (o.state === 'active') o.update(this, game, dt);

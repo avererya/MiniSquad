@@ -259,15 +259,15 @@ export const BRIDGE_MAP: MapDef = {
 };
 
 // Mission 7 "Prison Break": a fenced POW camp. Outer watchtowers cover the approach, the fence has
-// a west and a north gate, the holding pen (east) has its own gate. Extraction is at the top left.
+// west, north and east gates, the holding pen (east) has its own gate. Extraction is at the top left.
 export const PRISON_CAPTIVE: Vec = { x: 2640, y: 640 };
-export const PRISON_TOWERS: Vec[] = [{ x: 1420, y: 470 }, { x: 1420, y: 1080 }, { x: 2300, y: 380 }, { x: 2860, y: 1180 }];
+export const PRISON_TOWERS: Vec[] = [{ x: 1420, y: 470 }, { x: 1420, y: 1080 }, { x: 2300, y: 380 }, { x: 2800, y: 1150 }];
 export const PRISON_MAP: MapDef = {
   id: 'prison', w: 3200, h: 1600, theme: 'prison',
   obstacles: [
-    // perimeter fence x 1700-2900, y 300-1260 (gates: west y 700-830, north x 2120-2250)
+    // perimeter fence x 1700-2900, y 300-1260 (gates: west y 700-830, north x 2120-2250, east y 860-980)
     F(1700, 300, 420, 16), F(2250, 300, 650, 16), F(1700, 1244, 1200, 16),
-    F(1700, 316, 16, 384), F(1700, 830, 16, 414), F(2884, 316, 16, 928),
+    F(1700, 316, 16, 384), F(1700, 830, 16, 414), F(2884, 316, 16, 544), F(2884, 980, 16, 264),
     // holding pen x 2480-2780, y 520-780 (gate on the west side y 600-700)
     F(2480, 520, 300, 14), F(2480, 766, 300, 14), F(2766, 534, 14, 232), F(2480, 534, 14, 66), F(2480, 700, 14, 66),
     // barracks and the guard house inside the camp
@@ -308,7 +308,7 @@ export const CONVOY_MAP: MapDef = {
     // roadside barriers and cover
     S(1050, 500, 140, 16), S(1050, 690, 140, 16), S(2420, 560, 16, 120), S(2240, 860, 120, 16),
     S(1150, 1240, 160, 16), S(2350, 1260, 160, 16), S(1800, 690, 16, 70),
-    C(1950, 560), C(1986, 560), C(1700, 1150), C(2600, 1150), C(600, 1100), C(3100, 400), C(1100, 360),
+    C(1950, 560), C(1986, 560), C(1700, 1150), C(2600, 1150), C(760, 1120), C(3100, 400), C(1100, 360),
     K(2050, 220, 120, 70, 30), K(500, 380, 100, 70, 30),
   ],
   start: { x: 1650, y: 1080 }, startZone: { x: 1520, y: 980, w: 260, h: 220 },
@@ -347,15 +347,15 @@ export const BLACKOUT_MAP: MapDef = {
 };
 
 // Mission 10 "Operation Iron Fist": the enemy stronghold. Two installations guard the outer yard;
-// the central arena (x 2300-3300, y 500-1500; gates west and south) is the Iron Warden's.
+// the central arena (x 2300-3300, y 500-1500; gates west, north and south) is the Iron Warden's.
 export const ARENA: Rect = { x: 2316, y: 516, w: 968, h: 968 };
 export const ARENA_GATE: Rect = { x: 2150, y: 860, w: 220, h: 280 };
 export const INSTALLATIONS: Vec[] = [{ x: 1250, y: 760 }, { x: 1700, y: 1500 }];
 export const STRONGHOLD_MAP: MapDef = {
   id: 'stronghold', w: 3600, h: 2000, theme: 'fortress',
   obstacles: [
-    // arena walls (west gate y 900-1100, south gate x 2700-2900)
-    K(2300, 500, 1000, 16, 44), K(2300, 1484, 400, 16, 44), K(2900, 1484, 400, 16, 44),
+    // arena walls (west gate y 900-1100, north gate and south gate x 2700-2900)
+    K(2300, 500, 400, 16, 44), K(2900, 500, 400, 16, 44), K(2300, 1484, 400, 16, 44), K(2900, 1484, 400, 16, 44),
     K(2300, 516, 16, 384, 44), K(2300, 1100, 16, 384, 44), K(3284, 516, 16, 968, 44),
     // arena cover blocks (rockets respect cover)
     K(2550, 700, 90, 60), K(2950, 700, 90, 60), K(2550, 1240, 90, 60), K(2950, 1240, 90, 60), K(2760, 960, 80, 80, 36),

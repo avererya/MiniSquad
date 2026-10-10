@@ -9,16 +9,25 @@
 //  - Deployment capacity is per mission NUMBER (table below), independent of roster size.
 //  - Soldiers (v0.6.1): a new save owns ONLY Ace + Ranger. A first clear never adds a soldier:
 //    it unlocks a named campaign RECRUIT OFFER (Tank: Mission 1, Doc: Mission 2, Havoc: Mission 5,
-//    Patch: Mission 7, a future milestone) that the player may buy in the Recruitment Office
+//    Patch: Mission 7) that the player may buy in the Recruitment Office
 //    (NAMED_RECRUITS below). The same milestone unlocks the generic class / trait for random
 //    recruits, whether or not the named soldier is ever bought.
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
-export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue';
+export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault';
 export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
   elimination: 'Elimination', sabotage: 'Sabotage', capture: 'Capture & Hold', survival: 'Survival / Extraction', rescue: 'Rescue / Escort',
+  interception: 'Convoy Interception', night: 'Night Sabotage', assault: 'Assault / Boss',
 };
+
+/** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
+export const CHAPTERS: { number: number; name: string; from: number; to: number }[] = [
+  { number: 1, name: 'Boot Camp', from: 1, to: 5 },
+  { number: 2, name: 'Behind Enemy Lines', from: 6, to: 10 },
+  { number: 3, name: 'Coming soon', from: 11, to: Infinity },
+];
+export const chapterOf = (missionNumber: number) => CHAPTERS.find((c) => missionNumber >= c.from && missionNumber <= c.to) ?? CHAPTERS[0];
 
 /**
  * STAR RULES. two: 'optionals' = every optional objective completed; 'fullExtraction' = the
@@ -43,7 +52,13 @@ export interface OptionalDef {
 }
 
 /** `recruits`: named campaign recruit offers (NAMED_RECRUITS keys) this first clear unlocks (never a free soldier). */
-export interface Unlocks { missions: string[]; recruits: string[]; capacityNote?: string }
+export interface Unlocks {
+  missions: string[];
+  recruits: string[];
+  capacityNote?: string;
+  /** v0.6.2: soldier classes this first clear makes recruitable (Mission 9: Sniper). Never a free soldier. */
+  classes?: string[];
+}
 
 export interface CampaignMission {
   id: string; // stable: records, first clears, stars and unlocks are keyed by it
@@ -121,12 +136,53 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Clear the compound guards', 'Free the captive', 'Escort the captive to extraction'],
     optional: [{ id: 'captive-unharmed', label: 'The captive takes no damage' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Escort and positioning',
-    unlocks: { missions: [], recruits: ['havoc'], capacityNote: 'Squad size 4 for Mission 6' },
+    unlocks: { missions: ['bridgehead'], recruits: ['havoc'], capacityNote: 'Squad size 4 for Mission 6' },
+  },
+  // ---- v0.6.2 Chapter 2: Behind Enemy Lines ----
+  {
+    id: 'bridgehead', number: 6, name: 'Bridgehead', type: 'capture', playable: true,
+    briefing: 'Seize the only bridge over the river and hold it against the counterattack.',
+    primary: ['Clear the bridgehead defenders', 'Hold the bridge', 'Reach the extraction zone'],
+    optional: [{ id: 'no-kia', label: 'No soldier KIA', replaces: 'fullExtraction' }], stars: { two: 'optionals', three: 'noDowns' },
+    teaches: 'Chokepoints and enemy Snipers (watch the red laser)',
+    unlocks: { missions: ['prison-break'], recruits: [], capacityNote: 'Squad size 5 from Mission 7' },
   },
   {
-    id: 'mission-6', number: 6, name: 'Coming soon', type: 'elimination', playable: false,
-    briefing: 'The next operation is being planned.', primary: ['Not available in v0.4'], optional: [],
-    stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: 'Four-soldier squads', unlocks: { missions: [], recruits: [] },
+    id: 'prison-break', number: 7, name: 'Prison Break', type: 'rescue', playable: true,
+    briefing: 'A captured field medic is held in a guarded camp. Break in and bring them out.',
+    primary: ['Clear the camp guards', 'Free the captured medic', 'Escort the medic to extraction'],
+    optional: [{ id: 'prisoner-safe', label: 'The prisoner is never downed' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Watchtowers and protective escort formation',
+    unlocks: { missions: ['convoy-crusher'], recruits: ['patch'] },
+  },
+  {
+    id: 'convoy-crusher', number: 8, name: 'Convoy Crusher', type: 'interception', playable: true,
+    briefing: 'Three supply trucks are crossing the canyon. Stop them before they get through.',
+    primary: ['Destroy at least 2 of the 3 supply trucks', 'Reach the extraction zone'],
+    optional: [{ id: 'all-trucks', label: 'Destroy all three trucks' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Moving targets and Armored Troopers (flank them)',
+    unlocks: { missions: ['blackout'], recruits: [] },
+  },
+  {
+    id: 'blackout', number: 9, name: 'Blackout', type: 'night', playable: true,
+    briefing: 'Knock out the communications relays at night before the alarm brings the whole garrison.',
+    primary: ['Destroy the 3 communication relays', 'Reach the extraction zone'],
+    optional: [{ id: 'alarm', label: 'Destroy every relay before the alarm maxes out' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Reinforcement pressure and the alarm',
+    unlocks: { missions: ['iron-fist'], recruits: [], classes: ['sniper'] },
+  },
+  {
+    id: 'iron-fist', number: 10, name: 'Operation Iron Fist', type: 'assault', playable: true,
+    briefing: 'Destroy the stronghold installations, then take down its commander: the Iron Warden.',
+    primary: ['Destroy the 2 enemy installations', 'Storm the stronghold', 'Defeat the Iron Warden', 'Reach the extraction zone'],
+    optional: [{ id: 'no-kia', label: 'No soldier KIA', replaces: 'fullExtraction' }], stars: { two: 'optionals', three: 'noDowns' },
+    teaches: 'Boss fight: dodge the machine gun and the rocket circle',
+    unlocks: { missions: [], recruits: [] },
+  },
+  {
+    id: 'mission-11', number: 11, name: 'Coming soon', type: 'elimination', playable: false,
+    briefing: 'Chapter 3 is being planned.', primary: ['Not available in v0.6.2'], optional: [],
+    stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: 'Chapter 3', unlocks: { missions: [], recruits: [] },
   },
 ];
 
@@ -141,11 +197,11 @@ export const capacityOf = (id: string): number => capacityFor(campaignMission(id
  * Recruitment Office offer for this named soldier (`key` = their stable soldier id, also the
  * offer key: claims are tracked by it, never by the display name). The same milestone unlocks the
  * generic class (`newClass`) and the soldier's trait for random recruits, independently of the
- * purchase. Patch's milestone is Mission 7, which is not in the game yet.
+ * purchase. Patch's milestone is Mission 7 (Prison Break, v0.6.2).
  */
 export interface NamedRecruitDef {
   key: string;
-  /** Mission id whose first clear unlocks the offer (Mission 7 does not exist yet). */
+  /** Mission id whose first clear unlocks the offer. */
   milestone: string;
   missionNumber: number;
   price: number;
@@ -161,7 +217,7 @@ export const NAMED_RECRUITS: NamedRecruitDef[] = [
   { key: 'tank', milestone: 'first-contact', missionNumber: 1, price: NAMED_RECRUIT_PRICE, newClass: true, unlockText: 'Unlock Tank + Heavy Gunner recruitment', notice: 'Heavy Gunners can now be recruited.' },
   { key: 'doc', milestone: 'heavy-support', missionNumber: 2, price: NAMED_RECRUIT_PRICE, newClass: true, unlockText: 'Unlock Doc + Medic recruitment', notice: 'Medics can now be recruited.' },
   { key: 'havoc', milestone: 'bring-them-home', missionNumber: 5, price: NAMED_RECRUIT_PRICE, newClass: false, unlockText: 'Unlock Havoc + Trigger Happy trait', notice: 'New named recruit · Trigger Happy trait now available for recruits.' },
-  { key: 'patch', milestone: 'mission-7', missionNumber: 7, price: NAMED_RECRUIT_PRICE, newClass: false, unlockText: 'Unlock Patch + Healer trait', notice: 'New named recruit · Healer trait now available for Medic recruits.' },
+  { key: 'patch', milestone: 'prison-break', missionNumber: 7, price: NAMED_RECRUIT_PRICE, newClass: false, unlockText: 'Unlock Patch + Healer trait', notice: 'New named recruit · Healer trait now available for Medic recruits.' },
 ];
 export const namedRecruit = (key: string) => NAMED_RECRUITS.find((n) => n.key === key);
 
@@ -174,7 +230,22 @@ export const SOLDIER_UNLOCK: Record<string, { by: string | null; text: string }>
   tank: { by: 'first-contact', text: 'Recruit in the Recruitment Office after clearing Mission 1' },
   doc: { by: 'heavy-support', text: 'Recruit in the Recruitment Office after clearing Mission 2' },
   havoc: { by: 'bring-them-home', text: 'Recruit in the Recruitment Office after clearing Mission 5' },
-  patch: { by: null, text: 'Recruit at the Mission 7 milestone (future update)' },
+  patch: { by: 'prison-break', text: 'Recruit in the Recruitment Office after clearing Mission 7' },
+};
+
+/** v0.6.2: soldier classes unlocked by these completions (Sniper after Mission 9). */
+export function derivedClassUnlocks(completed: (id: string) => boolean): string[] {
+  const out = new Set<string>();
+  for (const m of CAMPAIGN) if (completed(m.id)) (m.unlocks.classes ?? []).forEach((c) => out.add(c));
+  return [...out];
+}
+/** v0.6.2 class unlock notification text. */
+export const CLASS_UNLOCK_TEXT: Record<string, { title: string; body: string; unlockText: string }> = {
+  sniper: {
+    title: 'NEW CLASS UNLOCKED! SNIPER',
+    body: 'Long-range precision specialists are now available in the Recruitment Office.',
+    unlockText: 'Unlock the Sniper class for recruitment',
+  },
 };
 
 /** Mission ids unlocked by clearing `cleared` (the campaign's own rules, used for repair). */

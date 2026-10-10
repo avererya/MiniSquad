@@ -87,7 +87,7 @@ function makeDefaults() {
       turnRate: 5, aimTolerance: 10, radius: 20, speedVariance: 0, reactionMin: 0.5, reactionMax: 0.9, advanceChance: 0, advanceMinDist: 1, aggroRadius: 560,
     },
     boss: {
-      hp: 2400, damage: 5, accuracy: 7, movePenalty: 0, fireRate: 9, range: 560, moveSpeed: 42, projectileSpeed: 470,
+      hp: 2400, damage: 4, accuracy: 7, movePenalty: 0, fireRate: 9, range: 560, moveSpeed: 42, projectileSpeed: 470,
       turnRate: 1.6, aimTolerance: 30, radius: 26, speedVariance: 0, reactionMin: 0.3, reactionMax: 0.3, advanceChance: 0, advanceMinDist: 1, aggroRadius: 2000,
       windup: 0.9, // s machine-gun windup (telegraph)
       burst: 2.2, // s sustained burst
@@ -104,7 +104,7 @@ function makeDefaults() {
       modInfantry: 0.75, modHeavy: 0.65, modMedic: 0.75, modGrenade: 1.0, modSniper: 1.6,
     },
     truck: {
-      hp: 650, damage: 0, accuracy: 0, movePenalty: 0, fireRate: 0, range: 0, moveSpeed: 52, projectileSpeed: 1,
+      hp: 1000, damage: 0, accuracy: 0, movePenalty: 0, fireRate: 0, range: 0, moveSpeed: 52, projectileSpeed: 1,
       turnRate: 2, aimTolerance: 0, radius: 26, speedVariance: 0, reactionMin: 0, reactionMax: 0, advanceChance: 0, advanceMinDist: 1, aggroRadius: 0,
       grenadeMul: 1.3, // trucks take extra blast damage
     },

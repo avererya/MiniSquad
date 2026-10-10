@@ -11,20 +11,20 @@
 // pending every other screen redirects there (also on launch). The Memorial screen lists the
 // honored soldiers (Barracks / Campaign).
 import type { Game } from './game';
-import { ABILITY_NAMES, CLASSES, CLASS_IDS, classStats, effectiveStats, newProgression, type SoldierIdentity } from './classes';
+import { ABILITY_NAMES, CLASSES, CLASS_IDS, classStats, effectiveStats, newProgression, type SoldierClassId, type SoldierIdentity } from './classes';
 import { CFG } from './config';
 import { TRAITS } from './traits';
 import { SQUAD_SLOTS, defaultRoster } from './roster';
 import { drawClassPortrait } from './render';
 import { unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
-import { CAMPAIGN, CAPACITY_TABLE, MISSION_TYPE_LABEL, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
+import { CAMPAIGN, CAPACITY_TABLE, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
 } from './progression';
 import {
-  buySquadTraining, buyTraining, dismiss, dismissBlock, dismissRefund, enlistPhoenix, lineupKey, lockedNamedRecruits, markRecruitNotified, memorialize, namedOffers, openOffice, pendingRecruitNotice,
+  buySquadTraining, buyTraining, dismiss, dismissBlock, dismissRefund, enlistPhoenix, lineupKey, lockedNamedRecruits, markClassNotified, markRecruitNotified, pendingClassNotice, memorialize, namedOffers, openOffice, pendingRecruitNotice,
   recruit, recruitBlock, recruitNamed, refreshOffers, rename, resurrect,
 } from './economy';
 import { MEMORIAL_ARM_MS, PHOENIX_RECRUITS, casualtyPosition, costFor, decisionBlock, pendingCasualties } from './casualties';
@@ -143,9 +143,14 @@ export class Menus {
     const acc = getAccount();
     const total = CAMPAIGN.filter((m) => m.playable).length * 3;
     const got = CAMPAIGN.reduce((a, m) => a + (acc.missions[m.id]?.bestStars ?? 0), 0);
+    let chap = 0;
     const list = CAMPAIGN.map((m) => {
       const st = this.missionState(m), best = acc.missions[m.id]?.bestStars ?? 0;
-      return `<button class="c-row ${st} ${m.id === this.campaignSel ? 'on' : ''}" data-a="csel" data-id="${m.id}">
+      const c = chapterOf(m.number);
+      // v0.6.2: chapter headers (Chapter 1: Missions 1-5, Chapter 2: Behind Enemy Lines, 6-10)
+      const head = c.number !== chap ? `<div class="c-chap">CHAPTER ${c.number} · ${esc(c.name.toUpperCase())}</div>` : '';
+      chap = c.number;
+      return `${head}<button class="c-row ${st} ${m.id === this.campaignSel ? 'on' : ''}" data-a="csel" data-id="${m.id}">
         <span class="c-num">${m.playable ? m.number : '…'}</span>
         <span class="c-name"><b>${esc(m.name)}</b><small>${m.playable ? MISSION_TYPE_LABEL[m.type] : 'Future update'}</small></span>
         <span class="c-state">${st === 'locked' ? '🔒' : st === 'soon' ? '' : stars(best)}</span>
@@ -180,6 +185,29 @@ export class Menus {
    * the Recruitment Office until bought. Nothing is bought or added here.
    */
   private recruitNoticeHtml() {
+    // v0.6.2: a class unlock (Sniper) is announced first, once
+    const cls = pendingClassNotice(getAccount());
+    const ct = cls ? CLASS_UNLOCK_TEXT[cls] : null;
+    if (cls && ct) {
+      return `
+      <div class="m-modal rn-notice-bg" data-a="cn-later-bg" data-id="${cls}">
+        <div class="d-card x-card rn-notice cn-notice" role="dialog" aria-label="${esc(`${ct.title} — ${ct.body}`)}">
+          <div class="rn-kicker">★ NEW CLASS UNLOCKED! ★</div>
+          <div class="d-head">
+            <canvas class="d-port" data-cls="${cls}"></canvas>
+            <div class="d-id">
+              <div class="d-name">${esc(ct.title.replace('NEW CLASS UNLOCKED! ', ''))}</div>
+              <div class="d-cls">${cr(priceOf(cls as SoldierClassId))} CR per recruit</div>
+              <div class="rn-line">${esc(ct.body)}</div>
+            </div>
+          </div>
+          <div class="d-btns">
+            <button class="m-big alt" data-a="cn-later" data-id="${cls}">LATER</button>
+            <button class="m-big" data-a="cn-visit" data-id="${cls}">VISIT RECRUITMENT OFFICE</button>
+          </div>
+        </div>
+      </div>`;
+    }
     const n = pendingRecruitNotice(getAccount());
     const s = n && (this.game.roster.get(n.key) ?? defaultRoster().find((x) => x.id === n.key));
     if (!n || !s) return '';
@@ -230,6 +258,7 @@ export class Menus {
       ...m.unlocks.missions.map((id) => `Mission ${campaignMission(id)!.number} unlocks`),
       // v0.6.1: a first clear unlocks a named recruit OFFER (bought in the Recruitment Office), never a free soldier
       ...m.unlocks.recruits.map((k) => namedRecruit(k)?.unlockText ?? '').filter(Boolean),
+      ...(m.unlocks.classes ?? []).map((c) => CLASS_UNLOCK_TEXT[c]?.unlockText ?? '').filter(Boolean),
       ...(m.unlocks.capacityNote ? [m.unlocks.capacityNote] : []),
     ];
     if (!m.playable) {
@@ -918,7 +947,7 @@ export class Menus {
           <button class="m-nav back" data-a="manage-back">◂ BACK TO ${esc(fallen.name.toUpperCase())}</button>
           <span class="k-need">Resurrect ${esc(fallen.name)}: <b>${cr(cost)} CR</b> · ${short ? `<b class="warn">${cr(short)} CR short</b>` : '<b class="okc">affordable ✓</b>'}</span>
         </div>
-        <div class="k-help">Dismiss reserve soldiers for their refund (Infantry 200 · Heavy Gunner 250 · Medic 250; training is not refunded). Dismissal is permanent. ${living <= 1 ? 'Your last living soldier can\'t be dismissed.' : ''}</div>
+        <div class="k-help">Dismiss reserve soldiers for their refund (Infantry 200 · Heavy Gunner 250 · Medic 250 · Sniper 300; training is not refunded). Dismissal is permanent. ${living <= 1 ? 'Your last living soldier can\'t be dismissed.' : ''}</div>
         <div class="k-list t-scroll">${rows}</div>
       </div>`;
   }
@@ -1037,6 +1066,7 @@ export class Menus {
       `<div class="r-lvl">▲ ${esc(x.name.toUpperCase())} — LV ${x.before.level} → LV ${x.after.level} — +${x.xp} XP</div>`).join('') ?? '';
     const unlocks = rw ? [
       ...rw.unlockedRecruits.map((k) => { const s = g.roster.get(k) ?? defaultRoster().find((d) => d.id === k); return s ? `<div class="r-unl soldier">★ NEW RECRUIT AVAILABLE: <b>${esc(s.name.toUpperCase())}</b> (${CLASSES[s.classId].label}) · Recruitment Office</div>` : ''; }),
+      ...(rw.unlockedClasses ?? []).map((c) => `<div class="r-unl soldier">★ NEW CLASS UNLOCKED: <b>${esc(CLASSES[c as SoldierClassId]?.label.toUpperCase() ?? c)}</b> · Recruitment Office</div>`),
       ...rw.unlockedMissions.map((id) => { const c = campaignMission(id)!; return `<div class="r-unl">▶ MISSION ${c.number} UNLOCKED: <b>${esc(c.name)}</b>${capacityFor(c.number) > capacityFor(m.def.number) ? ` · squad size ${capacityFor(c.number)}` : ''}</div>`; }),
       ...(rw.legacyFirstClearPaid ? ['<div class="r-unl dim">First-clear Credit bonus was already paid for this map in v0.3 (Comms Outpost)</div>'] : []),
       ...(rw.firstClear && m.def.unlocks.capacityNote ? [`<div class="r-unl">▲ ${esc(m.def.unlocks.capacityNote.toUpperCase())}</div>`] : []),
@@ -1141,6 +1171,15 @@ export class Menus {
       }
       case 'memorial': e.stopPropagation(); this.showMemorial(el.dataset.from === 'campaign' ? 'campaign' : 'barracks'); return;
       case 'memorial-back': e.stopPropagation(); if (this.memorialBack === 'campaign') this.showCampaign(); else this.showBarracks(); return;
+      case 'cn-visit': case 'cn-later': case 'cn-later-bg': {
+        if (a === 'cn-later-bg' && e.target !== el) return;
+        e.stopPropagation();
+        markClassNotified(getAccount(), id!, g.persist);
+        this.txLockUntil = performance.now() + RECRUIT_LOCK_MS;
+        if (a === 'cn-visit') { this.tab = 'recruit'; this.detailsId = null; this.targetSlot = null; this.showBarracks(); return; }
+        if (this.screen === 'barracks') this.renderBarracks(); else this.renderCampaign();
+        return;
+      }
       case 'rn-visit': case 'rn-later': case 'rn-later-bg': {
         if (a === 'rn-later-bg' && e.target !== el) return;
         e.stopPropagation();

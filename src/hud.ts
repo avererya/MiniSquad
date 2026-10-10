@@ -14,7 +14,7 @@ import { TRAITS } from './traits';
 
 interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
 
-const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT' };
+const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT', focus: 'FOCUS' };
 
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
@@ -25,6 +25,10 @@ export class Hud implements GameUI {
   private objBarFill: HTMLElement;
   private objOpt: HTMLElement;
   private optKey = '';
+  private objChips!: HTMLElement;
+  private chipsKey = '';
+  private objMeter!: HTMLElement;
+  private objBoss!: HTMLElement;
   private timer: HTMLElement;
   private hint: HTMLElement;
   private panelsEl: HTMLElement;
@@ -38,7 +42,7 @@ export class Hud implements GameUI {
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
-      <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div><div class="obj-opt"></div></div>
+      <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div><div class="obj-chips"></div><div class="obj-meter"><span class="om-l"></span><div class="om-bar"><div></div></div><span class="om-v"></span></div><div class="obj-boss"><div class="ob-name">IRON WARDEN</div><div class="ob-bar"><div class="ob-fill"></div><i style="left:65%"></i><i style="left:30%"></i></div><div class="ob-state"></div></div><div class="obj-opt"></div></div>
       <div id="timer"></div>
       <div id="topbtns"><button data-a="mute">🔊</button><button data-a="pause">⏸</button><button data-a="tune">⚙</button></div>
       <div id="hint"></div>
@@ -50,6 +54,9 @@ export class Hud implements GameUI {
     this.objBar = root.querySelector('.obj-bar')!;
     this.objBarFill = root.querySelector('.obj-bar div')!;
     this.objOpt = root.querySelector('.obj-opt')!;
+    this.objChips = root.querySelector('.obj-chips')!;
+    this.objMeter = root.querySelector('.obj-meter')!;
+    this.objBoss = root.querySelector('.obj-boss')!;
     this.timer = root.querySelector('#timer')!;
     this.hint = root.querySelector('#hint')!;
     this.panelsEl = root.querySelector('#panels')!;
@@ -122,6 +129,7 @@ export class Hud implements GameUI {
     this.objSub.style.display = o.sub ? '' : 'none';
     this.objBar.style.display = o.progress !== undefined ? '' : 'none';
     if (o.progress !== undefined) this.objBarFill.style.width = `${Math.min(100, o.progress * 100)}%`;
+    this.updateWidgets();
     this.timer.textContent = g.phase === 'start' ? '' : fmtTime(g.time) + (g.invuln ? '  [INVULN]' : '');
     // optional objectives: one line each, re-rendered only when something changes
     const m = g.mission;
@@ -171,11 +179,44 @@ export class Hud implements GameUI {
       // while an effect runs, the button shows its remaining duration instead of the cooldown
       const running = u.active && ab.activeLeft > 0;
       p.cd.style.height = running ? '0%' : `${Math.min(100, cdFrac * 100)}%`;
-      p.act.style.width = running ? `${Math.min(100, (ab.activeLeft / CFG.suppressive.duration) * 100)}%` : '0%';
+      const dur = ab.id === 'focus' ? CFG.focus.duration : CFG.suppressive.duration;
+      p.act.style.width = running ? `${Math.min(100, (ab.activeLeft / dur) * 100)}%` : '0%';
       p.btn.classList.toggle('disabled', !u.active);
       p.btn.classList.toggle('ready', ab.ready(u));
       p.btn.classList.toggle('running', running);
       p.btn.classList.toggle('targeting', g.targeting === u);
+    }
+  }
+
+  /**
+   * v0.6.2 objective widgets: chips (truck / relay / installation HP, compact), the ALARM meter
+   * (Mission 9) and the boss HP bar with its 65% / 30% reinforcement ticks (Mission 10).
+   */
+  private updateWidgets() {
+    const g = this.game, o = g.objective;
+    const chips = g.phase === 'start' ? undefined : o.chips;
+    const key = chips ? chips.map((c) => `${c.label}${c.state}${Math.round(c.frac * 20)}`).join('|') : '';
+    if (key !== this.chipsKey) {
+      this.chipsKey = key;
+      this.objChips.innerHTML = chips ? chips.map((c) => `<span class="oc ${c.state}"><b>${c.label.replace(/[<>&]/g, '')}</b><i><i style="width:${Math.round(c.frac * 100)}%"></i></i></span>`).join('') : '';
+      this.objChips.style.display = chips?.length ? '' : 'none';
+    }
+    const m = g.phase === 'start' ? undefined : o.meter;
+    this.objMeter.style.display = m ? '' : 'none';
+    if (m) {
+      this.objMeter.classList.toggle('hot', m.hot);
+      this.objMeter.querySelector<HTMLElement>('.om-l')!.textContent = m.label;
+      this.objMeter.querySelector<HTMLElement>('.om-bar div')!.style.width = `${Math.min(100, m.frac * 100)}%`;
+      this.objMeter.querySelector<HTMLElement>('.om-v')!.textContent = `${Math.floor(m.frac * 100)}%`;
+    }
+    const b = g.phase === 'playing' ? g.mission.boss : null;
+    const show = !!b && b.unit.active;
+    this.objBoss.style.display = show ? '' : 'none';
+    if (show && b) {
+      this.objBoss.querySelector<HTMLElement>('.ob-fill')!.style.width = `${Math.max(0, (b.unit.hp / b.unit.maxHp) * 100)}%`;
+      const st = b.rocket ? 'ROCKET!' : b.phase === 'windup' ? 'MG WINDING UP' : b.phase === 'burst' ? 'FIRING' : '';
+      const el = this.objBoss.querySelector<HTMLElement>('.ob-state')!;
+      if (el.textContent !== st) el.textContent = st;
     }
   }
 

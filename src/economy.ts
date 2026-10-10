@@ -10,7 +10,7 @@
 //  - Purchases carry the rank the button was drawn for (expectedRank): a stale or repeated event
 //    for an already-bought rank is refused. The UI also ignores taps within purchaseLockMs.
 import type { Roster } from './roster';
-import { NAMED_RECRUITS, campaignMission, namedRecruit, type NamedRecruitDef } from './campaign';
+import { CLASS_UNLOCK_TEXT, NAMED_RECRUITS, campaignMission, namedRecruit, type NamedRecruitDef } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, TRAINING, addXp, computeMissionRewards, levelForXp, newTraining, nextCost, xpForLevel,
   type AccountData, type CandidateRecord, type CasualtyDecision, type DismissalRecord, type FallenEntry, type KiaCause, type MemorialRecord, type MissionOutcome, type MissionReward,
@@ -87,7 +87,7 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
     soldiers.push({ id: s.id, name: s.name, status: d.status, eligible, xp, gained: res.gained, before, after: { level: p.level, xp: p.xp }, levelsGained: p.level - before.level, capped: res.gained < xp });
   }
   account.credits += calc.credits;
-  const unlockedSoldiers: string[] = [], unlockedMissions: string[] = [], unlockedRecruits: string[] = [];
+  const unlockedSoldiers: string[] = [], unlockedMissions: string[] = [], unlockedRecruits: string[] = [], unlockedClasses: string[] = [];
   if (pay && o.won) {
     rec.completions++;
     if (firstClear) rec.firstClearRun = o.runId;
@@ -97,6 +97,7 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
     if (def) {
       for (const m of def.unlocks.missions) if (!account.campaign.unlockedMissions.includes(m)) { account.campaign.unlockedMissions.push(m); unlockedMissions.push(m); }
       for (const key of def.unlocks.recruits) if (unlockRecruitOffer(account, key)) unlockedRecruits.push(key);
+      for (const c of def.unlocks.classes ?? []) if (unlockClass(account, c)) unlockedClasses.push(c);
     }
   }
   addCasualties(account, o.runId, o.missionId, fallen, opts.now);
@@ -104,7 +105,7 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
   markSettled(account, o.runId);
   return {
     runId: o.runId, missionId: o.missionId, won: o.won, firstClear, legacyFirstClearPaid: firstClear && legacyPaid,
-    stars: pay && o.won ? Math.max(0, Math.min(3, o.stars ?? 1)) : 0, prevBest, bestStars: rec.bestStars, unlockedSoldiers, unlockedRecruits, unlockedMissions,
+    stars: pay && o.won ? Math.max(0, Math.min(3, o.stars ?? 1)) : 0, prevBest, bestStars: rec.bestStars, unlockedSoldiers, unlockedRecruits, unlockedClasses, unlockedMissions,
     xpLines: calc.xpLines, xpMul: calc.xpMul, xpEach: calc.xpEach,
     creditLines: calc.creditLines, credits: calc.credits, creditsAfter: account.credits, soldiers, fallen, survivors, rewarded: pay,
   };
@@ -115,6 +116,22 @@ export function unlockRecruitOffer(account: AccountData, key: string): boolean {
   if (!namedRecruit(key) || account.named.unlocked.includes(key)) return false;
   account.named.unlocked.push(key);
   return true;
+}
+
+/** v0.6.2 class milestone reached (Sniper): recruitable from now on (true only the first time; never adds a soldier). */
+export function unlockClass(account: AccountData, classId: string): boolean {
+  if (!CLASS_UNLOCK_TEXT[classId] || account.classUnlocks.unlocked.includes(classId)) return false;
+  account.classUnlocks.unlocked.push(classId);
+  return true;
+}
+/** The next class unlock whose one-time notice has not been shown (null = none). */
+export function pendingClassNotice(account: AccountData): string | null {
+  return account.classUnlocks.unlocked.find((c) => !account.classUnlocks.notified.includes(c)) ?? null;
+}
+export function markClassNotified(account: AccountData, classId: string, persist: PersistFn | null = null) {
+  if (account.classUnlocks.notified.includes(classId)) return;
+  account.classUnlocks.notified.push(classId);
+  persist?.();
 }
 
 function markSettled(account: AccountData, runId: string) {

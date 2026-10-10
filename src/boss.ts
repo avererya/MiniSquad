@@ -51,7 +51,7 @@ export class BossFight {
   private fightT = 0;
 
   constructor(readonly unit: Unit, readonly arena: Rect, readonly gates: Vec[]) {
-    this.rocketT = 11; // the first rocket comes early so the player learns the telegraph
+    this.rocketT = 20; // first rocket after ~20 s (then every 21-27 s: CFG.boss.rocketEvery ± rocketJitter)
   }
 
   get hpFrac() { return clamp(this.unit.hp / this.unit.maxHp, 0, 1); }

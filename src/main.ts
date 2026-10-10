@@ -123,7 +123,9 @@ if (preset) game.reset(preset.classes);
 else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 6), 'temp');
 else {
   const msg = loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.'
-    : loaded.status === 'migrated' ? (loaded.fromVersion === 5
+    : loaded.status === 'migrated' ? (loaded.fromVersion === 6
+      ? 'Save updated for v0.6.2: everything was kept. New: Chapter 2 — Behind Enemy Lines (Missions 6-10) and, after Mission 9, the Sniper class.'
+      : loaded.fromVersion === 5
       ? 'Save updated for v0.6.1: every soldier you have was kept (nothing charged). New: campaign milestones now unlock named recruits you choose to buy in the Recruitment Office.'
       : loaded.fromVersion === 4
       ? 'Save updated for v0.6: everything was kept. New: KIA is now permanent — fallen soldiers can be resurrected or honored in the Memorial.'

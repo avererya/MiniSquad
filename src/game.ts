@@ -81,6 +81,8 @@ export class Game implements InputHandler {
   anchor: Vec = { ...this.mission.map.start };
   spread = 1;
   squadMoving = false;
+  /** v0.6.2 protective escort formation: facing (radians, smoothed) and each soldier's ring slot. */
+  formation = { heading: 0, slots: new Map<number, number>(), key: '' };
   cam: Vec = { ...this.mission.map.start };
   phase: GamePhase = 'start';
   time = 0; // mission time
