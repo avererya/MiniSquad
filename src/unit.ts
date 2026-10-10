@@ -10,7 +10,18 @@ import type { Vec } from './util';
 
 export type Team = 'squad' | 'enemy';
 export type UnitState = 'active' | 'downed' | 'kia' | 'dead';
-export type StatBlock = EffectiveStats | typeof CFG.enemy;
+/** v0.6.2 enemy kinds; each reads its own CFG group (missing behaviour = rifleman). */
+export type EnemyKind = 'rifleman' | 'sniper' | 'armored' | 'tower' | 'boss' | 'truck';
+type EnemyStats = typeof CFG.enemy;
+export type StatBlock = EffectiveStats | EnemyStats;
+const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
+  rifleman: () => CFG.enemy,
+  sniper: () => CFG.enemySniper,
+  armored: () => CFG.armored,
+  tower: () => CFG.tower,
+  boss: () => CFG.boss,
+  truck: () => CFG.truck,
+};
 
 let nextId = 1;
 
@@ -53,6 +64,23 @@ export class Unit {
   wander = Math.random() * 100;
 
   // enemy-only
+  /** v0.6.2: enemy type (stats + behaviour). */
+  kind: EnemyKind = 'rifleman';
+  /** Never moves (watchtower guard, objective structures); pushes movers out like a structure. */
+  fixed = false;
+  /** v0.6.2 convoy: a moving destructible vehicle (normal-priority target, never shoots). */
+  vehicle = false;
+  /** Convoy escort: walks with this truck until soldiers come close. */
+  escortOf: Unit | null = null;
+  escortOffset: Vec = { x: 0, y: 0 };
+  /**
+   * v0.6.2 held aim (enemy Sniper telegraph / squad Sniper aim cue): seconds the aim has been held
+   * on the current target; `lockAim` is the frozen firing direction once the enemy sniper locks.
+   */
+  aimHeld = 0;
+  lockAim: number | null = null;
+  /** v0.6.2: after the boss falls the survivors rout: no shooting, they flee and leave. */
+  routed = false;
   advancer = false; // "advance while firing" vs "stop and shoot"
   speedRand = 1;
   reactionTime = 0.5;
@@ -88,15 +116,15 @@ export class Unit {
   /** Class definition (squad soldiers only). */
   get classDef(): SoldierClassDef | null { return this.identity ? CLASSES[this.identity.classId] : null; }
   /** Live stats: the soldier's EFFECTIVE stats (class + trait + individual mods), or CFG.enemy. */
-  get stats(): StatBlock { return this.identity ? effectiveStats(this.identity) : CFG.enemy; }
+  get stats(): StatBlock { return this.identity ? effectiveStats(this.identity) : this.team === 'enemy' ? KIND_CFG[this.kind]() : CFG.enemy; }
   /** Squad soldier's effective stats (throws for enemies). */
   get soldierStats(): EffectiveStats { return effectiveStats(this.identity!); }
   get maxHp() { return this.hpOverride ?? this.stats.hp; }
   get radius() { return this.stats.radius; }
   get maxSpeed() {
     if (this.npc) return CFG.escort.moveSpeed * this.catchUp;
-    if (this.structure) return 0;
-    return this.team === 'squad' ? this.stats.moveSpeed * this.speedMul * this.catchUp : CFG.enemy.moveSpeed * this.speedRand;
+    if (this.structure || this.fixed) return 0;
+    return this.team === 'squad' ? this.stats.moveSpeed * this.speedMul * this.catchUp : this.stats.moveSpeed * this.speedRand;
   }
   /** Rapid Fire pickup and Suppressive Fire do not stack: the larger multiplier applies. */
   get fireRate() {
@@ -104,7 +132,9 @@ export class Unit {
     const ability = this.ability?.fireRateMul?.() ?? 1;
     return this.stats.fireRate * Math.max(pickup, ability);
   }
-  get suppressing() { return (this.ability?.fireRateMul?.() ?? 1) > 1; }
+  get suppressing() { return this.ability?.id === 'suppressive' && (this.ability.fireRateMul?.() ?? 1) > 1; }
+  /** Sniper Focus running. */
+  get focusing() { return this.ability?.id === 'focus' && this.ability.activeLeft > 0; }
 
   /** Identity + current runtime status, e.g. for HUD, tests and a future roster. */
   snapshot() {

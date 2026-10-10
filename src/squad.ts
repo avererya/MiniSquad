@@ -106,7 +106,7 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
     // --- direct steer, or follow an A* path when the straight line is blocked ---
     let steerTo = goal;
     let isFinal = true;
-    if (game.world.clear(s.pos, goal, s.radius - 1)) {
+    if (game.world.passable(s.pos, goal, s.radius - 1)) {
       s.path = null;
     } else {
       s.pathTimer -= dt;
@@ -166,7 +166,7 @@ export function updateEscort(game: Game, n: Unit, dt: number) {
 
   let steer = goal;
   let isFinal = true;
-  if (game.world.clear(n.pos, goal, n.radius - 1)) n.path = null;
+  if (game.world.passable(n.pos, goal, n.radius - 1)) n.path = null;
   else {
     n.pathTimer -= dt;
     if (!n.path || n.pathTimer <= 0) { n.path = game.world.findPath(n.pos, goal, n.radius); n.pathTimer = 0.3; }

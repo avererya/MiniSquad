@@ -11,19 +11,19 @@
 // Adding a class (Sniper, Commando...) = a CFG group + an entry in CLASSES + an ability
 // factory. No class checks are scattered through gameplay code: it reads the def.
 import { CFG, type SoldierStats } from './config';
-import { FieldTreatmentAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
+import { FieldTreatmentAbility, FocusAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
 import { TRAITS, applyModifiers, combineModifiers, type EffectiveStats, type StatModifiers, type TraitId } from './traits';
 import { NO_PROGRESSION, PROGRESSION, clean, getAccount, grownStats, newTraining, type ProgressionInputs, type TrainingRanks } from './progression';
 
-export type SoldierClassId = 'infantry' | 'heavy' | 'medic';
-export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment';
-export type WeaponKind = 'rifle' | 'mg' | 'smg';
+export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper';
+export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment' | 'focus';
+export type WeaponKind = 'rifle' | 'mg' | 'smg' | 'sniper';
 
 export interface ClassVisual {
   bodyW: number; // torso width (Infantry 14)
   weapon: WeaponKind;
   pack: 'none' | 'ammo' | 'medical';
-  helmet: 'standard' | 'heavy' | 'medic';
+  helmet: 'standard' | 'heavy' | 'medic' | 'boonie';
   tracerWidth: number; // bullet streak width
   tracerLen: number;
 }
@@ -34,28 +34,40 @@ export interface SoldierClassDef {
   short: string; // "HVY"
   abilityId: AbilityId;
   visual: ClassVisual;
+  /**
+   * Future Elite promotion branches (v0.7: two per class, the Sniper included). Data hook only:
+   * empty in v0.6.2, nothing reads it yet. ProgressionRecord.tier / elitePath / eliteLevel already
+   * exist in the save, so a promotion can be added without a class or save-format change.
+   */
+  eliteBranches: string[];
 }
 
 export const ABILITY_FACTORIES: Record<AbilityId, () => Ability> = {
   grenade: () => new GrenadeAbility(),
   suppressive: () => new SuppressiveFireAbility(),
   fieldTreatment: () => new FieldTreatmentAbility(),
+  focus: () => new FocusAbility(),
 };
 
-export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', suppressive: 'Suppressive Fire', fieldTreatment: 'Field Treatment' };
+export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', suppressive: 'Suppressive Fire', fieldTreatment: 'Field Treatment', focus: 'Focus' };
 
 export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
   infantry: {
     id: 'infantry', label: 'Infantry', short: 'INF', abilityId: 'grenade',
-    visual: { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'standard', tracerWidth: 3.5, tracerLen: 20 },
+    visual: { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'standard', tracerWidth: 3.5, tracerLen: 20 }, eliteBranches: [],
   },
   heavy: {
     id: 'heavy', label: 'Heavy Gunner', short: 'HVY', abilityId: 'suppressive',
-    visual: { bodyW: 19, weapon: 'mg', pack: 'ammo', helmet: 'heavy', tracerWidth: 3, tracerLen: 16 },
+    visual: { bodyW: 19, weapon: 'mg', pack: 'ammo', helmet: 'heavy', tracerWidth: 3, tracerLen: 16 }, eliteBranches: [],
   },
   medic: {
     id: 'medic', label: 'Medic', short: 'MED', abilityId: 'fieldTreatment',
-    visual: { bodyW: 13, weapon: 'smg', pack: 'medical', helmet: 'medic', tracerWidth: 3, tracerLen: 16 },
+    visual: { bodyW: 13, weapon: 'smg', pack: 'medical', helmet: 'medic', tracerWidth: 3, tracerLen: 16 }, eliteBranches: [],
+  },
+  // v0.6.2: unlocked by Mission 9 (Blackout), recruited in the Recruitment Office only
+  sniper: {
+    id: 'sniper', label: 'Sniper', short: 'SNP', abilityId: 'focus',
+    visual: { bodyW: 13, weapon: 'sniper', pack: 'none', helmet: 'boonie', tracerWidth: 2.5, tracerLen: 46 }, eliteBranches: [],
   },
 };
 

@@ -1,6 +1,6 @@
 // World geometry: obstacles, line of sight, collision and a nav grid with
 // A* (for squad soldiers) and a multi-source flow field (for enemy riflemen).
-import type { Obstacle } from './map';
+import { isLowObstacle, type Obstacle } from './map';
 import { pushOutOfRect, segRect, clamp, type Vec } from './util';
 
 const CELL = 16;
@@ -53,8 +53,14 @@ export class World {
   readonly rows: number;
   readonly blocked: Uint8Array;
   readonly flow: Float32Array;
+  /**
+   * v0.6.2: obstacles that block bullets and line of sight. Low obstacles (river water) block
+   * movement and navigation only: you can shoot across a river but not walk through it.
+   */
+  readonly solid: Obstacle[];
 
   constructor(public obstacles: Obstacle[], readonly w: number, readonly h: number) {
+    this.solid = obstacles.filter((o) => !isLowObstacle(o));
     const WORLD_W = w, WORLD_H = h;
     this.cols = Math.ceil(w / CELL);
     this.rows = Math.ceil(h / CELL);
@@ -75,16 +81,21 @@ export class World {
   }
 
   // ---------- geometry ----------
-  /** True when nothing solid lies between a and b. `pad` thickens the segment (for movement checks). */
+  /** Line of sight / bullets: true when nothing solid lies between a and b (water does not block). */
   clear(a: Vec, b: Vec, pad = 0): boolean {
+    for (const o of this.solid) if (segRect(a.x, a.y, b.x, b.y, o, pad) >= 0) return false;
+    return true;
+  }
+  /** Movement: true when a body of half-width `pad` can walk straight from a to b (water blocks). */
+  passable(a: Vec, b: Vec, pad = 0): boolean {
     for (const o of this.obstacles) if (segRect(a.x, a.y, b.x, b.y, o, pad) >= 0) return false;
     return true;
   }
 
-  /** First obstacle hit along the segment: returns t in [0,1], or 1 if none. */
+  /** First solid obstacle hit along the segment (bullets): returns t in [0,1], or 1 if none. */
   raycast(x1: number, y1: number, x2: number, y2: number): number {
     let best = 1;
-    for (const o of this.obstacles) {
+    for (const o of this.solid) {
       const t = segRect(x1, y1, x2, y2, o, 0);
       if (t >= 0 && t < best) best = t;
     }
@@ -191,7 +202,7 @@ export class World {
     while (k < cells.length) {
       let far = k;
       for (let j = cells.length - 1; j > k; j--) {
-        if (this.clear(anchor, cells[j], radius - 2)) { far = j; break; }
+        if (this.passable(anchor, cells[j], radius - 2)) { far = j; break; }
       }
       out.push(cells[far]);
       anchor = cells[far];
@@ -243,7 +254,7 @@ export class World {
     if (!chain.length) return null;
     for (let k = chain.length - 1; k > 0; k--) {
       const pt = this.center(chain[k]);
-      if (this.clear(p, pt, radius - 2)) return pt;
+      if (this.passable(p, pt, radius - 2)) return pt;
     }
     return this.center(chain[0]);
   }

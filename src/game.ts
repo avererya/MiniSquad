@@ -3,8 +3,9 @@ import { CFG } from './config';
 import { World } from './world';
 import type { MapDef } from './map';
 import { Unit } from './unit';
-import { NearestVisible } from './targeting';
-import { Effects, updateProjectiles, updateWeapon, type Projectile } from './combat';
+import { EscortTargeting, ExposedTargeting, NearestVisible, SniperTargeting } from './targeting';
+import type { EnemyKind } from './unit';
+import { Effects, modifyDamage, updateEnemySniper, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
 import { updateGrenades, type Grenade } from './abilities';
 import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, cloneIdentity, createGeneric, type SoldierClassId, type SoldierIdentity } from './classes';
 import { MissionStats } from './missionstats';
@@ -14,7 +15,7 @@ import { updateSquad, updateEscort, squadCentre } from './squad';
 import { updateEnemyMovement } from './enemy';
 import { Mission } from './mission';
 import { scriptFor } from './missions';
-import type { MissionEvent } from './objectives';
+import type { HudChip, HudMeter, MissionEvent } from './objectives';
 import { FIRST_MISSION, campaignMission, capacityOf, computeStars, type StarResult } from './campaign';
 import { Input, type InputHandler } from './input';
 import { VIEW_W, VIEW_H } from './view';
@@ -27,7 +28,7 @@ import { decisionBlock } from './casualties';
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
 export interface Banner { text: string; color: string; life: number; maxLife: number }
-export interface Objective { text: string; sub?: string; progress?: number }
+export interface Objective { text: string; sub?: string; progress?: number; chips?: HudChip[]; meter?: HudMeter }
 
 /**
  * What a mission was started with, so Retry can repeat it exactly.
@@ -110,6 +111,8 @@ export class Game implements InputHandler {
   persist: PersistFn | null = null;
   /** Times the escort safety net had to move a stuck captive (should stay 0; reported by tools). */
   escortRescues = 0;
+  /** v0.6.2: HP removed from the Iron Warden per soldier id (balance tools: Sniper contribution). */
+  bossDamage = new Map<string, number>();
   /** Short feedback line (e.g. why an ability can't be used). */
   notice: { text: string; life: number } | null = null;
   input: Input;
@@ -250,7 +253,7 @@ export class Game implements InputHandler {
     this.phase = 'start';
     this.stats = new MissionStats();
     this.runId = newRunId();
-    this.lastReward = null; this.lastStars = null; this.escortRescues = 0;
+    this.lastReward = null; this.lastStars = null; this.escortRescues = 0; this.bossDamage = new Map();
     this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.scorches = []; this.fx = new Effects(); this.banners = [];
     const start = script.map.start;
@@ -325,7 +328,7 @@ export class Game implements InputHandler {
     const cls = identity?.classId ?? classId ?? CLASS_IDS[i % CLASS_IDS.length];
     const base = this.phase === 'playing' && this.soldiers.length ? this.anchor : this.map.start;
     const pos = this.findOpenNear({ x: base.x + r.offset[0] * 34, y: base.y + r.offset[1] * 34 }, 40);
-    const s = new Unit('squad', pos, NearestVisible, identity ?? createGeneric(r.name, cls));
+    const s = new Unit('squad', pos, cls === 'sniper' ? SniperTargeting : NearestVisible, identity ?? createGeneric(r.name, cls));
     s.speedMul = r.speedMul; s.slot = r.offset;
     s.ability = ABILITY_FACTORIES[CLASSES[cls].abilityId]();
     this.soldiers.push(s);
@@ -347,14 +350,24 @@ export class Game implements InputHandler {
   /** What enemy riflemen can shoot at: soldiers and an escorted (freed) captive. */
   enemyVictims(): Unit[] { return this.npcs.length ? [...this.soldiers, ...this.npcs.filter((n) => n.escorting)] : this.soldiers; }
 
-  spawnEnemy(pos: Vec): Unit {
-    const E = CFG.enemy;
-    const e = new Unit('enemy', pos, NearestVisible);
+  spawnEnemy(pos: Vec, kind: EnemyKind = 'rifleman'): Unit {
+    const e = new Unit('enemy', pos, kind === 'sniper' ? ExposedTargeting : NearestVisible);
+    e.kind = kind;
+    const E = e.stats as typeof CFG.enemy;
+    e.hp = e.maxHp;
     e.advancer = Math.random() < E.advanceChance;
     e.speedRand = 1 + rand(-E.speedVariance, E.speedVariance);
     e.reactionTime = rand(E.reactionMin, E.reactionMax);
     e.aim = Math.PI;
+    if (kind === 'tower') e.fixed = true;
+    if (kind === 'truck') e.vehicle = true;
     this.enemies.push(e);
+    return e;
+  }
+  /** v0.6.2 convoy escort: a rifleman / armored trooper walking with a truck. */
+  spawnEscort(truck: Unit, offset: Vec, kind: EnemyKind = 'rifleman'): Unit {
+    const e = this.spawnEnemy(this.findOpenNear({ x: truck.pos.x + offset.x, y: truck.pos.y + offset.y }, 20), kind);
+    e.escortOf = truck; e.escortOffset = offset; e.targeting = EscortTargeting;
     return e;
   }
 
@@ -371,13 +384,13 @@ export class Game implements InputHandler {
   }
 
   /** Spawn n riflemen at the nearest candidate point that is outside the camera view. */
-  spawnGroupOffscreen(candidates: Vec[], n: number, second = false): Unit[] {
+  spawnGroupOffscreen(candidates: Vec[], n: number, second = false, kinds?: EnemyKind[]): Unit[] {
     if (n <= 0 || !candidates.length) return [];
     const c = squadCentre(this.soldiers) ?? this.cam;
     const off = candidates.filter((p) => !this.isOnScreen(p, 80)).sort((a, b) => dist(a, c) - dist(b, c));
     const pt = (second ? off[1] : undefined) ?? off[0] ?? [...candidates].sort((a, b) => dist(b, c) - dist(a, c))[0];
     const out: Unit[] = [];
-    for (let i = 0; i < n; i++) out.push(this.spawnEnemy(this.findOpenNear(pt, 70)));
+    for (let i = 0; i < n; i++) out.push(this.spawnEnemy(this.findOpenNear(pt, 70), kinds?.[i] ?? 'rifleman'));
     return out;
   }
 
@@ -406,18 +419,21 @@ export class Game implements InputHandler {
    * removed (overkill excluded) and for the kill. Inactive targets take nothing, so a
    * bullet and a blast landing on the same frame can't both count.
    */
-  damage(u: Unit, amount: number, source?: Unit) {
+  damage(u: Unit, amount: number, source?: Unit, opts: DamageOpts = {}) {
     if (!u.active) return;
     u.hitFlash = CFG.feel.hitFlash;
     if (u.team === 'squad') {
       this.hurtFlash = 0.25;
       if (this.invuln) return;
     }
+    amount = modifyDamage(this, u, amount, source, opts);
     const removed = Math.min(Math.max(0, amount), Math.max(0, u.hp));
     u.hp -= amount;
     if (source) {
       source.dealt += removed;
-      if (u.team === 'enemy' && !u.structure) this.stats.damage(source, removed); // structures aren't enemy soldiers
+      // structures and vehicles aren't enemy soldiers (objective damage is not combat damage)
+      if (u.team === 'enemy' && !u.structure && !u.vehicle) this.stats.damage(source, removed);
+      if (u.kind === 'boss' && source.identity) this.bossDamage.set(source.identity.id, (this.bossDamage.get(source.identity.id) ?? 0) + removed);
     }
     if (u.npc && removed > 0) this.mission.emit(this, { type: 'npcDamaged', unit: u, amount: removed });
     sfx('hit');
@@ -426,6 +442,9 @@ export class Game implements InputHandler {
     else if (u.structure) {
       u.state = 'dead';
       this.mission.emit(this, { type: 'structureDestroyed', unit: u });
+    } else if (u.vehicle) {
+      u.state = 'dead';
+      this.mission.emit(this, { type: 'vehicleDestroyed', unit: u });
     } else {
       this.stats.kill(source);
       u.state = 'dead';
@@ -501,8 +520,8 @@ export class Game implements InputHandler {
     if (this.banners.length > 3) this.banners.shift();
   }
 
-  setObjective(text: string, sub?: string, progress?: number) {
-    this.objective = { text, sub, progress };
+  setObjective(text: string, sub?: string, progress?: number, chips?: HudChip[], meter?: HudMeter) {
+    this.objective = { text, sub, progress, chips, meter };
   }
 
   say(text: string, dur = 1.6) { this.notice = { text, life: dur }; }
@@ -600,14 +619,17 @@ export class Game implements InputHandler {
       if (src.length) this.world.computeFlow(src);
       this.flowTimer = 0.3;
     }
-    for (const e of this.enemies) if (e.active && !e.structure) updateEnemyMovement(this, e, dt);
+    for (const e of this.enemies) if (e.active && !e.structure && !e.fixed && !e.vehicle && e.kind !== 'boss') updateEnemyMovement(this, e, dt);
+    // v0.6.2: mission-driven units (convoy trucks, the boss) set their own intent
+    this.mission.unitStep(this, dt);
 
-    // integrate + collide (structures never move; they push others out)
-    const movers = [...this.soldiers, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure);
+    // integrate + collide (structures, fixed guards and trucks are pushed by nobody; they push others out)
+    const movers = [...this.soldiers, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure && !u.fixed && !u.vehicle);
     for (const u of movers) { u.pos.x += u.vel.x * dt; u.pos.y += u.vel.y * dt; }
-    for (let i = 0; i < movers.length; i++) {
-      for (let j = i + 1; j < movers.length; j++) {
-        const a = movers[i], b = movers[j];
+    const soft = movers.filter((u) => !(u.team === 'enemy' && u.kind === 'boss'));
+    for (let i = 0; i < soft.length; i++) {
+      for (let j = i + 1; j < soft.length; j++) {
+        const a = soft[i], b = soft[j];
         const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y;
         const min = a.radius + b.radius - 2;
         const d2 = dx * dx + dy * dy;
@@ -619,8 +641,8 @@ export class Game implements InputHandler {
       }
     }
     for (const st of this.enemies) {
-      if (!st.active || !st.structure) continue;
-      for (const u of movers) {
+      if (!st.active || !(st.structure || st.fixed || st.vehicle || st.kind === 'boss')) continue;
+      for (const u of soft) {
         const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y, min = u.radius + st.radius, d2 = dx * dx + dy * dy;
         if (d2 < min * min && d2 > 1e-6) { const d = Math.sqrt(d2); u.pos.x = st.pos.x + (dx / d) * min; u.pos.y = st.pos.y + (dy / d) * min; }
       }
@@ -637,7 +659,11 @@ export class Game implements InputHandler {
     // weapons
     for (const s of this.soldiers) if (s.active) updateWeapon(s, this, dt, this.enemies);
     const victims = this.enemyVictims();
-    for (const e of this.enemies) if (e.active && !e.structure) updateWeapon(e, this, dt, victims);
+    for (const e of this.enemies) {
+      if (!e.active || e.structure || e.vehicle || e.kind === 'boss' || e.routed) continue; // the boss fires from its controller (unitStep)
+      if (e.kind === 'sniper') updateEnemySniper(e, this, dt, victims);
+      else updateWeapon(e, this, dt, victims);
+    }
     updateProjectiles(this, dt);
     updateGrenades(this, dt);
     updatePickups(this, dt);
@@ -651,6 +677,8 @@ export class Game implements InputHandler {
         u.ability.tick(this, u, dt);
       }
     }
+    // routed enemies (after the boss falls) leave once well out of view
+    for (const e of this.enemies) if (e.routed && e.active && !this.isOnScreen(e.pos, 160)) e.state = 'dead';
     this.enemies = this.enemies.filter((e) => e.state !== 'dead');
 
     this.updateDowned(dt);

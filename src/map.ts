@@ -4,9 +4,13 @@
 // objectives and triggers live in missions.ts, so a map can be reused by another mission.
 import type { Rect, Vec } from './util';
 
-export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag';
+export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag' | 'water' | 'fence' | 'concrete';
 export interface Obstacle extends Rect { kind: ObstacleKind; height: number }
-export type MapTheme = 'grass' | 'farm' | 'canyon' | 'dusk';
+export type MapTheme = 'grass' | 'farm' | 'canyon' | 'dusk' | 'river' | 'prison' | 'desert' | 'night' | 'fortress';
+/** v0.6.2: water blocks movement and navigation but not bullets or line of sight (you can shoot across a river). */
+export const isLowObstacle = (o: Obstacle) => o.kind === 'water';
+/** Decoration only (never collides): floodlights light the night map, radar dishes / flags dress the set. */
+export interface MapProp { kind: 'flood' | 'radar' | 'flag' | 'tent'; x: number; y: number; dir?: number }
 
 export interface MapDef {
   id: string;
@@ -21,6 +25,9 @@ export interface MapDef {
   rapidFire: Vec[];
   /** Dirt roads drawn into the ground (decoration only). */
   roads: Vec[][];
+  /** v0.6.2: bridge decks drawn over water gaps (decoration; the gap itself is what makes it walkable). */
+  bridges?: Rect[];
+  props?: MapProp[];
 }
 
 const B = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'building', height: 52 });
@@ -28,6 +35,9 @@ const W = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, 
 const C = (x: number, y: number): Obstacle => ({ x, y, w: 36, h: 36, kind: 'crate', height: 24 });
 const R = (x: number, y: number, w: number, h: number, height = 40): Obstacle => ({ x, y, w, h, kind: 'rock', height });
 const S = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'sandbag', height: 14 });
+const Wt = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'water', height: 0 });
+const F = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'fence', height: 26 });
+const K = (x: number, y: number, w: number, h: number, height = 30): Obstacle => ({ x, y, w, h, kind: 'concrete', height });
 
 // =====================================================================================
 // "Comms Outpost" map (v0.1-v0.3 "Secure the Communications Outpost"; now Mission 3).
@@ -214,4 +224,151 @@ export const VILLAGE_MAP: MapDef = {
     [{ x: 0, y: 1400 }, { x: 800, y: 1080 }, { x: 1550, y: 800 }, { x: 2300, y: 620 }, { x: 2575, y: 560 }],
     [{ x: 2575, y: 560 }, { x: 1600, y: 450 }, { x: 900, y: 300 }, { x: 250, y: 230 }],
   ],
+};
+
+// =====================================================================================
+// v0.6.2 CHAPTER 2 — BEHIND ENEMY LINES
+// =====================================================================================
+
+// Mission 6 "Bridgehead": a river runs north-south through the middle; one narrow bridge
+// (y 660-780) is the only crossing. The squad comes from the west bank; the enemy holds the
+// east bank (sandbag nests, a bunker, snipers on the rise). The control zone is the bridge.
+export const BRIDGE_ZONE: Rect = { x: 1640, y: 640, w: 300, h: 160 };
+export const BRIDGE_MAP: MapDef = {
+  id: 'bridge', w: 3200, h: 1500, theme: 'river',
+  obstacles: [
+    // the river (gap = the bridge)
+    Wt(1700, 0, 160, 660), Wt(1700, 780, 160, 720),
+    // west bank: farm buildings, walls, crates (cover on the approach)
+    B(420, 250, 220, 160), B(500, 1050, 200, 170), B(1000, 420, 180, 150), B(1050, 1000, 200, 150),
+    W(800, 700, 18, 160), W(1250, 560, 150, 18), W(1300, 900, 150, 18), W(250, 640, 140, 18),
+    C(1450, 640), C(1450, 676), C(1460, 820), C(700, 500), C(900, 1200), C(1550, 380), C(1580, 1080),
+    S(1600, 600, 16, 50), S(1600, 820, 16, 50),
+    // east bank bridgehead: sandbag nests either side of the road, then the bunker and the rise
+    S(1920, 600, 90, 16), S(1920, 824, 90, 16), S(2100, 560, 16, 80), S(2100, 800, 16, 80),
+    K(2350, 380, 160, 110, 40), K(2380, 980, 140, 110, 40),
+    R(2650, 560, 110, 90), R(2700, 860, 120, 80), R(2550, 220, 100, 80),
+    C(2250, 700), C(2250, 736), C(2900, 650), W(2950, 900, 18, 160), W(2600, 1250, 180, 18),
+    B(2900, 1100, 200, 160),
+  ],
+  start: { x: 170, y: 720 }, startZone: { x: 40, y: 600, w: 250, h: 240 },
+  medkits: [{ x: 1150, y: 780 }, { x: 2250, y: 1000 }, { x: 2800, y: 420 }],
+  rapidFire: [{ x: 1350, y: 1200 }],
+  roads: [[{ x: 0, y: 720 }, { x: 900, y: 730 }, { x: 1700, y: 720 }, { x: 1860, y: 720 }, { x: 2500, y: 740 }, { x: 2850, y: 450 }, { x: 3000, y: 230 }]],
+  bridges: [{ x: 1690, y: 656, w: 180, h: 128 }],
+};
+
+// Mission 7 "Prison Break": a fenced POW camp. Outer watchtowers cover the approach, the fence has
+// a west and a north gate, the holding pen (east) has its own gate. Extraction is at the top left.
+export const PRISON_CAPTIVE: Vec = { x: 2640, y: 640 };
+export const PRISON_TOWERS: Vec[] = [{ x: 1420, y: 470 }, { x: 1420, y: 1080 }, { x: 2300, y: 380 }, { x: 2860, y: 1180 }];
+export const PRISON_MAP: MapDef = {
+  id: 'prison', w: 3200, h: 1600, theme: 'prison',
+  obstacles: [
+    // perimeter fence x 1700-2900, y 300-1260 (gates: west y 700-830, north x 2120-2250)
+    F(1700, 300, 420, 16), F(2250, 300, 650, 16), F(1700, 1244, 1200, 16),
+    F(1700, 316, 16, 384), F(1700, 830, 16, 414), F(2884, 316, 16, 928),
+    // holding pen x 2480-2780, y 520-780 (gate on the west side y 600-700)
+    F(2480, 520, 300, 14), F(2480, 766, 300, 14), F(2766, 534, 14, 232), F(2480, 534, 14, 66), F(2480, 700, 14, 66),
+    // barracks and the guard house inside the camp
+    B(1850, 420, 220, 120), B(1880, 960, 240, 130), B(2250, 1000, 200, 140), B(2550, 980, 180, 120),
+    K(2200, 600, 120, 80, 36),
+    S(2000, 720, 16, 90), S(2380, 830, 100, 16), C(2150, 820), C(2186, 820), C(2420, 460), C(2600, 420),
+    // outside: approach cover, sheds, the treeline rocks
+    B(500, 1150, 200, 150), B(600, 300, 180, 150), B(1050, 760, 160, 140),
+    W(900, 520, 18, 160), W(1150, 1150, 160, 18), W(1300, 300, 150, 18),
+    R(1250, 900, 90, 80, 34), R(1500, 700, 80, 70, 34), R(450, 750, 90, 70, 34), R(800, 1000, 80, 80, 34),
+    C(1550, 1000), C(1586, 1000), C(1200, 560), C(350, 520), C(1550, 300),
+  ],
+  start: { x: 200, y: 1420 }, startZone: { x: 40, y: 1300, w: 260, h: 250 },
+  medkits: [{ x: 1150, y: 980 }, { x: 2300, y: 900 }, { x: 900, y: 420 }],
+  rapidFire: [{ x: 1950, y: 1150 }],
+  roads: [
+    [{ x: 0, y: 1420 }, { x: 700, y: 1250 }, { x: 1300, y: 900 }, { x: 1700, y: 765 }, { x: 2300, y: 740 }, { x: 2480, y: 650 }],
+    [{ x: 1700, y: 765 }, { x: 1200, y: 500 }, { x: 600, y: 230 }, { x: 250, y: 220 }],
+  ],
+  props: [{ kind: 'flag', x: 2310, y: 590 }, { kind: 'tent', x: 2050, y: 1150 }],
+};
+
+// Mission 8 "Convoy Crusher": a desert canyon road. The convoy enters at the top right and winds
+// west, south and back east to exit at the bottom right; the squad starts in the middle.
+export const CONVOY_ROUTE: Vec[] = [
+  { x: 3390, y: 230 }, { x: 2650, y: 230 }, { x: 2350, y: 420 }, { x: 2350, y: 760 }, { x: 1650, y: 820 },
+  { x: 1300, y: 600 }, { x: 700, y: 600 }, { x: 450, y: 900 }, { x: 700, y: 1300 }, { x: 2000, y: 1350 }, { x: 3390, y: 1350 },
+];
+export const CONVOY_MAP: MapDef = {
+  id: 'convoy', w: 3400, h: 1600, theme: 'desert',
+  obstacles: [
+    // canyon walls (north and south rims, with breaks)
+    R(0, 0, 900, 120, 60), R(900, 0, 1300, 90, 60), R(2900, 0, 500, 120, 60),
+    R(0, 1500, 1400, 100, 60), R(1400, 1460, 1200, 140, 60), R(2900, 1500, 500, 100, 60),
+    // rock islands between the road loops (cover; the road stays clear)
+    R(1500, 300, 260, 160), R(800, 820, 220, 160), R(2700, 520, 220, 200), R(1300, 1000, 260, 140),
+    R(2000, 1000, 160, 120), R(2900, 900, 180, 160), R(150, 300, 160, 120),
+    // roadside barriers and cover
+    S(1050, 500, 140, 16), S(1050, 690, 140, 16), S(2420, 560, 16, 120), S(2240, 860, 120, 16),
+    S(1150, 1240, 160, 16), S(2350, 1260, 160, 16), S(1800, 690, 16, 70),
+    C(1950, 560), C(1986, 560), C(1700, 1150), C(2600, 1150), C(600, 1100), C(3100, 400), C(1100, 360),
+    K(2050, 220, 120, 70, 30), K(500, 380, 100, 70, 30),
+  ],
+  start: { x: 1650, y: 1080 }, startZone: { x: 1520, y: 980, w: 260, h: 220 },
+  medkits: [{ x: 1000, y: 1000 }, { x: 2600, y: 900 }, { x: 1700, y: 450 }],
+  rapidFire: [{ x: 2150, y: 1180 }],
+  roads: [CONVOY_ROUTE],
+};
+
+// Mission 9 "Blackout": a communications compound at night. Three relays (north-west, east, south),
+// floodlights, a radar building. Start at the west edge, extraction at the top right.
+export const RELAY_POINTS: Vec[] = [{ x: 950, y: 420 }, { x: 2500, y: 760 }, { x: 1550, y: 1430 }];
+export const BLACKOUT_MAP: MapDef = {
+  id: 'blackout', w: 3000, h: 1800, theme: 'night',
+  obstacles: [
+    // relay pads (sandbag horseshoes, open toward the middle)
+    S(860, 330, 180, 16), S(860, 346, 16, 120), S(1024, 346, 16, 120),
+    S(2410, 670, 16, 180), S(2410, 670, 180, 16), S(2410, 834, 180, 16),
+    S(1460, 1510, 180, 16), S(1460, 1380, 16, 130), S(1624, 1380, 16, 130),
+    // radar building, control rooms, generators
+    K(1500, 700, 240, 180, 50), B(2100, 300, 220, 150), B(600, 1100, 200, 150), B(2350, 1250, 220, 150),
+    K(1950, 1050, 120, 80, 34), K(1100, 900, 120, 80, 34),
+    // perimeter walls and cover
+    W(400, 600, 18, 250), W(1300, 300, 180, 18), W(2000, 600, 18, 200), W(1000, 1350, 18, 200), W(2700, 1050, 18, 200),
+    W(1800, 450, 180, 18), W(800, 800, 160, 18),
+    C(1250, 560), C(1286, 560), C(2200, 900), C(1850, 1300), C(700, 600), C(2650, 500), C(1300, 1200), C(2800, 1500),
+  ],
+  start: { x: 180, y: 1000 }, startZone: { x: 40, y: 880, w: 250, h: 240 },
+  medkits: [{ x: 1300, y: 1000 }, { x: 2200, y: 1000 }, { x: 1200, y: 450 }],
+  rapidFire: [{ x: 1900, y: 900 }],
+  roads: [[{ x: 0, y: 1000 }, { x: 900, y: 1000 }, { x: 1600, y: 1000 }, { x: 2400, y: 1000 }, { x: 2700, y: 450 }, { x: 2800, y: 220 }]],
+  props: [
+    { kind: 'flood', x: 1000, y: 520 }, { kind: 'flood', x: 2380, y: 760 }, { kind: 'flood', x: 1550, y: 1330 },
+    { kind: 'flood', x: 1620, y: 640 }, { kind: 'flood', x: 2200, y: 260 }, { kind: 'flood', x: 700, y: 1060 },
+    { kind: 'radar', x: 1620, y: 760 },
+  ],
+};
+
+// Mission 10 "Operation Iron Fist": the enemy stronghold. Two installations guard the outer yard;
+// the central arena (x 2300-3300, y 500-1500; gates west and south) is the Iron Warden's.
+export const ARENA: Rect = { x: 2316, y: 516, w: 968, h: 968 };
+export const ARENA_GATE: Rect = { x: 2150, y: 860, w: 220, h: 280 };
+export const INSTALLATIONS: Vec[] = [{ x: 1250, y: 760 }, { x: 1700, y: 1500 }];
+export const STRONGHOLD_MAP: MapDef = {
+  id: 'stronghold', w: 3600, h: 2000, theme: 'fortress',
+  obstacles: [
+    // arena walls (west gate y 900-1100, south gate x 2700-2900)
+    K(2300, 500, 1000, 16, 44), K(2300, 1484, 400, 16, 44), K(2900, 1484, 400, 16, 44),
+    K(2300, 516, 16, 384, 44), K(2300, 1100, 16, 384, 44), K(3284, 516, 16, 968, 44),
+    // arena cover blocks (rockets respect cover)
+    K(2550, 700, 90, 60), K(2950, 700, 90, 60), K(2550, 1240, 90, 60), K(2950, 1240, 90, 60), K(2760, 960, 80, 80, 36),
+    // outer yard: installation emplacements (sandbag rings) and defences
+    S(1150, 680, 200, 16), S(1150, 840, 200, 16), S(1350, 680, 16, 176),
+    S(1600, 1420, 16, 160), S(1600, 1420, 200, 16), S(1600, 1580, 200, 16),
+    K(1500, 300, 220, 140, 44), B(800, 1000, 200, 160), B(2000, 300, 200, 140), B(1000, 1700, 220, 140), B(2400, 1700, 220, 140),
+    W(1900, 1000, 18, 220), W(1600, 1050, 150, 18), W(600, 600, 160, 18), W(2050, 1600, 18, 200),
+    C(1450, 1000), C(1486, 1000), C(1900, 650), C(950, 450), C(2150, 1350), C(2186, 1350), C(700, 1400),
+  ],
+  start: { x: 220, y: 1500 }, startZone: { x: 60, y: 1380, w: 260, h: 250 },
+  medkits: [{ x: 1500, y: 1250 }, { x: 2100, y: 1150 }, { x: 2200, y: 700 }, { x: 900, y: 800 }],
+  rapidFire: [{ x: 1700, y: 900 }],
+  roads: [[{ x: 0, y: 1500 }, { x: 900, y: 1350 }, { x: 1500, y: 1150 }, { x: 2200, y: 1000 }, { x: 2800, y: 1000 }]],
+  props: [{ kind: 'flag', x: 2800, y: 560 }, { kind: 'flag', x: 1550, y: 330 }],
 };

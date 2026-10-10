@@ -31,6 +31,8 @@ export interface Ability {
   tick(game: Game, owner: Unit, dt: number): void;
   /** Optional fire-rate multiplier the ability currently grants its owner. */
   fireRateMul?(): number;
+  /** Optional held-aim time multiplier (Sniper Focus). */
+  aimMul?(): number;
 }
 
 abstract class BaseAbility {
@@ -69,6 +71,32 @@ export class SuppressiveFireAbility extends BaseAbility implements Ability {
   }
   /** Fire-rate multiplier this ability currently gives its owner. */
   fireRateMul() { return this.activeLeft > 0 ? CFG.suppressive.fireRateMul : 1; }
+}
+
+/**
+ * Sniper (v0.6.2): Focus. For CFG.focus.duration s the Sniper aims much faster (aim time x aimMul)
+ * and fires x fireRateMul. Same instant-button pattern as Suppressive Fire; no new controls.
+ */
+export class FocusAbility extends BaseAbility implements Ability {
+  readonly id = 'focus';
+  readonly name = 'Focus';
+  readonly icon = '◎';
+  readonly targetingMode = 'instant' as const;
+  cooldown() { return CFG.focus.cooldown; }
+  execute(game: Game, owner: Unit) {
+    if (this.blockReason(game, owner)) return;
+    this.activeLeft = CFG.focus.duration;
+    this.cooldownLeft = this.cooldown();
+    game.fx.text(owner.pos, 'FOCUS', '#9fe0ff');
+    game.fx.ring(owner.pos, 30, 'rgba(160,220,255,0.95)', 0.35, 3);
+    sfx('suppress');
+  }
+  tick(_game: Game, owner: Unit, dt: number) {
+    if (!owner.active) this.activeLeft = 0;
+    this.activeLeft = Math.max(0, this.activeLeft - dt);
+  }
+  fireRateMul() { return this.activeLeft > 0 ? CFG.focus.fireRateMul : 1; }
+  aimMul() { return this.activeLeft > 0 ? CFG.focus.aimMul : 1; }
 }
 
 /**
@@ -155,7 +183,7 @@ export function updateGrenades(game: Game, dt: number) {
       g.fuse -= dt;
       if (g.fuse <= 0) {
         const G = CFG.grenade;
-        explode(game, g.to, G.radius, G.damage, G.edgeDamageFrac, game.enemies, g.owner);
+        explode(game, g.to, G.radius, G.damage, G.edgeDamageFrac, game.enemies, g.owner, true);
       }
     }
   }

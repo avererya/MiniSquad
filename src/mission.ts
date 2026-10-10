@@ -10,6 +10,9 @@ import type { Unit } from './unit';
 import type { MapDef } from './map';
 import { campaignMission, type CampaignMission } from './campaign';
 import type { MissionEvent, ObjPoint, Objective } from './objectives';
+import { Convoy } from './convoy';
+import { BossFight } from './boss';
+import type { EnemyKind } from './unit';
 import { pointInRect, type Rect, type Vec } from './util';
 import { squadCentre } from './squad';
 import { sfx } from './audio';
@@ -72,7 +75,9 @@ export class HelicopterExtraction implements Extraction {
 }
 
 // ---------------- mission scripts (data, see missions.ts) ----------------
-export interface GroupSpec { tag: string; points: Vec[]; guard?: boolean; aggro?: number; defender?: boolean }
+/** A group point may carry an enemy kind (v0.6.2: sniper, armored, tower...; default rifleman). */
+export type SpawnPoint = Vec & { kind?: EnemyKind };
+export interface GroupSpec { tag: string; points: SpawnPoint[]; guard?: boolean; aggro?: number; defender?: boolean }
 export interface TriggerSpec {
   id: string;
   when: (m: Mission, g: Game) => boolean;
@@ -81,6 +86,8 @@ export interface TriggerSpec {
   /** Use the second-nearest off-screen point (flanking). */
   second?: boolean;
   banner?: string;
+  /** v0.6.2: enemy kinds of the wave in order (missing = rifleman). */
+  kinds?: EnemyKind[];
 }
 export interface ExtractionSpec {
   zone: Rect;
@@ -99,8 +106,14 @@ export interface MissionScript {
   optionals: () => Objective[];
   extraction: ExtractionSpec;
   captive?: Vec;
+  /** v0.6.2: overhead label of the captive (default CAPTIVE). */
+  captiveLabel?: string;
   /** One-line tips shown under the first objective (Mission 1 only). */
   hint?: string;
+  /** v0.6.2 Mission 8: the convoy (route, escorts per truck, seconds between trucks, launch delay). */
+  convoy?: { route: Vec[]; escorts: EnemyKind[][]; gap: number; delay: number };
+  /** v0.6.2 Mission 10: boss arena and the reinforcement gates. */
+  boss?: { arena: Rect; gates: Vec[] };
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -122,6 +135,10 @@ export class Mission {
   npc: Unit | null = null;
   wrecks: { id: string; pos: Vec; kind: string }[] = [];
   extraction: Extraction;
+  /** v0.6.2: Mission 8 convoy (null elsewhere). */
+  convoy: Convoy | null = null;
+  /** v0.6.2: Mission 10 boss fight (null until it starts). */
+  boss: BossFight | null = null;
   failReason = '';
   private ended = false;
   /**
@@ -153,6 +170,7 @@ export class Mission {
     this.primaries = script.primaries();
     this.optionals = script.optionals();
     this.extraction = new HelicopterExtraction(script.extraction.zone);
+    if (script.convoy) this.convoy = new Convoy(script.convoy.route, script.convoy.escorts, script.convoy.gap, script.convoy.delay);
   }
 
   get map() { return this.script.map; }
@@ -169,7 +187,7 @@ export class Mission {
       const units = this.spawnGroup(game, grp);
       if (grp.defender) this.defenders.push(...units);
     }
-    if (this.script.captive) this.npc = game.spawnNpc(this.script.captive, 'CAPTIVE');
+    if (this.script.captive) this.npc = game.spawnNpc(this.script.captive, this.script.captiveLabel ?? 'CAPTIVE');
     for (const o of this.optionals) o.activate(this, game);
     this.activateCurrent(game);
   }
@@ -177,7 +195,7 @@ export class Mission {
   spawnGroup(game: Game, grp: GroupSpec): Unit[] {
     const out: Unit[] = [];
     for (const p of grp.points) {
-      const e = game.spawnEnemy(game.world.isOpen(p.x, p.y) ? p : game.findOpenNear(p, 24));
+      const e = game.spawnEnemy(p.kind === 'tower' || game.world.isOpen(p.x, p.y) ? { x: p.x, y: p.y } : game.findOpenNear(p, 24), p.kind);
       e.tag = grp.tag; e.guard = grp.guard ?? true; e.defender = !!grp.defender; e.aggro = grp.aggro ?? null;
       out.push(e);
     }
@@ -186,8 +204,25 @@ export class Mission {
   }
 
   /** Reinforcements from the nearest off-screen point (untagged: they don't count for objectives). */
-  spawnWave(game: Game, points: Vec[], size: number, second = false) {
-    return game.spawnGroupOffscreen(points, size, second);
+  spawnWave(game: Game, points: Vec[], size: number, second = false, kinds?: EnemyKind[]) {
+    return game.spawnGroupOffscreen(points, size, second, kinds);
+  }
+
+  /** v0.6.2: mission-driven units (convoy trucks, the boss) set their intent / act each step. */
+  unitStep(game: Game, dt: number) {
+    if (this.ended) return;
+    this.convoy?.update(game, dt);
+    this.boss?.update(game, dt);
+  }
+
+  /** v0.6.2 Mission 10: the Iron Warden enters. */
+  startBoss(game: Game, at: Vec) {
+    const spec = this.script.boss;
+    if (!spec || this.boss) return;
+    const u = game.spawnEnemy(at, 'boss');
+    u.label = 'IRON WARDEN'; u.tag = 'boss'; u.guard = false;
+    this.boss = new BossFight(u, spec.arena, spec.gates);
+    game.banner('THE IRON WARDEN', '#ff7a5a', 3);
   }
 
   private activateCurrent(game: Game) {
@@ -214,6 +249,7 @@ export class Mission {
 
   emit(game: Game, ev: MissionEvent) {
     if (this.ended) return;
+    if (ev.type === 'vehicleDestroyed') this.convoy?.onDestroyed(game, ev.unit);
     for (const o of [...this.primaries, ...this.optionals]) if (o.state === 'active') o.onEvent(this, game, ev);
     if (ev.type === 'npcKia') { this.failReason = 'The captive was lost.'; game.fail(); }
   }
@@ -243,7 +279,7 @@ export class Mission {
         const h = now.hud(this, game);
         const tip = this.current === 0 && this.script.hint && game.time < 14 ? this.script.hint : undefined;
         const sub = tip ?? h.sub;
-        game.setObjective(h.text, sub, h.progress);
+        game.setObjective(h.text, sub, h.progress, h.chips, h.meter);
       }
       return;
     }
@@ -360,11 +396,20 @@ export class Mission {
   /** Ground-level mission drawing: objective zones, wrecks. */
   draw(ctx: CanvasRenderingContext2D, game: Game) {
     for (const o of this.primaries) o.draw(ctx, this, game);
-    for (const w of this.wrecks) drawWreck(ctx, w.pos);
+    for (const w of this.wrecks) drawWreck(ctx, w.pos, w.kind);
   }
 }
 
-function drawWreck(ctx: CanvasRenderingContext2D, p: Vec) {
+function drawWreck(ctx: CanvasRenderingContext2D, p: Vec, kind = '') {
+  if (kind === 'truck') {
+    ctx.fillStyle = 'rgba(25,20,15,0.6)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 52, 28, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3b3530'; ctx.fillRect(p.x - 34, p.y - 16, 50, 26);
+    ctx.fillStyle = '#2a2622'; ctx.fillRect(p.x + 16, p.y - 12, 18, 20);
+    ctx.fillStyle = '#1c1a18';
+    for (const dx of [-26, -4, 22]) { ctx.beginPath(); ctx.arc(p.x + dx, p.y + 12, 6, 0, Math.PI * 2); ctx.fill(); }
+    return;
+  }
   ctx.fillStyle = 'rgba(30,25,20,0.55)';
   ctx.beginPath(); ctx.ellipse(p.x, p.y, 46, 26, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#4a3a2c';

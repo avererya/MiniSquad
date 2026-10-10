@@ -26,10 +26,14 @@ export interface StatModifiers {
   moveSpeedMul?: number;
   reviveTimeMul?: number;
   healMul?: number;
+  /** v0.6.2: held-aim time before a shot (Sniper). */
+  aimTimeMul?: number;
+  /** v0.6.2: extra spread while moving only (the standing cone is unchanged). */
+  movePenaltyMul?: number;
 }
-export const MODIFIER_KEYS = ['hpMul', 'damageMul', 'fireRateMul', 'spreadMul', 'moveSpeedMul', 'reviveTimeMul', 'healMul'] as const;
+export const MODIFIER_KEYS = ['hpMul', 'damageMul', 'fireRateMul', 'spreadMul', 'moveSpeedMul', 'reviveTimeMul', 'healMul', 'aimTimeMul', 'movePenaltyMul'] as const;
 
-export type TraitId = 'sharpshooter' | 'quickReflexes' | 'tough' | 'triggerHappy' | 'firstResponder' | 'healer';
+export type TraitId = 'sharpshooter' | 'quickReflexes' | 'tough' | 'triggerHappy' | 'firstResponder' | 'healer' | 'eagleEye' | 'steadyHands' | 'deadCalm';
 
 export interface TraitDef {
   id: TraitId;
@@ -46,6 +50,10 @@ export const TRAITS: Record<TraitId, TraitDef> = {
   triggerHappy: { id: 'triggerHappy', name: 'Trigger Happy', desc: '+5% normal fire rate', mods: { fireRateMul: 1.05 } },
   firstResponder: { id: 'firstResponder', name: 'First Responder', desc: '-10% time to revive a squadmate', mods: { reviveTimeMul: 0.9 } },
   healer: { id: 'healer', name: 'Healer', desc: '+10% Field Treatment healing', mods: { healMul: 1.1 } },
+  // v0.6.2 Sniper traits (Sniper recruits only; same modest power level as the originals)
+  eagleEye: { id: 'eagleEye', name: 'Eagle Eye', desc: '-20% weapon spread (Sniper)', mods: { spreadMul: 0.8 } },
+  steadyHands: { id: 'steadyHands', name: 'Steady Hands', desc: '-25% aiming time before each shot', mods: { aimTimeMul: 0.75 } },
+  deadCalm: { id: 'deadCalm', name: 'Dead Calm', desc: '-30% extra spread while moving', mods: { movePenaltyMul: 0.7 } },
 };
 export const TRAIT_IDS = Object.keys(TRAITS) as TraitId[];
 
@@ -54,7 +62,7 @@ export type EffectiveStats = SoldierStats & { healMul: number };
 
 /** Product of several modifier sets (all multiplicative, so order does not matter). */
 export function combineModifiers(...sets: (StatModifiers | null | undefined)[]): Required<StatModifiers> {
-  const out = { hpMul: 1, damageMul: 1, fireRateMul: 1, spreadMul: 1, moveSpeedMul: 1, reviveTimeMul: 1, healMul: 1 };
+  const out = { hpMul: 1, damageMul: 1, fireRateMul: 1, spreadMul: 1, moveSpeedMul: 1, reviveTimeMul: 1, healMul: 1, aimTimeMul: 1, movePenaltyMul: 1 };
   for (const s of sets) if (s) for (const k of MODIFIER_KEYS) if (typeof s[k] === 'number') out[k] *= s[k]!;
   return out;
 }
@@ -70,9 +78,10 @@ export function applyModifiers(base: SoldierStats, m: Required<StatModifiers>): 
     damage: clean(base.damage * m.damageMul),
     fireRate: clean(base.fireRate * m.fireRateMul),
     accuracy: clean(base.accuracy * m.spreadMul),
-    movePenalty: clean(base.movePenalty * m.spreadMul),
+    movePenalty: clean(base.movePenalty * m.spreadMul * m.movePenaltyMul),
     moveSpeed: clean(base.moveSpeed * m.moveSpeedMul),
     reviveTime: clean(base.reviveTime * m.reviveTimeMul),
+    aimTime: clean(base.aimTime * m.aimTimeMul),
     healMul: clean(m.healMul),
   };
 }
