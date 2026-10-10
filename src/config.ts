@@ -178,6 +178,7 @@ function makeDefaults() {
       ringMoving: 62, // v0.6.2 protective formation: soldier ring radius around the captive while moving
       ringIdle: 54, // ... and when the squad is stopped
       freeTime: 3, // s standing next to the captive to cut them loose
+      strayHitRadius: 5, // v0.6.2: an escorted captive keeps their head down: rounds aimed at a soldier only hit them inside this radius (aimed rounds use the full body)
     },
     pickups: {
       medkitHealFrac: 0.2, // each living, standing soldier heals this fraction of max HP

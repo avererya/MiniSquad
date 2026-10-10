@@ -25,16 +25,19 @@ export const NearestVisible: TargetingStrategy = {
       .filter((c) => c.targetable)
       .map((c) => ({ c, d: dist2(shooter.pos, c.pos) }))
       .filter((e) => e.d <= r2)
-      // an escorted captive is a lower-priority target than the soldiers guarding them (v0.4)
-      .map((e) => (e.c.npc ? { c: e.c, d: e.d * 2.5 } : e))
       .sort((a, b) => a.d - b.d);
+    // v0.6.2: an escorted captive is only targeted when no guarding soldier is in view (it was a
+    // distance-weighted lower priority before, which still let flankers pick it out of the ring).
+    // Stray rounds can still hit them, so the captive stays vulnerable, not invincible.
+    let captive: Unit | null = null;
     let structure: Unit | null = null; // objective structures (depot) only when no enemy soldier is visible
     for (const e of sorted) {
       if (!game.world.clear(shooter.pos, e.c.pos)) continue;
+      if (e.c.npc) { captive ??= e.c; continue; }
       if (!e.c.structure) return e.c;
       structure ??= e.c;
     }
-    return structure;
+    return captive ?? structure;
   },
 };
 

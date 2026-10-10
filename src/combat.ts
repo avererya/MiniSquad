@@ -194,7 +194,10 @@ export function updateProjectiles(game: Game, dt: number) {
     const victims = p.team === 'squad' ? game.enemies : game.enemyVictims();
     for (const u of victims) {
       if (!u.targetable) continue;
-      const t = segCircle(x1, y1, x2, y2, u.pos.x, u.pos.y, u.radius + 2);
+      // v0.6.2 hostage protection: an escorted captive inside the ring ducks rounds meant for the
+      // soldiers around them (smaller profile); a round aimed at the captive uses the full body.
+      const hitR = u.npc && u.escorting && p.owner?.target !== u ? CFG.escort.strayHitRadius : u.radius + 2;
+      const t = segCircle(x1, y1, x2, y2, u.pos.x, u.pos.y, hitR);
       if (t >= 0 && t < bestT) { bestT = t; hitUnit = u; hitWall = false; }
     }
     const hx = x1 + (x2 - x1) * bestT, hy = y1 + (y2 - y1) * bestT;

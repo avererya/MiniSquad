@@ -84,6 +84,11 @@ async function playOne(page, missionId, ids, opts = {}) {
         lastHit.set(u, k);
         return;
       }
+      if (u.npc && source && u.escorting) {
+        // captive damage diagnostics: aimed at the captive or a stray round meant for a soldier
+        const k = source.target === u ? 'aimed' : 'stray';
+        st.npcHits = st.npcHits || {}; st.npcHits[k] = (st.npcHits[k] ?? 0) + 1;
+      }
       return dmg0.call(this, u, amount, source, o);
     };
     const npcHp0 = () => g.npcs?.[0]?.hp ?? 0;
@@ -185,7 +190,7 @@ async function playOne(page, missionId, ids, opts = {}) {
       stars: g.lastStars?.stars ?? 0, downs: st.downs, revives: st.revives, kia: g.soldiers.filter((s) => s.state === 'kia').length,
       extracted: g.soldiers.filter((s) => s.state === 'active').length + '/' + g.soldiers.length,
       extractionAt: st.extractionAt === null ? null : +st.extractionAt.toFixed(0),
-      npcDamage: g.npcs?.[0] ? Math.round(st.npcDamage) : null, npcDowns: g.npcs?.[0] ? st.npcDowns : null, escortRescues: g.escortRescues,
+      npcDamage: g.npcs?.[0] ? Math.round(st.npcDamage) : null, npcDowns: g.npcs?.[0] ? st.npcDowns : null, npcHits: st.npcHits || null, escortRescues: g.escortRescues,
       boss: st.bossStart === null ? null : { duration: st.bossEnd === null ? null : +(st.bossEnd - st.bossStart).toFixed(0), rockets: m.boss?.rockets ?? 0, bursts: m.boss?.bursts ?? 0, hpLeft: m.boss?.unit.active ? Math.round(m.boss.unit.hp) : 0, damageByClass: bossBy, sniperShare: bossTot ? +((bossBy.sniper ?? 0) / bossTot).toFixed(2) : 0, log: (m.boss?.log ?? []).slice(0, 8) },
       sniperDamageShare: dmg.sniper !== undefined ? +(dmg.sniper / tot).toFixed(2) : null,
       convoy: m.convoy ? { destroyed: m.convoy.destroyed, escaped: m.convoy.escaped } : null,
@@ -286,7 +291,7 @@ const SCENARIOS = {
         const r = await playOne(page, id, s.ids.slice(0, 5), S.opts || {});
         r.scenario = sc; r.run = i;
         rows.push(r);
-        console.log(JSON.stringify({ sc, i, id, phase: r.phase, t: r.time, stars: r.stars, downs: r.downs, revives: r.revives, kia: r.kia, opt: r.optional, npc: r.npcDamage, boss: r.boss && { d: r.boss.duration, share: r.boss.sniperShare, by: r.boss.damageByClass, hpLeft: r.boss.hpLeft }, downBy: r.downBy, taken: r.taken, convoy: r.convoy, relays: r.relays, fail: r.failReason, err: r.error }));
+        console.log(JSON.stringify({ sc, i, id, phase: r.phase, t: r.time, stars: r.stars, downs: r.downs, revives: r.revives, kia: r.kia, opt: r.optional, npc: r.npcDamage, npcHits: r.npcHits, boss: r.boss && { d: r.boss.duration, share: r.boss.sniperShare, by: r.boss.damageByClass, hpLeft: r.boss.hpLeft }, downBy: r.downBy, taken: r.taken, convoy: r.convoy, relays: r.relays, fail: r.failReason, err: r.error }));
         // fallen soldiers come back for the next mission of the scenario (fixed-squad scenarios)
         await page.evaluate(() => { const g = window.game, a = window.__account(); a.pendingDecision = null; for (const x of g.roster.soldiers) if (x.status === 'kia') x.status = 'active'; });
       }

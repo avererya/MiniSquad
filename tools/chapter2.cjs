@@ -809,6 +809,21 @@ function installHelpers() {
   });
   check('Mission 5 unchanged objectives (clear guards, free captive; optional captive unharmed), cap 3', m5.prim === 'compound,free' && m5.opt === 'captive-unharmed' && m5.cap === 3, JSON.stringify(m5));
   check('Mission 5 uses the shared captive-centred formation (avg <= 40 px from the squad centre)', m5.avg <= 40, JSON.stringify(m5));
+  // stray rounds: an escorted captive ducks rounds meant for the soldiers (small profile); aimed rounds hit
+  const stray = await ev(() => {
+    const g = T.g, c = g.mission.npc, e = g.enemies.find((x) => x.active && !x.structure);
+    if (!c || !c.escorting || !e) return { err: 'setup' };
+    g.soldiers.forEach((s) => { s.pos = { x: c.pos.x + 300, y: c.pos.y + 300 }; });
+    const shoot = (aimed) => {
+      e.target = aimed ? c : g.soldiers[0];
+      const hp = c.hp, y = c.pos.y + 9; // passes 9 px from the captive's centre (inside the body, outside the duck radius)
+      g.projectiles.push({ pos: { x: c.pos.x - 60, y }, vel: { x: 900, y: 0 }, team: 'enemy', damage: 7, life: 0.5, trail: { x: c.pos.x - 60, y }, owner: e, width: 3, len: 20 });
+      T.step(0.15); return Math.round(hp - c.hp);
+    };
+    const r = { strayDmg: shoot(false), aimedDmg: shoot(true) };
+    e.target = null; return r;
+  });
+  check('escorted captive: a stray round meant for a soldier grazing past misses; a round aimed at the captive hits', stray.strayDmg === 0 && stray.aimedDmg > 0, JSON.stringify(stray));
 
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   console.log(`\n${total - fails}/${total} passed${fails ? `, ${fails} FAILED` : ''}`);
