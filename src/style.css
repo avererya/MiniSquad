@@ -395,7 +395,7 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   /* short phones: full mission names (2 lines max) instead of the type line; type stays in the detail panel */
   .c-name small { display: none; }
   .c-name b { white-space: normal; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; letter-spacing: -0.02em; }
-  .c-state { font-size: 10px; letter-spacing: -0.12em; }
+  .c-state { font-size: 11px; letter-spacing: -0.08em; }
   .c-title { font-size: 1.3em; }
   .c-brief { display: none; }
   .c-grid ul { line-height: 1.2; }
