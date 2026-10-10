@@ -17,6 +17,8 @@
 // then the floor (PROGRESSION.spreadFloorDeg) on the standing cone. The moving penalty is
 // scaled by the same factor, so the moving cone = standing + penalty is never below the floor.
 import type { SoldierStats } from './config';
+import type { SoldierClassId } from './classes';
+import type { TraitId } from './traits';
 import { FIRST_MISSION } from './campaign';
 
 export const PROGRESSION = {
@@ -120,6 +122,34 @@ export interface CampaignProgress {
   /** Mission chosen on the Campaign screen (next Deploy goes there). */
   selectedMission: string;
 }
+// ---------------- recruitment (v0.5) ----------------
+// Rules + tables live in recruitment.ts; the persisted state is declared here (plain data, no
+// imports) so the account can be created at module load without an import cycle.
+/** A Recruitment Office offer. Level is fixed when the offer is generated (what you see is what you get). */
+export interface CandidateRecord { id: string; name: string; classId: SoldierClassId; traitId: TraitId; level: number }
+/** Minimal record of a dismissed soldier. Dismissed soldiers can never be restored. */
+export interface DismissalRecord { eventId: string; id: string; name: string; classId: SoldierClassId; level: number; at: number; refund: number; restorable: false }
+export interface RecruitmentState {
+  /** The current three offers (empty until the office is first opened). */
+  offers: CandidateRecord[];
+  /** Next permanent soldier id number ("rc-<n>"); never reused. */
+  nextSeq: number;
+  /** Used-name registry (lowercase compare): every recruited name and every name given up by a rename. */
+  usedNames: string[];
+  /** Classes whose one-time "new class" introduction has happened (or was not needed). */
+  introduced: SoldierClassId[];
+  /** Dismissal history (also feeds the used-name registry and a future Memorial's exclusion list). */
+  dismissed: DismissalRecord[];
+  /** Active roster cap. */
+  rosterCap: number;
+  /** Lifetime counters (stats only). */
+  recruited: number;
+  refreshes: number;
+}
+export const ROSTER_CAP = 12;
+export const newRecruitment = (introduced: SoldierClassId[] = ['infantry']): RecruitmentState =>
+  ({ offers: [], nextSeq: 1, usedNames: [], introduced: [...introduced], dismissed: [], rosterCap: ROSTER_CAP, recruited: 0, refreshes: 0 });
+
 export interface AccountData {
   credits: number;
   squadTraining: SquadTrainingRanks;
@@ -128,9 +158,16 @@ export interface AccountData {
   /** Recently settled mission-run ids: a run is rewarded at most once. */
   settledRuns: string[];
   campaign: CampaignProgress;
+  /** v0.5 Recruitment Office state (offers, names, introductions, dismissals). */
+  recruitment: RecruitmentState;
+  /**
+   * Future (not used in v0.5): a blocking post-mission decision (e.g. resurrect a fallen
+   * soldier) that must be resolved before deploying, recruiting or buying. Always null now.
+   */
+  pendingDecision: null;
 }
 export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
-export const newAccount = (): AccountData => ({ credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign() });
+export const newAccount = (): AccountData => ({ credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(), pendingDecision: null });
 
 let account: AccountData = newAccount();
 export const getAccount = () => account;

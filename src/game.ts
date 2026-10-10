@@ -92,7 +92,7 @@ export class Game implements InputHandler {
   /** Last deployment; reset() with no argument (Retry) repeats it. Defaults to 2 generic Infantry. */
   deployment: Deployment = Game.generic(PRESETS[0].classes);
   /** Dev hook (set by main.ts): wipe the save back to the default roster. */
-  resetRosterSave: (() => void) | null = null;
+  resetRosterSave: ((notice?: string) => boolean) | null = null;
   /** Dev hook (set by main.ts): unlock every mission + soldier and SAVE it (two-tap in the tuning panel). */
   debugUnlockAll: (() => void) | null = null;
   /** Per-soldier mission statistics (Results screen). */
@@ -200,6 +200,15 @@ export class Game implements InputHandler {
     this.paused = false; this.targeting = null;
     this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.ui.rebuildPanels();
+  }
+
+  /**
+   * A soldier left the roster for good (v0.5 dismissal; only possible outside a mission): drop
+   * any remembered deployment that still holds them, so nothing can Retry with a dismissed id.
+   */
+  forgetSoldier(id: string) {
+    if (this.phase === 'start' && this.deployment.identities.some((i) => i.id === id)) this.deployment = Game.generic(PRESETS[0].classes);
+    if (this.lastReward) this.lastReward = null;
   }
 
   /** Dev: swap in a new roster (save reset). Never called by gameplay. */

@@ -7,6 +7,11 @@
 //   MODE=legacy  the real v0.3 fixture save (upgraded roster: L4 soldiers + training); every
 //                mission force-unlocked via the debug tool; RUNS runs per mission.
 //   MODE=fixed   SQUAD=infantry+heavy (generic L1, no rewards), MISSIONS=..., RUNS=n
+//   MODE=roster  v0.5 recruit playthroughs: a new-player campaign (M1 -> M5) per SCENARIOS entry
+//                (originals, inf1, same, mixed, full12, dismiss). Recruits are bought through the
+//                real Recruitment Office transactions between missions and deployed first.
+//                Where a scenario needs more Credits than the campaign has paid so far, the
+//                shortfall is granted and reported (topUp) so the squad shape is exercised.
 //
 // Policy: walk to the current objective marker along A* paths, pause while fighting part of the
 // time, walk to a downed soldier (squad AI then revives it), grenade visible targets, use
@@ -30,17 +35,20 @@ const PREF = {
   'bring-them-home': ['doc', 'tank', 'ace', 'ranger', 'havoc', 'patch'],
 };
 
-async function playOne(page, missionId, squadSpec) {
-  return page.evaluate(async ({ missionId, squadSpec, PREF, OPT }) => {
+async function playOne(page, missionId, squadSpec, prefer = []) {
+  return page.evaluate(async ({ missionId, squadSpec, PREF, OPT, prefer }) => {
     const g = window.game;
     g.selectMission(missionId, true);
     if (squadSpec) g.reset(squadSpec);
     else {
       const cap = g.capacity;
-      const ids = PREF[missionId].filter((id) => g.roster.isUnlocked(id)).slice(0, cap);
+      // preferred ids (recruits for MODE=roster) first, then the mission's named preference, then anyone owned
+      const order = [...prefer, ...PREF[missionId], ...g.roster.owned().map((s) => s.id)];
+      const ids = [...new Set(order)].filter((id) => g.roster.isUnlocked(id)).slice(0, cap);
       const r = g.deploy(ids.map((id) => g.roster.get(id)), 'roster');
       if (!r.ok) return { error: r.reason };
     }
+    const xpBefore = Object.fromEntries(g.soldiers.map((s) => [s.identity.id, s.identity.progression ? g.roster.get(s.identity.id)?.progression?.xp ?? 0 : 0]));
     const squadNames = g.soldiers.map((s) => `${s.name}(${s.identity?.progression ? 'L' + (window.__progression?.levelForXp?.(s.identity.progression.xp) ?? '?') : ''})`);
     let mv = { x: 0, y: 0 };
     g.input.move = () => mv;
@@ -128,8 +136,13 @@ async function playOne(page, missionId, squadSpec) {
       unlocked: rw ? [...rw.unlockedMissions, ...rw.unlockedSoldiers].join(',') : '',
       escortRescues: g.escortRescues, maxNpcStuck: +maxNpcStuck.toFixed(1),
       npcHp: g.npcs?.[0] ? Math.round(g.npcs[0].hp) : null,
+      // v0.5: recruits in this run (ids rc-*): XP actually gained + whether Results listed them
+      recruits: g.soldiers.filter((s) => /^rc-/.test(s.identity.id)).map((s) => {
+        const id = s.identity.id, row = rw?.soldiers.find((x) => x.id === id), now = g.roster.get(id)?.progression?.xp ?? 0;
+        return { id, name: s.name, cls: s.identity.classId, ability: s.ability.id, xpGained: now - (xpBefore[id] ?? 0), inResults: !!row && !!document.querySelector('.r-table') && document.querySelector('.r-table').textContent.toLowerCase().includes(s.name.toLowerCase()), kills: g.stats.rows(g.soldiers).find((r) => r.id === id)?.kills ?? 0 };
+      }),
     };
-  }, { missionId, squadSpec, PREF, OPT });
+  }, { missionId, squadSpec, PREF, OPT, prefer });
 }
 
 function summarise(rows) {
@@ -158,7 +171,53 @@ function summarise(rows) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   const rows = [];
-  if (MODE === 'new') {
+  if (MODE === 'roster') {
+    const SCEN = (process.env.SCENARIOS || 'originals,inf1,same,mixed,full12,dismiss').split(',');
+    // page-side recruitment helpers (real transactions; topUp grants only the missing Credits)
+    const act = (fn, arg) => page.evaluate(([fn, arg]) => {
+      const g = window.game, a = window.__account(), E = window.__economy;
+      const out = { topUp: 0, done: [] };
+      const ensure = (n) => { if (a.credits < n) { out.topUp += n - a.credits; a.credits = n; } };
+      const hire = (cls) => {
+        E.openOffice(g.roster, a, window.__persist);
+        for (let i = 0; i < 60; i++) {
+          const o = a.recruitment.offers.find((x) => x.classId === cls);
+          if (o) { ensure(window.__recruitment.priceOf(cls)); const r = E.recruit(g.roster, a, o.id, window.__persist); if (r.ok) { out.done.push(`+${r.soldier.name}(${cls})`); return r.soldier.id; } out.done.push('refused:' + r.reason); return null; }
+          ensure(100); E.refreshOffers(g.roster, a, null, window.__persist);
+        }
+        return null;
+      };
+      const fire = (id) => { const s = g.roster.get(id); const r = E.dismiss(g.roster, a, id, window.__persist); out.done.push(r.ok ? `-${s.name}(+${r.refund})` : 'dismiss refused:' + r.reason); };
+      const recruits = () => g.roster.owned().filter((s) => /^rc-/.test(s.id)).map((s) => s.id);
+      if (fn === 'hire') for (const c of arg) hire(c);
+      if (fn === 'fill') { while (g.roster.activeCount() < 12) if (!hire(['infantry', 'heavy', 'medic'][g.roster.activeCount() % 3]) ) break; const extra = (() => { ensure(2000); E.openOffice(g.roster, a, null); return E.recruit(g.roster, a, a.recruitment.offers[0].id, null); })(); out.done.push('13th: ' + (extra.ok ? 'ACCEPTED (bug)' : extra.reason)); }
+      if (fn === 'dismiss') { const rs = recruits(); if (rs[0]) fire(rs[0]); if (arg.includes('ranger')) fire('ranger'); }
+      out.recruits = recruits(); out.roster = `${g.roster.activeCount()}/12`; out.credits = a.credits;
+      return out;
+    }, [fn, arg]);
+    const PLAN = {
+      originals: {},
+      inf1: { 'first-contact': [['hire', ['infantry']]] },
+      same: { 'first-contact': [['hire', ['infantry']]], 'heavy-support': [['hire', ['infantry', 'infantry']]] },
+      mixed: { 'first-contact': [['hire', ['infantry']]], 'heavy-support': [['hire', ['heavy', 'medic']]] },
+      full12: { 'heavy-support': [['fill', null]] },
+      dismiss: { 'first-contact': [['hire', ['infantry']]], 'heavy-support': [['dismiss', ['ranger']], ['hire', ['medic', 'heavy']]] },
+    };
+    for (const sc of SCEN) {
+      await page.goto(URL); await page.evaluate(() => localStorage.clear()); await page.goto(URL);
+      for (const id of MISSIONS) {
+        const prefer = await page.evaluate(() => window.game.roster.owned().filter((s) => /^rc-/.test(s.id)).map((s) => s.id).reverse());
+        for (let attempt = 1; attempt <= 4; attempt++) {
+          const r = await playOne(page, id, null, sc === 'originals' ? [] : sc === 'mixed' ? [prefer.find((x) => true), 'doc', 'tank', ...prefer].filter(Boolean) : prefer);
+          r.mission = id; r.scenario = sc; r.attempt = attempt;
+          rows.push(r);
+          console.log(JSON.stringify({ scenario: sc, mission: id, attempt, phase: r.phase, stars: r.stars, squad: r.squad.join(' '), recruits: r.recruits, error: r.error }));
+          if (r.phase === 'won' || r.error) break;
+        }
+        for (const [fn, arg] of PLAN[sc][id] || []) console.log(JSON.stringify({ scenario: sc, after: id, action: fn, ...(await act(fn, arg)) }));
+      }
+    }
+  } else if (MODE === 'new') {
     for (let c = 0; c < CAMPAIGNS; c++) {
       await page.goto(URL);
       await page.evaluate(() => { localStorage.clear(); });

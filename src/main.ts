@@ -12,6 +12,7 @@ import * as economy from './economy';
 import { Roster } from './roster';
 import { TRAITS } from './traits';
 import * as campaign from './campaign';
+import * as recruitment from './recruitment';
 import { CAMPAIGN } from './campaign';
 
 const stage = document.getElementById('stage')!;
@@ -33,7 +34,12 @@ loaded.roster.onChange = () => { persist(); };
 game.selectMission(loaded.account.campaign.selectedMission);
 function useRoster(r: Roster, notice?: string) { r.onChange = () => { persist(); }; game.replaceRoster(r, notice); }
 /** Dev: wipe the save back to a new player (Ace + Ranger, Mission 1, 0 credits) (tuning panel, two-step confirm). */
-function resetRosterSave() { const fresh = resetSave(); setAccount(fresh.account); game.selectMission(fresh.account.campaign.selectedMission); useRoster(fresh.roster); }
+function resetRosterSave(notice?: string): boolean {
+  const fresh = resetSave();
+  if (!fresh) return false; // backup failed: nothing wiped
+  setAccount(fresh.account); game.selectMission(fresh.account.campaign.selectedMission); useRoster(fresh.roster, notice);
+  return true;
+}
 /**
  * Dev: unlock every playable mission and every soldier, and SAVE it (tuning panel, two-step
  * confirm, clearly labelled). XP, training, credits and mission records are not touched.
@@ -106,7 +112,9 @@ hud.rebuildPanels();
 if (preset) game.reset(preset.classes);
 else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 6), 'temp');
 else hud.showCampaign(loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.'
-  : loaded.status === 'migrated' ? 'Save updated for v0.4: all your soldiers, XP, training and credits were kept. The new campaign starts at Mission 1.' : undefined);
+  : loaded.status === 'migrated' ? (loaded.fromVersion === 3
+    ? 'Save updated for v0.5: all your soldiers, XP, training, Credits and campaign progress were kept. New: the Recruitment Office (Barracks → RECRUIT).'
+    : 'Save updated: all your soldiers, XP, training and credits were kept. The campaign starts at Mission 1. New: the Recruitment Office (Barracks → RECRUIT).') : undefined);
 
 // fixed-step simulation, render every frame
 const STEP = 1 / 60;
@@ -129,5 +137,5 @@ requestAnimationFrame(frame);
 Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, __resetConfig: resetConfig });
 // roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
 Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded,
-  __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll });
+  __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll, __recruitment: recruitment, __Roster: Roster });
 game.resetRosterSave = resetRosterSave;

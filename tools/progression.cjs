@@ -222,7 +222,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.reload(); await page.waitForTimeout(200); // reload while on Results
     sv = await save();
     check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
-    check('UI: Campaign header shows credits + version "MiniSquad v0.4 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.4 · [0-9a-f]{7,}$|^MiniSquad v0\.4 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    check('UI: Campaign header shows credits + version "MiniSquad v0.5 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.5 · [0-9a-f]{7,}$|^MiniSquad v0\.5 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
     await page.click('[data-a="csel"][data-id="first-contact"]'); // the campaign moved on to M2: replay M1
     await page.click('[data-a="deploy"]');
     await page.evaluate(() => window.game.win());
@@ -279,7 +279,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const notice = await page.textContent('.m-notice').catch(() => '');
     await page.click('[data-a="to-barracks"]');
     const m = await page.evaluate(() => ({ status: window.__loadStatus.status, slots: window.game.roster.slots.join(), saved: JSON.parse(localStorage.getItem('minisquad.save')), notice: document.querySelector('.m-notice').textContent, cards: document.querySelectorAll('.s-card').length }));
-    check('UI: v0.2.2 save migrated in place on load (squad kept, v3 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 3 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
+    check('UI: v0.2.2 save migrated in place on load (squad kept, v4 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 4 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
     const backup = await page.evaluate(() => localStorage.getItem('minisquad.save.pre-v0.4'));
     check('UI: the original v0.2.2 save text is kept once as a pre-v0.4 backup', backup === V022raw, `backup ${backup ? backup.length : 0} chars`);
     check('B: no page errors', errors.length === 0, errors.join(' | '));
@@ -315,7 +315,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     }, sel);
     const tabCheck = async (tab, sel, n) => {
       const L = await layout(`.m-tab, .m-credits, ${sel}`);
-      check(`${dev.name} ${tab}: tabs, credits and ${n} controls on screen + tappable`, L.n === 4 + n && L.boxes.every((b) => b.inside && b.aligned) && L.boxes.slice(4).every((b) => b.h >= 30) && !L.hOverflow && !L.scroll, `min font ${L.minFont}px, scroll ${L.scroll}, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}`);
+      check(`${dev.name} ${tab}: tabs, credits and ${n} controls on screen + tappable`, L.n === 5 + n && L.boxes.every((b) => b.inside && b.aligned) && L.boxes.slice(5).every((b) => b.h >= 30) && !L.hOverflow && !L.scroll, `min font ${L.minFont}px, scroll ${L.scroll}, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}`);
       check(`${dev.name} ${tab}: no text under 11px, no clipped labels`, L.minFont >= 11 && L.clipped === 0, `min ${L.minFont}px ${L.smallest.join(' | ')}, clipped ${L.clipped}`);
     };
     // Mission 1 allows 2 soldiers: 2 slots shown
@@ -337,7 +337,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.tap('[data-tab="roster"]'); await page.waitForTimeout(100);
     await page.tap('.s-card[data-id="ace"] .s-name');
     const D = await layout('.d-card, .d-btns .m-big');
-    check(`${dev.name}: details panel fits with level/XP/training`, D.n === 4 && D.boxes.every((b) => b.inside && b.aligned), '');
+    check(`${dev.name}: details panel fits with level/XP/training (+ Dismiss)`, D.n === 5 && D.boxes.every((b) => b.inside && b.aligned), '');
     await page.tap('.d-btns [data-a="close"]');
     // deploy straight from the Training tab header (quick deploy)
     await page.tap('[data-tab="training"]');

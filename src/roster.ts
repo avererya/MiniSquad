@@ -1,6 +1,13 @@
-// The Barracks roster: six fixed soldiers, which of them are unlocked (v0.4 campaign), and the
-// squad selection (up to 6 slots; each mission allows its own number, see campaign.ts).
-// Pure state + rules; persistence lives in save.ts, the UI in menus.ts.
+// The Barracks roster: the six named campaign soldiers, recruits (v0.5), which named soldiers
+// have joined (v0.4 campaign unlock flags), and the squad selection (up to 6 slots; each
+// mission allows its own number, see campaign.ts). Pure state + rules; persistence lives in
+// save.ts, the UI in menus.ts.
+//
+// OWNERSHIP (v0.5): `unlocked` holds the campaign UNLOCK FLAGS of named soldiers (ever joined).
+// A flag is never removed: a dismissed named soldier stays flagged (so their trait stays in the
+// recruit pool and replaying their unlock mission never brings them back) but is no longer in
+// `soldiers`. A soldier is OWNED (selectable, deployable, counts toward the roster cap) when
+// it is in `soldiers` and is either a recruit or a flagged named soldier.
 //
 // OVER-LIMIT RULE: the saved selection is never trimmed behind the player's back. If it holds
 // more soldiers than the selected mission allows (e.g. a v0.3 squad of 3 for Mission 1, cap 2),
@@ -47,28 +54,48 @@ export class Roster {
 
   constructor(soldiers = defaultRoster(), slots: (string | null)[] = DEFAULT_SQUAD, unlocked: Iterable<string> = STARTING_SOLDIERS) {
     this.soldiers = soldiers;
-    this.unlocked = new Set([...unlocked].filter((id) => soldiers.some((s) => s.id === id)));
-    this.slots = Roster.pack(Roster.normalizeSlots(slots, soldiers, this.unlocked));
+    this.unlocked = new Set([...unlocked].filter((id) => ALL_SOLDIER_IDS.includes(id)));
+    this.slots = Roster.pack(Roster.normalizeSlots(slots, soldiers, (id) => this.isUnlocked(id)));
   }
 
-  /** Keep known, unlocked ids only, drop duplicates, exactly SQUAD_SLOTS entries. */
-  static normalizeSlots(slots: unknown, soldiers: SoldierIdentity[], unlocked?: Set<string>): (string | null)[] {
+  /** Keep known, owned ids only, drop duplicates, exactly SQUAD_SLOTS entries. */
+  static normalizeSlots(slots: unknown, soldiers: SoldierIdentity[], owned?: (id: string) => boolean): (string | null)[] {
     const out: (string | null)[] = Array(SQUAD_SLOTS).fill(null);
     if (!Array.isArray(slots)) return out;
     const seen = new Set<string>();
     for (let i = 0; i < SQUAD_SLOTS; i++) {
       const id = slots[i];
-      if (typeof id === 'string' && !seen.has(id) && soldiers.some((s) => s.id === id) && (!unlocked || unlocked.has(id))) { out[i] = id; seen.add(id); }
+      if (typeof id === 'string' && !seen.has(id) && soldiers.some((s) => s.id === id) && (!owned || owned(id))) { out[i] = id; seen.add(id); }
     }
     return out;
   }
 
   get(id: string) { return this.soldiers.find((s) => s.id === id); }
-  isUnlocked(id: string) { return this.unlocked.has(id); }
+  /** Named campaign soldier (Ace ... Patch) vs recruit. */
+  static isNamed(id: string) { return ALL_SOLDIER_IDS.includes(id); }
+  /** Owned: in the roster and (a recruit, or a named soldier who has joined). */
+  isUnlocked(id: string) { return !!this.get(id) && (!Roster.isNamed(id) || this.unlocked.has(id)); }
+  /** Owned soldiers (what the roster cap counts). Locked named soldiers are not counted. */
+  owned(): SoldierIdentity[] { return this.soldiers.filter((s) => this.isUnlocked(s.id)); }
+  activeCount() { return this.owned().length; }
+  /** Add a recruit (owned immediately). */
+  add(s: SoldierIdentity) { if (!this.get(s.id)) this.soldiers.push(s); }
+  /**
+   * Remove a soldier for good (dismissal): out of the roster and out of the squad selection
+   * (slots re-packed). The unlock flag of a named soldier is kept. Does not call onChange (the
+   * caller persists as part of its transaction).
+   */
+  remove(id: string): boolean {
+    const i = this.soldiers.findIndex((s) => s.id === id);
+    if (i < 0) return false;
+    this.soldiers.splice(i, 1);
+    this.slots = Roster.pack(this.slots.map((x) => (x === id ? null : x)));
+    return true;
+  }
   unlockText(id: string) { return SOLDIER_UNLOCK[id]?.text ?? 'Locked'; }
   /** Unlock a soldier; true if it was locked before. */
   unlock(id: string): boolean {
-    if (!this.get(id) || this.unlocked.has(id)) return false;
+    if (!this.get(id) || this.unlocked.has(id) || !Roster.isNamed(id)) return false;
     this.unlocked.add(id);
     return true;
   }

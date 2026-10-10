@@ -271,7 +271,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     const old = JSON.parse(V03);
     let sv = await save();
     const st = await page.evaluate(() => ({ status: window.__loadStatus.status, from: window.__loadStatus.fromVersion, notice: document.querySelector('.m-notice')?.textContent || '' }));
-    check('v0.3 save migrated to v3 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 3 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
+    check('v0.3 save migrated to v4 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 4 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
     const xpSame = old.roster.every((s) => { const n = sv.roster.find((x) => x.id === s.id); return n.progression.xp === s.progression.xp && JSON.stringify(n.training) === JSON.stringify(s.training); });
     check('v0.3 save: credits, XP, training, squad training, settled runs kept', sv.account.credits === old.account.credits && xpSame && JSON.stringify(sv.account.squadTraining) === JSON.stringify(old.account.squadTraining) && sv.account.settledRuns.length === old.account.settledRuns.length, `credits ${sv.account.credits}`);
     check('v0.3 save: all 6 soldiers unlocked, campaign starts at Mission 1', sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.join() === 'first-contact' && sv.account.campaign.selectedMission === 'first-contact', `${sv.unlockedSoldiers} ${JSON.stringify(sv.account.campaign)}`);

@@ -1,23 +1,25 @@
 // Full-viewport menu screens (outside the scaled 1280x720 stage, so text stays readable on
 // phones): the Campaign screen (v0.4: mission list + details, launch screen), the Barracks
-// (tabs: Roster / Training / Squad Training, plus a details panel) and the mission Results
+// (tabs: Roster / Training / Squad Training / Recruit (v0.5), plus a details panel with
+// Rename / Dismiss and their confirmation dialogs) and the mission Results
 // screen (stats, stars, optional objectives, XP and level-ups, Credits, unlocks).
 // Flow: Campaign -> Barracks (squad for the selected mission) -> Deploy -> Mission -> Results
 // -> Retry / Campaign / Barracks. Campaign can also deploy the saved squad directly.
 import type { Game } from './game';
-import { ABILITY_NAMES, CLASSES, CLASS_IDS, classStats, effectiveStats, type SoldierIdentity } from './classes';
+import { ABILITY_NAMES, CLASSES, CLASS_IDS, classStats, effectiveStats, newProgression, type SoldierIdentity } from './classes';
 import { CFG } from './config';
 import { TRAITS } from './traits';
-import { SQUAD_SLOTS } from './roster';
+import { SQUAD_SLOTS, defaultRoster } from './roster';
 import { drawClassPortrait } from './render';
 import { unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
-import { CAMPAIGN, MISSION_TYPE_LABEL, STAR_TEXT, campaignMission, capacityFor, type CampaignMission } from './campaign';
+import { CAMPAIGN, MISSION_TYPE_LABEL, SOLDIER_UNLOCK, STARTING_SOLDIERS, STAR_TEXT, campaignMission, capacityFor, type CampaignMission } from './campaign';
 import {
-  PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, nextCost,
-  type SquadTrainingStat, type TrainingStat,
+  PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, xpForLevel,
+  type CandidateRecord, type SquadTrainingStat, type TrainingStat,
 } from './progression';
-import { buySquadTraining, buyTraining } from './economy';
+import { buySquadTraining, buyTraining, dismiss, dismissBlock, lineupKey, openOffice, recruit, recruitBlock, refreshOffers, rename } from './economy';
+import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignProgress, priceOf, refundOf, startingLevelFor } from './recruitment';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -27,8 +29,8 @@ const pct = (f: number) => (Math.abs(f) < 1e-9 ? '0%' : `${f > 0 ? '+' : '−'}$
 
 type Screen = 'none' | 'campaign' | 'barracks' | 'results';
 const stars = (n: number, of = 3) => `<span class="stars" title="${n}/${of} stars">${'★'.repeat(n)}<i>${'★'.repeat(Math.max(0, of - n))}</i></span>`;
-export type BarracksTab = 'roster' | 'training' | 'squad';
-const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING']];
+export type BarracksTab = 'roster' | 'training' | 'squad' | 'recruit';
+const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING'], ['recruit', 'RECRUIT']];
 
 /** How a training row shows its stat. */
 const STAT_VIEW: Record<TrainingStat, { get: (s: ReturnType<typeof effectiveStats>) => string }> = {
@@ -52,13 +54,33 @@ export class Menus {
   private resizeTimer = 0;
   /** Double-tap guard for purchases (ms timestamp of the last accepted purchase tap). */
   private lastBuy = { key: '', t: -1e9 };
+  /** Campaign screen: the New Campaign confirmation is open. */
+  resetOpen = false;
   /** Mission highlighted on the Campaign screen. */
   campaignSel = '';
   /** Soldiers unlocked since the Barracks was last opened ("NEW" badge). */
   newSoldiers = new Set<string>();
+  /** v0.5: dismissal confirmation / rename dialog (soldier id, null = closed). */
+  dismissId: string | null = null;
+  renameId: string | null = null;
+  renameDraft = '';
+  renameError = '';
+  /** Refresh is armed by a first tap until this time (ms); a second tap inside the window refreshes. */
+  private refreshArmedUntil = 0;
+  private refreshTimer = 0;
+  /** After a recruitment transaction every tap is ignored briefly (a double tap can't hit the new offer / next card). */
+  private txLockUntil = 0;
 
   constructor(private root: HTMLElement, private game: Game, private openSettings: () => void) {
     root.addEventListener('click', (e) => this.onClick(e));
+    // rename dialog: typing never re-renders (focus and the phone keyboard stay up); Enter saves, Esc cancels
+    root.addEventListener('input', (e) => { const t = e.target as HTMLInputElement; if (t.id === 'rn-input') this.renameDraft = t.value; });
+    root.addEventListener('keydown', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.id !== 'rn-input') return;
+      if (e.key === 'Enter') { e.preventDefault(); this.submitRename(); }
+      else if (e.key === 'Escape') { e.preventDefault(); this.renameId = null; this.renderBarracks(); }
+    });
     window.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('resize', () => {
       clearTimeout(this.resizeTimer);
@@ -69,7 +91,7 @@ export class Menus {
   get visible() { return this.screen !== 'none'; }
 
   hide() {
-    this.screen = 'none'; this.detailsId = null; this.targetSlot = null;
+    this.screen = 'none'; this.detailsId = null; this.targetSlot = null; this.dismissId = null; this.renameId = null;
     this.root.className = 'hidden';
     this.root.innerHTML = '';
   }
@@ -77,6 +99,7 @@ export class Menus {
   // ---------------- Campaign ----------------
   showCampaign(notice?: string) {
     if (this.screen === 'barracks') this.newSoldiers.clear();
+    if (this.screen !== 'campaign') this.resetOpen = false;
     this.screen = 'campaign';
     this.root.className = 'campaign';
     const acc = getAccount();
@@ -114,6 +137,7 @@ export class Menus {
           <div class="c-total" title="Best stars, all missions">★ ${got}/${total}</div>
           <div class="m-spacer"></div>
           <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(acc.credits)}</b></div>
+          <button class="m-nav c-reset" data-a="reset-open" title="Wipe all progress and start a new campaign">NEW CAMPAIGN…</button>
           <button class="m-nav" data-a="to-barracks" title="Barracks: soldiers, training (B)">BARRACKS</button>
           <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
           <div class="m-notice"></div>
@@ -121,6 +145,24 @@ export class Menus {
         <div class="c-main">
           <nav class="c-list">${list}<div class="m-ver">${VERSION_LABEL}</div></nav>
           ${this.missionDetailHtml(m)}
+        </div>
+      </div>
+      ${this.resetOpen ? this.resetHtml() : ''}`;
+  }
+
+  /** Player-facing "New Campaign" confirmation: says exactly what is wiped; Cancel / Confirm. */
+  private resetHtml() {
+    const a = getAccount(), r = this.game.roster;
+    return `
+      <div class="m-modal" data-a="reset-cancel-bg">
+        <div class="d-card x-card" role="dialog" aria-label="Start a new campaign">
+          <div class="x-title">START A NEW CAMPAIGN?</div>
+          <div class="x-warn">⚠ This permanently wipes ALL progress on this device: your roster (${r.activeCount()} soldiers, including every recruit), all XP and levels, individual training, squad training, ${cr(a.credits)} Credits, campaign progress and stars, the Recruitment Office offers and name history.</div>
+          <div class="rn-help">You restart with Ace and Ranger at Mission 1 and 0 Credits. A copy of the current save is kept on this device (latest reset only).</div>
+          <div class="d-btns">
+            <button class="m-big alt" data-a="reset-cancel">CANCEL</button>
+            <button class="m-big danger" data-a="reset-confirm">WIPE &amp; START OVER</button>
+          </div>
         </div>
       </div>`;
   }
@@ -132,13 +174,18 @@ export class Menus {
     const prev = CAMPAIGN.find((x) => x.number === m.number - 1);
     const unl = [
       ...m.unlocks.missions.map((id) => `Mission ${campaignMission(id)!.number} unlocks`),
-      ...m.unlocks.soldiers.map((id) => `${esc(r.get(id)?.name ?? id)} joins (${CLASSES[r.get(id)!.classId].label})`),
+      ...m.unlocks.soldiers.map((id) => { const d = r.get(id) ?? defaultRoster().find((x) => x.id === id); return d ? `${esc(d.name)} joins (${CLASSES[d.classId].label})` : ''; }).filter(Boolean),
       ...(m.unlocks.capacityNote ? [m.unlocks.capacityNote] : []),
     ];
+    if (!m.playable) {
+      const upcoming = defaultRoster().filter((d) => !r.unlocked.has(d.id) && SOLDIER_UNLOCK[d.id] && !SOLDIER_UNLOCK[d.id].by && !STARTING_SOLDIERS.includes(d.id));
+      if (upcoming.length) unl.push(...upcoming.map((d) => `${esc(d.name)} (${CLASSES[d.classId].label}) joins at the Mission 7 milestone`));
+    }
     const first = rec && rec.completions > 0 ? '<span class="dim">First-clear rewards collected</span>'
       : m.legacyId && acc.missions[m.legacyId]?.firstClearRun
         ? `<span class="dim">First-clear Credit bonus already earned on this map in v0.3</span>${unl.length ? ' · ' + unl.join(' · ') : ''}`
         : `+${cr(PROGRESSION.credits.firstClear)} CR first-clear bonus${unl.length ? ' · ' + unl.join(' · ') : ''}`;
+    const firstLine = m.playable ? first : `<span class="dim">Future update</span>${unl.length ? ' · ' + unl.join(' · ') : ''}`;
     const best = rec?.bestStars ?? 0;
     const starRows = [STAR_TEXT.one, STAR_TEXT[m.stars.two], STAR_TEXT[m.stars.three]]
       .map((t, i) => `<li class="${best > i ? 'got' : ''}"><b>${'★'.repeat(i + 1)}</b> ${i ? '+ ' : ''}${t}</li>`).join('');
@@ -155,7 +202,7 @@ export class Menus {
           <div><h4>STARS</h4><ul class="c-stars">${starRows}</ul></div>
           <div><h4>SQUAD</h4><ul><li>Up to <b>${cap}</b> soldiers</li><li>Selected: ${squadNow}</li><li class="dim">${esc(m.teaches)}</li></ul></div>
         </div>
-        <div class="c-first"><b>FIRST CLEAR</b> ${first}</div>
+        <div class="c-first"><b>FIRST CLEAR</b> ${firstLine}</div>
         ${st === 'locked' ? `<div class="c-lock">🔒 Clear Mission ${prev?.number ?? 1} (${esc(prev?.name ?? '')}) to unlock.</div>` : ''}
         <div class="c-btns">
           <button class="m-big alt" data-a="to-barracks" ${st === 'locked' || st === 'soon' ? 'disabled' : ''}>SQUAD ▸</button>
@@ -169,7 +216,8 @@ export class Menus {
     if (this.screen === 'barracks') this.newSoldiers.clear(); // badges last for one Barracks visit
     this.screen = 'barracks';
     this.root.className = 'barracks';
-    if (!this.game.roster.get(this.trainId)) this.trainId = this.game.roster.soldiers[0]?.id ?? 'ace';
+    if (!this.game.roster.get(this.trainId)) this.trainId = this.game.roster.owned()[0]?.id ?? 'ace';
+    if (this.tab === 'recruit') openOffice(this.game.roster, getAccount(), this.game.persist);
     this.renderBarracks();
     if (notice) this.notice(notice);
   }
@@ -178,7 +226,7 @@ export class Menus {
     const scroll = this.root.querySelector('.t-scroll')?.scrollTop ?? 0;
     const acc = getAccount();
     const tabs = TABS.map(([id, label]) => `<button class="m-tab ${this.tab === id ? 'on' : ''}" data-a="tab" data-tab="${id}">${label}</button>`).join('');
-    const body = this.tab === 'training' ? this.trainingHtml() : this.tab === 'squad' ? this.squadTrainingHtml() : this.rosterHtml();
+    const body = this.tab === 'training' ? this.trainingHtml() : this.tab === 'squad' ? this.squadTrainingHtml() : this.tab === 'recruit' ? this.recruitHtml() : this.rosterHtml();
     this.root.innerHTML = `
       <div class="m-wrap">
         <header class="m-head">
@@ -186,13 +234,13 @@ export class Menus {
           <div class="m-title">BARRACKS</div>
           <nav class="m-tabs">${tabs}</nav>
           <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(acc.credits)}</b></div>
-          ${this.tab !== 'roster' ? `<button class="m-deploy" data-a="deploy" ${this.game.deployBlock() ? 'disabled' : ''} title="Deploy the selected squad (Enter)">DEPLOY ▸</button>` : ''}
+          ${this.tab !== 'roster' && this.tab !== 'recruit' ? `<button class="m-deploy" data-a="deploy" ${this.game.deployBlock() ? 'disabled' : ''} title="Deploy the selected squad (Enter)">DEPLOY ▸</button>` : ''}
           <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
           <div class="m-notice"></div>
         </header>
         ${body}
       </div>
-      ${this.detailsId && this.tab === 'roster' ? this.detailsHtml(this.game.roster.get(this.detailsId)!) : ''}`;
+      ${this.modalHtml()}`;
     const sc = this.root.querySelector('.t-scroll');
     if (sc) sc.scrollTop = scroll;
     this.drawPortraits();
@@ -202,7 +250,9 @@ export class Menus {
   private rosterHtml() {
     const r = this.game.roster, g = this.game;
     const cap = g.capacity;
-    const cards = r.soldiers.map((s) => this.cardHtml(s)).join('');
+    // v0.5: only soldiers the player owns (joined campaign soldiers + recruits). Upcoming
+    // campaign soldiers are previewed on the Campaign screen, not as roster cards.
+    const cards = r.owned().map((s) => this.cardHtml(s)).join('');
     const n = r.count();
     const shown = Math.min(SQUAD_SLOTS, Math.max(cap, n));
     const slots = r.slots.slice(0, shown).map((id, i) => this.slotHtml(id, i, cap)).join('');
@@ -216,7 +266,7 @@ export class Menus {
           <section class="b-roster">${cards}</section>
           <aside class="b-squad">
             <div class="b-mission" data-a="to-campaign" title="${MISSION_TYPE_LABEL[m.type]} · tap to change mission"><b>M${m.number} ${esc(m.name)}</b><span>max ${cap}</span></div>
-            <div class="b-squad-title">SQUAD <span class="${over ? 'warn' : ''}">${n}/${cap}</span></div>
+            <div class="b-counts"><span class="b-count" title="Soldiers selected / this mission's limit">DEPLOYED <b class="${over ? 'warn' : ''}">${n} / ${cap}</b></span><span class="b-count" title="Soldiers in your roster / roster cap">ROSTER <b class="${r.activeCount() > getAccount().recruitment.rosterCap ? 'warn' : ''}">${r.activeCount()} / ${getAccount().recruitment.rosterCap}</b></span></div>
             <div class="m-hint ${this.targetSlot !== null ? 'tgt' : ''}">${hint}</div>
             ${slots}
             ${over ? `<div class="b-over">Too many for this mission (max ${cap}). <button class="pick in" data-a="trim">KEEP FIRST ${cap}</button></div>` : `<div class="b-order">Deploy order: ${order}</div>`}
@@ -339,13 +389,14 @@ export class Menus {
     const locked = !this.game.roster.isUnlocked(s.id);
     const full = this.game.roster.count() >= this.game.capacity;
     const ranks = TRAINING_IDS.map((k) => `${TRAINING[k].label} ${s.training[k]}/${maxRank(TRAINING[k])}`).join(' · ');
+    const dBlock = dismissBlock(this.game.roster, s.id, this.game.phase !== 'start');
     return `
       <div class="m-modal" data-a="close-bg">
         <div class="d-card" data-id="${s.id}">
           <div class="d-head">
             <canvas class="d-port" data-cls="${s.classId}"></canvas>
             <div class="d-id">
-              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${p?.level ?? 1}</span></div>
+              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${p?.level ?? 1}</span>${locked ? '' : ` <button class="d-rename" data-a="rename" data-id="${s.id}" title="Rename">✎ RENAME</button>`}</div>
               <div class="d-cls">${CLASSES[s.classId].label} · Ability: ${ability}</div>
               <div class="d-trait"><b>${t ? t.name : 'No trait'}</b> ${t ? `— ${t.desc}` : ''}</div>
             </div>
@@ -362,8 +413,10 @@ export class Menus {
               : full ? `<button class="m-big" disabled title="Squad full">SQUAD FULL</button>`
               : `<button class="m-big" data-a="select" data-id="${s.id}">ADD TO SQUAD</button>`}
             <button class="m-big alt" data-a="train" data-id="${s.id}" ${locked ? 'disabled' : ''}>TRAIN</button>
+            ${locked ? '' : `<button class="m-big danger" data-a="dismiss" data-id="${s.id}" ${dBlock ? 'disabled' : ''} title="${esc(dBlock ?? `Dismiss for +${refundOf(s.classId)} CR`)}">DISMISS…</button>`}
             <button class="m-big alt" data-a="close">CLOSE</button>
           </div>
+          ${!locked && dBlock && !/mission/i.test(dBlock) ? `<div class="d-note">${esc(dBlock)}</div>` : ''}
         </div>
       </div>`;
   }
@@ -447,11 +500,171 @@ export class Menus {
       </section>`;
   }
 
+  // ----- v0.5: Recruitment Office -----
+  /** Stats a candidate would have on joining: class + level + trait + current squad training (no individual training). */
+  static candidateStats(c: CandidateRecord) {
+    const p = { ...newProgression(), xp: xpForLevel(c.level), level: c.level };
+    return effectiveStats({ classId: c.classId, traitId: c.traitId, mods: {}, progression: p, training: newTraining() });
+  }
+
+  private recruitHtml() {
+    const r = this.game.roster, acc = getAccount(), rec = acc.recruitment;
+    openOffice(r, acc, this.game.persist); // idempotent: only fills missing offers / owed introductions
+    const block = recruitBlock(r, acc);
+    const armed = performance.now() < this.refreshArmedUntil;
+    const canRefresh = acc.credits >= REFRESH_COST;
+    const cards = rec.offers.map((c) => {
+      const t = TRAITS[c.traitId], st = Menus.candidateStats(c), price = priceOf(c.classId), afford = acc.credits >= price;
+      const btn = block ? `<button class="rc-buy full" disabled title="${esc(block)}">ROSTER FULL</button>`
+        : `<button class="rc-buy ${afford ? '' : 'poor'}" data-a="recruit" data-id="${c.id}" ${afford ? '' : 'disabled'} title="${afford ? `Recruit ${esc(c.name)}` : 'Not enough Credits'}">${afford ? 'RECRUIT · ' : ''}${cr(price)} CR</button>`;
+      return `
+        <div class="rc-card" data-id="${c.id}" data-cls="${c.classId}">
+          <div class="s-top">
+            <canvas class="s-port" data-cls="${c.classId}"></canvas>
+            <div class="s-id">
+              <div class="s-name">${esc(c.name)}</div>
+              <div class="s-cls">${CLASSES[c.classId].label}</div>
+              <span class="s-lv">LV ${c.level}</span>
+            </div>
+          </div>
+          <div class="rc-trait"><b>${t.name}</b><span>${t.desc}</span></div>
+          <div class="rc-stats">
+            <span>HP <b>${num(Math.round(st.hp))}</b></span><span>DMG <b>${num(Math.round(st.damage * 10) / 10)}</b></span>
+            <span>RATE <b>${num(Math.round(st.fireRate * 100) / 100)}/s</b></span><span>SPEED <b>${num(Math.round(st.moveSpeed))}</b></span>
+          </div>
+          ${btn}
+        </div>`;
+    }).join('');
+    const lvl = startingLevelFor(campaignProgress(acc));
+    const prices = RECRUIT_CLASSES.filter((x) => rec.introduced.includes(x.classId) || r.unlocked.has(x.requires ?? '')).map((x) => `${CLASSES[x.classId].label} ${cr(x.price)}`).join(' · ');
+    return `
+      <div class="rc-main">
+        <div class="rc-bar">
+          <span class="b-count">ROSTER <b class="${block ? 'warn' : ''}">${r.activeCount()} / ${rec.rosterCap}</b></span>
+          <span class="rc-info">New recruits join at <b>LV ${lvl}</b> · squad training applies · ${prices} CR</span>
+          <button class="rc-refresh ${armed ? 'armed' : ''}" data-a="refresh" data-key="${lineupKey(rec)}" ${canRefresh ? '' : 'disabled'} title="${canRefresh ? 'Replace all three candidates' : 'Not enough Credits'}">${armed ? `TAP AGAIN — ${REFRESH_COST} CR` : `↻ REFRESH · ${REFRESH_COST} CR`}</button>
+        </div>
+        ${block ? `<div class="rc-full">${esc(block)}</div>` : ''}
+        <div class="rc-cards">${cards}</div>
+      </div>`;
+  }
+
+  private modalHtml() {
+    const r = this.game.roster;
+    if (this.dismissId && r.get(this.dismissId)) return this.dismissHtml(r.get(this.dismissId)!);
+    if (this.renameId && r.get(this.renameId)) return this.renameHtml(r.get(this.renameId)!);
+    if (this.detailsId && this.tab === 'roster' && r.get(this.detailsId)) return this.detailsHtml(r.get(this.detailsId)!);
+    return '';
+  }
+
+  private dismissHtml(s: SoldierIdentity) {
+    const t = s.traitId ? TRAITS[s.traitId] : null;
+    const block = dismissBlock(this.game.roster, s.id, this.game.phase !== 'start');
+    return `
+      <div class="m-modal" data-a="dismiss-cancel-bg">
+        <div class="d-card x-card" role="dialog" aria-label="Dismiss soldier">
+          <div class="x-title">DISMISS SOLDIER?</div>
+          <div class="d-head">
+            <canvas class="d-port" data-cls="${s.classId}"></canvas>
+            <div class="d-id">
+              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${s.progression?.level ?? 1}</span></div>
+              <div class="d-cls">${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
+              <div class="x-refund">Refund <b>+${cr(refundOf(s.classId))} CR</b></div>
+            </div>
+          </div>
+          <div class="x-warn">⚠ ${esc(s.name)} leaves for good. Levels, XP and every training rank bought for them are permanently lost (training is not refunded). This cannot be undone.</div>
+          ${block ? `<div class="d-full">${esc(block)}</div>` : ''}
+          <div class="d-btns">
+            <button class="m-big alt" data-a="dismiss-cancel">CANCEL</button>
+            <button class="m-big danger" data-a="dismiss-confirm" data-id="${s.id}" ${block ? 'disabled' : ''}>CONFIRM DISMISSAL</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  private renameHtml(s: SoldierIdentity) {
+    return `
+      <div class="m-modal" data-a="rename-cancel-bg">
+        <div class="d-card x-card" role="dialog" aria-label="Rename soldier">
+          <div class="x-title">RENAME ${esc(s.name.toUpperCase())}</div>
+          <input id="rn-input" class="rn-input" type="text" maxlength="${NAME_MAX}" value="${esc(this.renameDraft)}" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="New name">
+          <div class="rn-help ${this.renameError ? 'err' : ''}">${this.renameError ? esc(this.renameError) : `1–${NAME_MAX} characters: letters, digits, space, - ' . · must be unique`}</div>
+          <div class="d-btns">
+            <button class="m-big alt" data-a="rename-cancel">CANCEL</button>
+            <button class="m-big" data-a="rename-save" data-id="${s.id}">SAVE NAME</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  private submitRename() {
+    const id = this.renameId;
+    if (!id) return;
+    const input = this.root.querySelector<HTMLInputElement>('#rn-input');
+    if (input) this.renameDraft = input.value;
+    const res = rename(this.game.roster, getAccount(), id, this.renameDraft, this.game.persist);
+    if (!res.ok) {
+      this.renameError = res.reason;
+      this.renderBarracks();
+      this.root.querySelector<HTMLInputElement>('#rn-input')?.focus();
+      return;
+    }
+    this.renameId = null; this.renameError = '';
+    this.renderBarracks();
+    this.notice(res.name === res.old ? 'Name unchanged.' : `${res.old} is now ${res.name}.${res.saved ? '' : ' · not saved (no storage)'}`);
+  }
+
+  private doRecruit(id: string) {
+    const g = this.game;
+    const res = recruit(g.roster, getAccount(), id, g.persist, { inMission: g.phase !== 'start' });
+    if (res.ok) this.newSoldiers.add(res.soldier.id);
+    this.renderBarracks();
+    this.notice(res.ok ? `${res.soldier.name} joined the roster (−${cr(res.cost)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
+  }
+
+  private doRefresh(key: string) {
+    const now = performance.now();
+    if (now >= this.refreshArmedUntil) {
+      // first tap only arms it (anti-accident; same idea as the two-tap save reset)
+      this.refreshArmedUntil = now + REFRESH_ARM_MS;
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = window.setTimeout(() => { if (this.screen === 'barracks' && this.tab === 'recruit') this.renderBarracks(); }, REFRESH_ARM_MS + 30);
+      this.renderBarracks();
+      return;
+    }
+    this.refreshArmedUntil = 0;
+    const g = this.game;
+    const res = refreshOffers(g.roster, getAccount(), key, g.persist, { inMission: g.phase !== 'start' });
+    this.renderBarracks();
+    this.notice(res.ok ? `New candidates (−${cr(res.cost)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
+  }
+
+  private doDismiss(id: string) {
+    const g = this.game, s = g.roster.get(id);
+    const res = dismiss(g.roster, getAccount(), id, g.persist, { inMission: g.phase !== 'start' });
+    this.dismissId = null;
+    if (res.ok) {
+      this.detailsId = null; this.targetSlot = null; this.newSoldiers.delete(id);
+      if (this.trainId === id) this.trainId = g.roster.owned()[0]?.id ?? '';
+      g.forgetSoldier(id);
+    }
+    this.renderBarracks();
+    this.notice(res.ok ? `${s?.name ?? 'Soldier'} dismissed (+${cr(res.refund)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
+  }
+
   private drawPortraits() {
     if (!this.visible) return;
     this.root.querySelectorAll<HTMLCanvasElement>('canvas[data-cls]').forEach((c) => {
       drawClassPortrait(c, c.dataset.cls as SoldierIdentity['classId'], c.classList.contains('slot-port') ? 0.3 : 0.55);
     });
+  }
+
+  /** Focus the rename field with the caret at the end (opens the phone keyboard). */
+  private focusRename() {
+    const i = this.root.querySelector<HTMLInputElement>('#rn-input');
+    if (!i) return;
+    i.focus({ preventScroll: true });
+    try { i.setSelectionRange(i.value.length, i.value.length); } catch { /* some input types */ }
   }
 
   notice(text: string) {
@@ -548,9 +761,27 @@ export class Menus {
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-a]');
     if (!el || !this.root.contains(el)) return;
     if (el instanceof HTMLButtonElement && el.disabled) return;
+    if (performance.now() < this.txLockUntil) { e.stopPropagation(); return; } // double tap right after a recruit / refresh / dismissal
     unlockAudio();
     const a = el.dataset.a, id = el.dataset.id, g = this.game, r = g.roster;
     switch (a) {
+      case 'recruit': case 'refresh': case 'dismiss-confirm': {
+        e.stopPropagation();
+        const now = performance.now(), key = `${a}:${id ?? el.dataset.key ?? ''}`;
+        if (key === this.lastBuy.key && now - this.lastBuy.t < PROGRESSION.purchaseLockMs) return;
+        this.lastBuy = { key, t: now };
+        if (a === 'refresh') { const wasArmed = now < this.refreshArmedUntil; this.doRefresh(el.dataset.key ?? ''); if (wasArmed) this.txLockUntil = performance.now() + RECRUIT_LOCK_MS; return; }
+        this.txLockUntil = now + RECRUIT_LOCK_MS;
+        if (a === 'recruit') this.doRecruit(id!); else this.doDismiss(id!);
+        return;
+      }
+      case 'dismiss': this.dismissId = id!; break;
+      case 'dismiss-cancel': this.dismissId = null; break;
+      case 'dismiss-cancel-bg': if (e.target === el) this.dismissId = null; else return; break;
+      case 'rename': this.renameId = id!; this.renameDraft = r.get(id!)?.name ?? ''; this.renameError = ''; e.stopPropagation(); this.renderBarracks(); this.focusRename(); return;
+      case 'rename-save': e.stopPropagation(); this.submitRename(); return;
+      case 'rename-cancel': this.renameId = null; break;
+      case 'rename-cancel-bg': if (e.target === el) this.renameId = null; else return; break;
       case 'settings': this.openSettings(); return;
       case 'deploy': this.deploy(); return;
       case 'retry': g.reset(); return;
@@ -558,6 +789,19 @@ export class Menus {
       case 'campaign': g.toCampaign(); return;
       case 'to-barracks': this.showBarracks(); return;
       case 'to-campaign': this.showCampaign(); return;
+      case 'reset-open': this.resetOpen = true; this.renderCampaign(); return;
+      case 'reset-cancel': this.resetOpen = false; this.renderCampaign(); return;
+      case 'reset-cancel-bg': if (e.target === el) { this.resetOpen = false; this.renderCampaign(); } return;
+      case 'reset-confirm': {
+        e.stopPropagation();
+        if (!this.resetOpen) return;
+        this.resetOpen = false;
+        this.txLockUntil = performance.now() + RECRUIT_LOCK_MS; // a double tap can't hit the fresh screen
+        this.newSoldiers.clear(); this.tab = 'roster'; this.detailsId = null; this.dismissId = null; this.renameId = null; this.targetSlot = null; this.trainId = 'ace';
+        const ok = g.resetRosterSave?.('New campaign started: Ace and Ranger, Mission 1. Your previous save was backed up on this device.') ?? false;
+        if (!ok) { this.renderCampaign(); this.notice('Could not back up the current save: nothing was wiped.'); }
+        return;
+      }
       case 'csel': {
         const m = campaignMission(id!);
         this.campaignSel = id!;
@@ -566,7 +810,10 @@ export class Menus {
         return;
       }
       case 'trim': r.trimTo(g.capacity); break;
-      case 'tab': this.tab = el.dataset.tab as BarracksTab; this.detailsId = null; this.targetSlot = null; break;
+      case 'tab':
+        this.tab = el.dataset.tab as BarracksTab; this.detailsId = null; this.targetSlot = null; this.refreshArmedUntil = 0;
+        if (this.tab === 'recruit') openOffice(r, getAccount(), g.persist);
+        break;
       case 'tsel': this.trainId = id!; break;
       case 'train': this.trainId = id!; this.tab = 'training'; this.detailsId = null; break;
       case 'buy': case 'sbuy': {
@@ -619,14 +866,18 @@ export class Menus {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (this.screen === 'barracks') {
       if (e.code === 'Escape') {
-        if (this.detailsId) this.detailsId = null;
+        if (this.dismissId) this.dismissId = null;
+        else if (this.renameId) this.renameId = null;
+        else if (this.detailsId) this.detailsId = null;
         else if (this.targetSlot !== null) this.targetSlot = null;
         else { this.showCampaign(); return; }
         this.renderBarracks();
-      } else if (e.code === 'Enter' && !this.detailsId) { e.preventDefault(); this.deploy(); }
+      } else if (this.dismissId || this.renameId) { /* dialogs: buttons only (no Enter shortcut for a dismissal) */ }
+      else if (e.code === 'Enter' && !this.detailsId) { e.preventDefault(); this.deploy(); }
       else if (e.code === 'KeyC' && !this.detailsId) this.showCampaign();
     } else if (this.screen === 'campaign') {
-      if (e.code === 'Enter') { e.preventDefault(); this.deploy(); }
+      if (e.code === 'Enter' && !this.resetOpen) { e.preventDefault(); this.deploy(); }
+      else if (this.resetOpen) { if (e.code === 'Escape') { this.resetOpen = false; this.renderCampaign(); } }
       else if (e.code === 'KeyB') this.showBarracks();
       else if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
         const open = CAMPAIGN.filter((m) => m.playable && this.missionState(m) !== 'locked');

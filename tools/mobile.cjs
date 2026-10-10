@@ -78,7 +78,7 @@ const DEVICES = [
     await page.tap('.s-card[data-id="havoc"] .s-name');
     await page.waitForTimeout(150);
     const D = await menuLayout('.d-card, .d-btns .m-big');
-    check(`${dev.name} landscape: details panel fits, buttons tappable`, D.n === 4 && D.boxes.every((b) => b.inside && b.aligned), JSON.stringify(D.boxes.map((b) => `${b.w}x${b.h}`)));
+    check(`${dev.name} landscape: details panel fits, buttons tappable (+ Dismiss)`, D.n === 5 && D.boxes.every((b) => b.inside && b.aligned), JSON.stringify(D.boxes.map((b) => `${b.w}x${b.h}`)));
     await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-details.png` });
     await page.tap('.d-btns [data-a="close"]');
     // rotate while in the Barracks
