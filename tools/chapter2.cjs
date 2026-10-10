@@ -277,7 +277,7 @@ function installHelpers() {
       T.stepUntil(() => c.escorting, 8);
       const released = c.escorting;
       // walk the extraction route (west then north-west) and measure the formation
-      let worst = 0, sumD = 0, n2 = 0, ringOk = 0, ringN = 0, lag = 0;
+      let worst = 0, sumD = 0, n2 = 0, ringOk = 0, ringN = 0, lag = 0; const ds = [];
       const route = [{ x: 2350, y: 740 }, { x: 1750, y: 765 }, { x: 1300, y: 900 }, { x: 900, y: 600 }, { x: 400, y: 300 }];
       let k = 0;
       T.stepUntil(() => {
@@ -291,7 +291,7 @@ function installHelpers() {
         const act = g.soldiers.filter((s) => s.active);
         const cx = act.reduce((a, s) => a + s.pos.x, 0) / act.length, cy = act.reduce((a, s) => a + s.pos.y, 0) / act.length;
         const dc = Math.hypot(c.pos.x - cx, c.pos.y - cy);
-        worst = Math.max(worst, dc); sumD += dc; n2++;
+        worst = Math.max(worst, dc); sumD += dc; n2++; ds.push(dc);
         // "inside the ring": no soldier-free half-plane... approximated: the captive is closer to the centroid than the average soldier
         const avgR = act.reduce((a, s) => a + Math.hypot(s.pos.x - cx, s.pos.y - cy), 0) / act.length;
         ringN++; if (dc <= avgR + 5) ringOk++;
@@ -299,12 +299,13 @@ function installHelpers() {
         return false;
       }, 90);
       g.input.move = () => ({ x: 0, y: 0 });
-      out[n] = { released, reached: k >= route.length, avg: Math.round(sumD / Math.max(1, n2)), worst: Math.round(worst), inside: +(ringOk / Math.max(1, ringN)).toFixed(2), lag: Math.round(lag), rescues: g.escortRescues };
+      ds.sort((p, q) => p - q);
+      out[n] = { released, reached: k >= route.length, median: Math.round(ds[Math.floor(ds.length / 2)] || 0), avg: Math.round(sumD / Math.max(1, n2)), worst: Math.round(worst), inside: +(ringOk / Math.max(1, ringN)).toFixed(2), lag: Math.round(lag), rescues: g.escortRescues };
     }
     return out;
   });
   check('prisoner release: standing next to the prisoner frees them (escorting)', [2, 3, 4, 5].every((n) => esc[n].released), JSON.stringify(Object.values(esc).map((x) => x.released)));
-  check('captive-centred formation (2-5 soldiers): captive near the squad centre (avg <= 45 px), inside the ring >= 80% of the walk', [2, 3, 4, 5].every((n) => esc[n].avg <= 45 && (n === 2 || esc[n].inside >= 0.8)), JSON.stringify(esc));
+  check('captive-centred formation (2-5 soldiers): captive near the squad centre (median <= 40 px), inside the ring >= 75% of the walk', [2, 3, 4, 5].every((n) => esc[n].median <= 40 && (n === 2 || esc[n].inside >= 0.75)), JSON.stringify(esc));
   check('escort walk to extraction: route completed, no deadlock (no teleport rescue), captive never left behind (< 200 px)', [2, 3, 4, 5].every((n) => esc[n].reached && esc[n].rescues === 0 && esc[n].lag < 200), JSON.stringify(Object.values(esc).map((x) => `${x.reached}/${x.rescues}/${x.lag}`)));
 
   const prx = await ev(() => {

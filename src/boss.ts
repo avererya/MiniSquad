@@ -123,7 +123,8 @@ export class BossFight {
       }
       case 'windup': {
         const t = this.target;
-        if (!t || !t.targetable || !game.world.clear(u.pos, t.pos)) { this.enter('idle', game); break; }
+        // committed once the windup starts (no idle/windup flapping): ducking behind cover is the counter
+        if (!t || !t.targetable) { this.enter('idle', game); break; }
         this.fireAim = turnToward(this.fireAim, Math.atan2(t.pos.y - u.pos.y, t.pos.x - u.pos.x), B.turnRate * dt);
         if (this.t >= B.windup) { this.enter('burst', game); this.shotT = 0; this.bursts++; }
         break;

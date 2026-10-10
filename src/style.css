@@ -394,8 +394,8 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   .c-row { min-height: 34px; padding: 0.15em 0.4em; gap: 0.35em; }
   /* short phones: full mission names (2 lines max) instead of the type line; type stays in the detail panel */
   .c-name small { display: none; }
-  .c-name b { white-space: normal; overflow: visible; line-height: 1.1; }
-  .c-state { font-size: 11px; letter-spacing: -0.05em; }
+  .c-name b { white-space: normal; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; letter-spacing: -0.02em; }
+  .c-state { font-size: 10px; letter-spacing: -0.12em; }
   .c-title { font-size: 1.3em; }
   .c-brief { display: none; }
   .c-grid ul { line-height: 1.2; }
@@ -406,7 +406,7 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   .r-mission { display: none; }
 }
 @media (orientation: landscape) and (max-width: 760px) {
-  .c-main { grid-template-columns: minmax(11em, 13em) 1fr; }
+  .c-main { grid-template-columns: 14.8em 1fr; }
   .c-grid { gap: 0.2em 0.6em; }
   .c-grid > div:nth-child(4) li.dim { display: none; }
 }
@@ -718,13 +718,13 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 
 /* ---------- v0.6.2 Chapter 2: objective widgets, boss bar, Sniper portrait, chapter headers ---------- */
 .obj-chips { display: flex; gap: 6px; justify-content: center; margin-top: 5px; flex-wrap: wrap; }
-.obj-chips .oc { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 900; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.08); color: #ffd84a; }
+.obj-chips .oc { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 900; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.08); color: #ffd84a; }
 .obj-chips .oc > i { display: inline-block; width: 46px; height: 7px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; }
 .obj-chips .oc > i > i { display: block; height: 100%; background: #ffb347; }
 .obj-chips .oc.idle { color: #aab4c0; } .obj-chips .oc.idle > i > i { background: #aab4c0; }
 .obj-chips .oc.done { color: #7dff8a; text-decoration: line-through; }
 .obj-chips .oc.lost { color: #ff6040; text-decoration: line-through; }
-.obj-meter { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12px; font-weight: 900; color: #ffd84a; }
+.obj-meter { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 13px; font-weight: 900; color: #ffd84a; }
 .obj-meter .om-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; }
 .obj-meter .om-bar div { height: 100%; width: 0; background: linear-gradient(90deg, #ffd84a, #ff6040); }
 .obj-meter.hot { color: #ff6040; animation: om-pulse 0.8s ease-in-out infinite alternate; }
@@ -734,7 +734,7 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 .obj-boss .ob-bar { position: relative; height: 12px; background: rgba(255,255,255,0.15); border: 1px solid #ff7a5a; border-radius: 4px; overflow: hidden; }
 .obj-boss .ob-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #c0392b, #ff7a5a); }
 .obj-boss .ob-bar i { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.8); }
-.obj-boss .ob-state { font-size: 12px; font-weight: 900; color: #ff5050; min-height: 14px; }
+.obj-boss .ob-state { font-size: 13px; font-weight: 900; color: #ff5050; min-height: 15px; }
 .ability[data-ability="focus"] .icon { color: #ff5050; text-shadow: 0 0 2px #fff; font-weight: 900; }
 .cls-sniper .helmet { left: -8px; right: -8px; top: 1px; height: 13px; border-radius: 50% 50% 30% 30%; background: #6b6b3a; border-bottom: 3px solid #4a4a28; }
 .cls-sniper .badge { display: block; left: -2px; right: -2px; top: 17px; height: 5px; background: #2b2b2b; border-radius: 2px; }
