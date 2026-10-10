@@ -6,7 +6,9 @@ This repository holds **Combat Prototype v0.1**, a disposable web feel prototype
 
 ## Status
 
-`v0.6.1` (mission-failure consequences, deliberate recruitment, a Barracks UI pass, on top of v0.6 permanent death; the original build is tagged `prototype-v0.1`).
+`v0.6.2` (Chapter 2: Behind Enemy Lines, Missions 6-10, the Sniper class and the first boss, on top of v0.6.1; the original build is tagged `prototype-v0.1`).
+
+- v0.6.2: **Chapter 2 — Behind Enemy Lines.** Five new missions (6 Bridgehead, 7 Prison Break, 8 Convoy Crusher, 9 Blackout, 10 Operation Iron Fist), new enemies (enemy Sniper with a laser telegraph, Watchtower, Armored Trooper with a weak rear, convoy trucks and escorts), the recruitable **Sniper** class (unlocked by clearing Mission 9), Patch's recruit offer at Mission 7, and the **Iron Warden** boss. The Campaign screen has chapter tabs (CH 1 / CH 2 / CH 3 soon). Hostage escorts (Missions 5 and 7) use a protective ring formation. Save v7 (backup `minisquad.save.pre-v0.6.2`). See [Chapter 2](#chapter-2-behind-enemy-lines-v062).
 
 - v0.6.1: **A failed mission never rescues a downed soldier.** When a mission legitimately fails (whole squad down, captive lost, any objective failure) standing soldiers (revived ones too) come home, soldiers downed at that moment become **KIA** ("Downed when the mission failed"), soldiers already KIA stay KIA (one death each). Results show "MISSION FAILED · 1 Survivor · 2 KIA" and the normal casualty flow follows; Operation Phoenix can now open after a genuine combat collapse. Closing / reloading the app mid-mission is unchanged (only soldiers who had already fallen are lost). No rewards for failures (unchanged).
 - v0.6.1: **Campaign milestones unlock recruits, not soldiers.** A new campaign owns only Ace and Ranger. Clearing Mission 1 / 2 / 5 / 7 opens a permanent **CAMPAIGN RECRUITS** offer in the Recruitment Office for Tank / Doc / Havoc / Patch (1,000 CR each, natural trait kept, joins at the current recruit level), shown above the three random candidates and never touched by Refresh. Each is bought at most once (claimed by the soldier's id, so renaming, dismissing or the Memorial can never reopen it), respects the 12-soldier cap, and is announced once by a "NEW RECRUIT AVAILABLE!" notice. Heavy Gunner / Medic recruitment and the Tough / First Responder / Trigger Happy / Healer traits unlock with the milestones whether or not the named soldier is bought. Save v6: older saves keep every soldier they were given (free, marked claimed, never offered again). See [Named campaign recruits](#named-campaign-recruits-v061).
@@ -50,11 +52,16 @@ Mission data (names, types, objectives, caps, star rules, unlocks) lives in `src
 | 2 | Heavy Support | Sabotage | 2 | Destroy the supply depot, extract (hold 12 s) | Eliminate the guarded MG nest | all optionals / no KIA | Mission 3, **Doc** |
 | 3 | Field Medicine | Capture & Hold | 3 | Take and hold the comms outpost, extract | Extract every soldier | all optionals / nobody downed | Mission 4 |
 | 4 | Red Canyon Ambush | Survival / Extraction | 3 | Advance into the canyon, survive a 50 s ambush, extract | none | whole squad extracted / nobody downed | Mission 5 |
-| 5 | Bring Them Home | Rescue / Escort | 3 | Clear the compound, free the captive, escort them to extraction | The captive takes no damage | all optionals / no KIA | **Havoc**, squad size 4 for Mission 6 |
+| 5 | Bring Them Home | Rescue / Escort | 3 | Clear the compound, free the captive, escort them to extraction | The captive takes no damage | all optionals / no KIA | **Havoc**, Mission 6 (squad size 4) |
+| 6 | Bridgehead | Capture & Hold | 4 | Clear the bridge guards, hold the bridgehead 45 s, extract | No soldier KIA | all optionals / nobody downed | Mission 7 |
+| 7 | Prison Break | Rescue / Escort | 5 | Eliminate the prison guards (4 watchtowers), free the POW medic, escort them out | The prisoner is never downed | all optionals / no KIA | Mission 8, **Patch** recruit offer |
+| 8 | Convoy Crusher | Interception | 5 | Destroy at least 2 of 3 supply trucks, extract | Destroy all three trucks | all optionals / nobody downed | Mission 9 |
+| 9 | Blackout | Night Sabotage | 5 | Destroy the 3 communication relays, extract | Destroy every relay before the alarm maxes out | all optionals / nobody downed | Mission 10, **Sniper class** |
+| 10 | Operation Iron Fist | Assault / Boss | 5 | Destroy 2 installations, storm the stronghold, defeat the Iron Warden, extract | No soldier KIA | all optionals / nobody downed | Mission 11 (Chapter 3, coming soon) |
 
 - Stars: 0 on defeat, ★ = primary objectives complete. Best stars are saved per mission and never go down. Missions can be replayed forever (replay rewards as in v0.3).
 - Squad caps by mission number: 1-2 → 2, 3-5 → 3, 6 → 4, 7-12 → 5, 13+ → 6. You may deploy fewer. If the saved squad is larger than the selected mission allows (for example a v0.3 squad of 3 on Mission 1), the extra slots are marked OVER LIMIT and Deploy is disabled until you remove someone or tap **Keep first N**. The saved squad is never trimmed automatically.
-- Soldiers: a new save starts with Ace and Ranger only. Since v0.6.1 the first clear of Mission 1 / 2 / 5 opens a named recruit offer for Tank / Doc / Havoc in the Recruitment Office (bought for 1,000 CR, never awarded); Patch's offer is reserved for the Mission 7 milestone (future update). Since v0.5 the Barracks lists only soldiers you own; upcoming soldiers are previewed on the Campaign screen (each mission's FIRST CLEAR line, Patch on the "Coming soon" card).
+- Soldiers: a new save starts with Ace and Ranger only. Since v0.6.1 the first clear of Mission 1 / 2 / 5 opens a named recruit offer for Tank / Doc / Havoc in the Recruitment Office (bought for 1,000 CR, never awarded); Patch's offer opens with the Mission 7 milestone (v0.6.2). Since v0.5 the Barracks lists only soldiers you own; upcoming soldiers are previewed on the Campaign screen (each mission's FIRST CLEAR line, Patch on the "Coming soon" card).
 - Overlap rule: Mission 3's optional objective *is* "whole squad extracted", so on Mission 3 it pays once, as the optional (+25 XP / +150 CR), and the global whole-squad line is left out. The totals are the same as before.
 - The v0.1-v0.3 comms-outpost mission is now Mission 3 (Field Medicine, new id `field-medicine`). Its old record (`comms-outpost`) is kept in the save as history. A player who already cleared it in v0.3 does not get the one-time +250 CR first-clear bonus again on Mission 3 (no double grant); unlocks and XP work normally.
 - v0.3 / v0.2.2 saves: everything is kept (soldiers, XP, levels, training, Credits, squad), all six soldiers stay unlocked, and the campaign starts at Mission 1. The original save text is kept once under `minisquad.save.pre-v0.4`.
@@ -66,7 +73,7 @@ Rules and tables live in `src/recruitment.ts`; the money-moving transactions (re
 - **Offers**: always three cards (name, class, starting level, trait + effect, HP / damage / fire rate / move speed, price, Recruit). Stats are never rolled: class + level + trait, plus Squad Training exactly as on roster cards. Offers are saved; reopening the office, switching tabs or reloading never produces new candidates for free.
 - **Prices** (Credits): Infantry 750, Heavy Gunner 1,000, Medic 1,000. **Refresh** (replace all three) 100. Refresh needs two taps: the first arms it ("TAP AGAIN — 100 CR") for 3 s, a second tap within the window refreshes (a quick double tap does not confirm; same idea as the two-tap save reset, no modal).
 - **Recruit flow** (atomic): check Credits and roster space → deduct → soldier joins (training rank 0, cumulative XP for the starting level) → save → only that offer is replaced. If the save write fails, everything is rolled back. Repeats are refused by state (a recruited offer id no longer exists; a refresh carries the lineup it was drawn for) and every menu tap is ignored for 450 ms after a recruit / refresh / dismissal, so a double tap can never buy the replacement offer.
-- **Classes**: Infantry from the start; Heavy Gunner after Tank's milestone (Mission 1); Medic after Doc's (Mission 2), bought or not (`RECRUIT_CLASSES`, v0.6.1). Havoc and Patch add no class. Random class per offer, duplicates allowed, no guaranteed spread. Tank, Doc, Havoc, Patch (and Ace, Ranger) are unique campaign soldiers and are never generated.
+- **Classes**: Infantry from the start; Heavy Gunner after Tank's milestone (Mission 1); Medic after Doc's (Mission 2), bought or not (`RECRUIT_CLASSES`, v0.6.1). Havoc and Patch add no class. Sniper: from the Mission 9 milestone (v0.6.2, `class:sniper`), 1,250 CR, refund 300. Random class per offer, duplicates allowed, no guaranteed spread. Tank, Doc, Havoc, Patch (and Ace, Ranger) are unique campaign soldiers and are never generated.
 - **One-time introduction**: when a class first becomes recruitable, the next lineup you see holds at least one offer of it. If offers already exist, the **last** offer is swapped for the new class for free (two new classes at once: the last two). After that, normal randomness. Saves from before v0.5 count the classes they can already recruit as introduced (their first lineup is random): a returning player was never shown a lineup without them.
 - **Traits** (`RECRUIT_TRAITS`): a trait can be rolled once the milestone of the named soldier carrying it is reached, or that soldier was owned before v0.6.1 (Sharpshooter / Quick Reflexes from the start, Tough with Tank, First Responder with Doc, Trigger Happy with Havoc, Healer with Patch). Healer is Medic-only; the others work for every class. This uses the campaign flags (`campaignFlags`), so dismissing a named soldier never removes their trait from the pool.
 - **Starting level** (`RECRUIT_LEVELS`), from the highest unlocked mission (never the selected mission or the strongest soldier): M1-5 → L1, 6-10 → L3, 11-15 → L5, 16-20 → L8, 21-30 → L10, 31-40 → L15, 41+ → L20. The level is fixed when the offer is generated (what the card shows is what you get); offers made before a campaign milestone keep their level.
@@ -102,16 +109,76 @@ Rules and prices live in `src/casualties.ts`; the transactions (mission-end sett
 
 ## Named campaign recruits (v0.6.1)
 
-- `NAMED_RECRUITS` (campaign.ts): Tank (Mission 1, Heavy Gunner), Doc (Mission 2, Medic), Havoc (Mission 5, Heavy Gunner), Patch (Mission 7, Medic; Mission 7 is not in the game yet). 1,000 CR each. Offer key = the named soldier's stable id.
+- `NAMED_RECRUITS` (campaign.ts): Tank (Mission 1, Heavy Gunner), Doc (Mission 2, Medic), Havoc (Mission 5, Heavy Gunner), Patch (Mission 7, Medic; playable since v0.6.2). 1,000 CR each. Offer key = the named soldier's stable id.
 - `account.named` (save v6): `unlocked` (milestone reached), `claimed` (offer used up for good: bought, or owned / dismissed / in the Memorial before v0.6.1), `notified` (notice shown), `history` (purchases; `legacy: true` with cost 0 for soldiers older versions awarded). `unlockedSoldiers` now means owned named soldiers and is never re-derived from mission records.
 - Purchase (`economy.recruitNamed`, atomic with rollback): offer open, no pending casualty decision, roster below 12, enough Credits; otherwise refused with nothing charged. The soldier keeps id, name, class and trait and joins at the current recruit starting level.
 - Class / trait pools use `campaignFlags` (starting soldiers + reached milestones + claimed offers), never who is in the roster. The one-time class introduction (a Heavy Gunner in the next random lineup after Mission 1) works without buying Tank; the named offer never counts toward it.
 - Migration (v1-v5 -> v6, original text kept once in `minisquad.save.pre-v0.6.1`): every named soldier those versions awarded stays owned and uncharged; owned, KIA-awaiting-decision, dismissed and Memorial soldiers are all marked claimed (by id), so nobody is duplicated. Milestones already cleared are unlocked. Ambiguity: pre-v0.6.1 saves cannot show a "cleared but never acquired" state (those versions always awarded the soldier), so no offer is opened for them; a v6 save that lost its `named` block is rebuilt from mission records (milestone cleared + not owned = open offer).
 
+## Chapter 2: Behind Enemy Lines (v0.6.2)
+
+Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps in `src/map.ts`. New code lives in `src/convoy.ts` (trucks and escorts), `src/boss.ts` (Iron Warden), `src/enemy.ts` (enemy kinds), `src/targeting.ts` (Sniper priorities) and `src/objectives.ts` (hold, relays, convoy, multi-destroy, boss, alarm and no-KIA optionals). The full spec is kept outside the repo, in the shared project folder.
+
+- **Campaign screen**: three chapter tabs (CH 1 ★x/15, CH 2 Behind Enemy Lines ★x/15, CH 3 SOON). Only the selected chapter's missions are listed, so phones never scroll. Chapter 1 keeps its v0.6.1 look and has no name of its own.
+- **M6 Bridgehead** (cap 4): cross the river, clear the bridge guards (two enemy Snipers), then hold the bridge zone for 45 s against waves from both banks. Optional: no soldier KIA. The card notes "Squad size 5 from Mission 7".
+- **M7 Prison Break** (cap 5): four Watchtowers and the guard garrison, then free the POW medic and escort them to the helicopter. Optional: the prisoner is never downed. Clearing M7 opens **Patch** (Medic, Healer) in the Recruitment Office for 1,000 CR. Patch is not free.
+- **M8 Convoy Crusher** (cap 5): three trucks (1,000 HP each, +30% grenade damage) drive a fixed road with escorts (rifles, then armored). Destroy at least 2, then extract. Optional: all three. The HUD shows T1-T3 chips with HP and "destroyed / escaped / on the road".
+- **M9 Blackout** (night, cap 5): three relays (900 HP). The ALARM meter fills over time, faster while more relays are up (0.75 / 0.5 / 0.3 points per second with 3 / 2 / 1 relays up). While relays stand, the base calls reinforcement waves from six spawn points. Fewer relays means smaller, rarer waves, and none once all three are down. At most 12 living enemies at a time. Optional: every relay down before the alarm maxes out. Clearing M9 **unlocks the Sniper class**. The Results screen shows "NEW CLASS UNLOCKED: SNIPER", and the Campaign screen then shows the notice "NEW CLASS UNLOCKED! SNIPER — Long-range precision specialists are now available in the Recruitment Office." with LATER / VISIT RECRUITMENT OFFICE. The next lineup is guaranteed to hold a Sniper (one-time class introduction). No Sniper is given for free, and the unlock is saved permanently.
+- **M10 Operation Iron Fist** (cap 5): destroy two installations (700 HP each), storm the stronghold arena, defeat the **Iron Warden**, then extract (8 s countdown). Optional: no soldier KIA. After the boss falls, the remaining garrison routs.
+- **Enemies** (`CFG.enemySniper / armored / tower / truck / boss`):
+  - **Sniper**: 45 HP, 30 damage, range 600. A red laser tracks its target, then freezes for 0.45 s before the shot, so you can step aside. Prefers exposed soldiers, meaning no solid cover within about 30 px.
+  - **Watchtower**: static, 80 HP, range 520.
+  - **Armored Trooper**: 140 HP. Takes 35% damage from the front (±65°) and 125% from behind.
+  - **Trucks**: drive on rails and escape at the road's end. Escorts march with their truck and leave it to fight freely once it is destroyed.
+- **Sniper class** (`CFG.classes.sniper`):
+  - Stats: HP 75, damage 32, 0.8 shots/s, range 560, 0.45 s aim before each shot, revive time 10 s.
+  - Cost: recruit 1,250 CR, dismissal refund 300.
+  - Ability **Focus**: 5 s of 1.5× fire rate and 0.35× aim time, 20 s cooldown.
+  - Traits (rolled only for Snipers):
+    - Eagle Eye: −20% spread.
+    - Steady Hands: −25% aim time.
+    - Dead Calm: −30% extra spread while moving.
+  - Target priority: enemy Snipers, then heavy targets (boss / tower / armored), then vehicles, then others, then structures; nearest first within a tier. It only switches to a higher tier before it has aimed for 0.15 s.
+  - Elite branches are future work (`resurrectionCost(n, 'elite')` already exists).
+- **Iron Warden** (`CFG.boss`, `src/boss.ts`):
+  - HP 2,400.
+  - **MG**: 0.9 s windup with a visible telegraph and the HUD reading "MG WINDING UP", then a 2.2 s burst that turns slowly, then a 1.5 s rest. Once the windup has started it is committed.
+  - **Rocket**: the first fires at 20 s, then every 24 ± 3 s. A red circle (radius 95) follows its target for 1.0 s, then locks for the remaining 1.5 s of the 2.5 s warning. The HUD and a banner read "ROCKET! MOVE!". 55 damage at the centre; cover between the blast and a soldier blocks it.
+  - **Reinforcements**: called at 65% HP (2 rifles, armored, sniper) and at 30% HP (3 rifles, armored, sniper) through three arena gates. The HUD boss bar has ticks at both thresholds.
+  - When no soldier is in its line of sight, it closes in.
+  - **Hidden damage modifiers**, never shown in game text: Infantry 75%, Heavy Gunner 65%, Medic 75%, grenades 100%, Sniper 160%. Players are meant to discover the Sniper weakness.
+  - Defeat: "THE IRON WARDEN IS DOWN! — PROCEED TO EXTRACTION".
+- **Hostage formation** (Missions 5 and 7, `escortRing` in `src/squad.ts`): the captive walks at the squad anchor and the soldiers hold a ring around them. The ring is a single point ahead for 1 soldier, two flanks for 2, and evenly spaced for 3 or more. It is oriented along the movement, or toward the nearest visible threat when standing still. Slots are reassigned only when the squad changes. A slot blocked by a wall is pulled in to half the radius.
+- **Save v7**: adds `account.classUnlocks` ({unlocked, notified}). Older saves (v1-v6) are copied once to `minisquad.save.pre-v0.6.2`, then upgraded in place. Everything is kept and the new chapter opens after Mission 5. Class unlocks are rebuilt from cleared milestones. A pre-v7 save has no Sniper class, so a "sniper" recruit or offer from a tampered save is repaired (recruit to Infantry, offer dropped) with a note. `tools/fixtures/v0.6.1-save.json` is a real v6 save produced by the v0.6.1 build and is used by `tools/chapter2.cjs`.
+- **Tests**:
+  - `tools/chapter2.cjs`: spec section 13, 93 checks.
+  - `tools/chapter2-mobile.cjs`: iPhone SE, iPhone 14 and Pixel 7 landscape HUD and menus, rotation, and screenshots.
+  - `tools/maps.cjs`: reachability on all 10 maps.
+  - `tools/chapter2-sim.cjs`: spec section 14. These are automated simulations with a scripted player, **not** human playtests.
+
+### Judgment calls (v0.6.2)
+
+- Water blocks movement but not line of sight, so you can shoot across the river.
+- On M6 and M10 the optional "No soldier KIA" replaces the global whole-squad line in the stars, the same overlap rule as Mission 3.
+- Campaign chapter tabs instead of one long list, so 10+ missions fit a phone without scrolling.
+- Snipers roll only the three Sniper traits, and generic traits are no longer rolled for Snipers.
+- The first boss rocket fires at 20 s, the bottom of the spec's 20-30 s range. The interval after that is 24 ± 3 s, so it stays within 20-30 s.
+- Tuning was set during development with the automated sims:
+  - boss MG damage 4 per bullet
+  - truck HP 1,000
+  - relay HP 900
+  - convoy gap 14 s
+- Mission 11 is a "Coming soon" placeholder in the Chapter 3 tab.
+
+### Known issues (v0.6.2)
+
+- The automated sims finish missions faster than the spec's target durations (see the simulation results). A scripted bot that never hesitates is faster than people, so human timings are still needed before re-tuning.
+- `tools/logic.cjs`: the Ranger Quick Reflexes move-speed check is still intermittent. This is pre-existing and also fails on the v0.6.1 baseline.
+
 ## Planned cleanup (playtest notes, not changed in v0.6 / v0.6.1)
 
 - Mission 4 (Red Canyon Ambush) is challenging but manageable in human play. In the v0.5 autopilot, L1-recruit squads won it 5 times in 11 attempts. With permanent death, **do not increase its difficulty**.
-- Mission 5 (Bring Them Home): the captive trails at the back of the squad and often gets shot by pursuers. Future: a protective perimeter formation around the captive (a triangle for 3 soldiers, a fuller ring for larger squads), oriented to where threats are.
+- ~~Mission 5 (Bring Them Home): the captive trails at the back of the squad~~ done in v0.6.2: the protective ring formation (Missions 5 and 7), see Chapter 2.
 - Mission 5's optional "The captive takes no damage" is hard to get (same cause).
 - `tools/logic.cjs`: the Ranger Quick Reflexes move-speed check fails intermittently (timing-sensitive measurement, pre-existing).
 - ~~Design question (v0.6): a failed mission brings downed soldiers home~~ resolved in v0.6.1: downed soldiers are KIA when a mission fails.
