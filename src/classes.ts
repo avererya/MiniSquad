@@ -81,9 +81,19 @@ export interface ProgressionRecord {
 }
 export const newProgression = (): ProgressionRecord => ({ level: 1, xp: 0, upgrades: [], specialization: null, tier: 'recruit', elitePath: null, eliteLevel: 0 });
 
-/** Lifetime service record (roster deployments only). */
-export interface ServiceRecord { missions: number; victories: number; kills: number }
-export const newService = (): ServiceRecord => ({ missions: 0, victories: 0, kills: 0 });
+/**
+ * Lifetime service / career record (roster deployments only), committed once per mission run at
+ * settlement (economy.ts), keyed by the soldier's stable id:
+ *  - missions:  every roster deployment that ended (victory or defeat) [v0.3]
+ *  - victories: deployed in a mission that ended in VICTORY = the career "Missions completed" [v0.3]
+ *  - kills:     enemies this soldier finished off (final damage) [v0.3]
+ *  - downs:     times downed (once per down event) [v0.6; 0 for older saves: never tracked]
+ *  - revives:   revives this soldier COMPLETED as the reviver [v0.6; 0 for older saves]
+ *  - deaths:    times KIA (once per KIA) [v0.6; 0 for older saves: KIA was temporary before]
+ * Resurrections are SoldierIdentity.resurrections (the pricing input).
+ */
+export interface ServiceRecord { missions: number; victories: number; kills: number; downs: number; revives: number; deaths: number }
+export const newService = (): ServiceRecord => ({ missions: 0, victories: 0, kills: 0, downs: 0, revives: 0, deaths: 0 });
 
 /** Who a soldier is. HP/status/cooldown are runtime and read via Unit.snapshot(). */
 export interface SoldierIdentity {
@@ -98,11 +108,17 @@ export interface SoldierIdentity {
   progression: ProgressionRecord | null;
   /** Individual training ranks (v0.3), bought with Credits. All 0 for generics. */
   training: TrainingRanks;
-  /** Future: permanent KIA / resurrection. Always 'active' in v0.3 (KIA lasts one mission). */
+  /**
+   * v0.6 permanent death: 'kia' = fell in a mission and awaits the post-mission decision
+   * (Resurrect or Memorial; see casualties.ts). A KIA soldier stays in the roster (and occupies
+   * a roster slot) until resurrected (-> 'active') or honored in the Memorial (removed).
+   */
   status: 'active' | 'kia';
-  /** Future: resurrections bought so far (escalating cost). Always 0 in v0.3. */
+  /** Resurrections bought so far for THIS soldier (drives the escalating price; never reset). */
   resurrections: number;
   service: ServiceRecord;
+  /** v0.6: 'phoenix' = granted free by Operation Phoenix (dismissal refunds 0). Absent otherwise. */
+  origin?: 'phoenix';
 }
 
 /** Progression inputs for the stat pipeline. Generics (no progression) get class base only. */

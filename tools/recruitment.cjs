@@ -106,7 +106,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   await fresh();
   await page.click('[data-a="to-barracks"]');
   let sv = await save();
-  check('fresh save is v4 with empty offers until the office is opened', sv.version === 4 && sv.account.recruitment.offers.length === 0 && sv.account.pendingDecision === null && sv.account.recruitment.rosterCap === 12, JSON.stringify(sv.account.recruitment).slice(0, 120));
+  check('fresh save is v5 (v0.6) with empty offers until the office is opened', sv.version === 5 && sv.account.recruitment.offers.length === 0 && sv.account.pendingDecision === null && sv.account.recruitment.rosterCap === 12, JSON.stringify(sv.account.recruitment).slice(0, 120));
   check('Barracks shows Deployed 2 / 2 and Roster 2 / 12', /DEPLOYED\s*2 \/ 2/.test(await page.textContent('.b-counts')) && /ROSTER\s*2 \/ 12/.test(await page.textContent('.b-counts')), await page.textContent('.b-counts'));
   await toRecruit();
   const o1 = await offers();
@@ -357,11 +357,12 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   const mig = await page.evaluate(() => ({ status: window.__loadStatus.status, from: window.__loadStatus.fromVersion, notes: window.__loadStatus.notes, backup: localStorage.getItem('minisquad.save.pre-v0.5'), sv: JSON.parse(localStorage.getItem('minisquad.save')), notice: document.querySelector('.m-notice')?.textContent }));
   const src = JSON.parse(fx4);
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const strip = (r) => r.map((s) => ({ id: s.id, name: s.name, classId: s.classId, traitId: s.traitId, xp: s.progression.xp, level: s.progression.level, training: s.training, service: s.service }));
-  check('v0.4 fixture -> v4: status migrated, no repair notes, pre-v0.5 backup = original text', mig.status === 'migrated' && mig.from === 3 && mig.notes.length === 0 && mig.backup === fx4 && mig.sv.version === 4, `${mig.status} ${mig.notes.join(';')}`);
+  // v0.6: the service record gained downs / revives / deaths (0: never tracked before); the v0.3 fields are compared
+  const strip = (r) => r.map((s) => ({ id: s.id, name: s.name, classId: s.classId, traitId: s.traitId, xp: s.progression.xp, level: s.progression.level, training: s.training, service: { missions: s.service.missions, victories: s.service.victories, kills: s.service.kills } }));
+  check('v0.4 fixture -> v5: status migrated, no repair notes, pre-v0.5 backup = original text', mig.status === 'migrated' && mig.from === 3 && mig.notes.length === 0 && mig.backup === fx4 && mig.sv.version === 5, `${mig.status} ${mig.notes.join(';')}`);
   check('v0.4 migration keeps soldiers, XP, levels, training, traits, service records exactly', same(strip(mig.sv.roster), strip(src.roster)), '');
   check('v0.4 migration keeps credits, squad training, missions/stars, campaign, unlocks, squad', mig.sv.account.credits === src.account.credits && same(mig.sv.account.squadTraining, src.account.squadTraining) && same(mig.sv.account.missions, src.account.missions) && same(mig.sv.account.campaign, src.account.campaign) && same(mig.sv.unlockedSoldiers, src.unlockedSoldiers) && same(mig.sv.squad, src.squad) && same(mig.sv.account.settledRuns, src.account.settledRuns), `${mig.sv.account.credits} CR, ${mig.sv.unlockedSoldiers}`);
-  check('v0.4 migration: no introduction owed for classes already recruitable; migration notice shown', same(mig.sv.account.recruitment.introduced, ['infantry', 'heavy', 'medic']) && /v0\.5/.test(mig.notice || ''), mig.notice);
+  check('v0.4 migration: no introduction owed for classes already recruitable; migration notice shown', same(mig.sv.account.recruitment.introduced, ['infantry', 'heavy', 'medic']) && /v0\.6/.test(mig.notice || ''), mig.notice);
   await page.click('[data-a="to-barracks"]');
   check('v0.4 roster: 4 / 12 (Ace, Ranger, Tank, Doc owned; Havoc/Patch locked)', /ROSTER\s*4 \/ 12/.test(await page.textContent('.b-counts')));
   const tankDis = await page.evaluate(() => window.__economy.dismiss(window.game.roster, window.__account(), 'tank', window.__persist));
@@ -375,14 +376,14 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   for (const f of ['v0.3-save.json', 'v0.2.2-save.json']) {
     const raw = FX(f);
     await fresh(raw);
-    const r = await page.evaluate(() => ({ st: window.__loadStatus.status, n: window.game.roster.activeCount(), v: JSON.parse(localStorage.getItem('minisquad.save')).version, b5: !!localStorage.getItem('minisquad.save.pre-v0.5'), b4: !!localStorage.getItem('minisquad.save.pre-v0.4'), intro: window.__account().recruitment.introduced.join() }));
+    const r = await page.evaluate(() => ({ st: window.__loadStatus.status, n: window.game.roster.activeCount(), v: JSON.parse(localStorage.getItem('minisquad.save')).version, b5: !!localStorage.getItem('minisquad.save.pre-v0.5'), b4: !!localStorage.getItem('minisquad.save.pre-v0.4'), b6: !!localStorage.getItem('minisquad.save.pre-v0.6'), intro: window.__account().recruitment.introduced.join() }));
     if (f.startsWith('v0.3')) {
       // legacy owner of Tank who never cleared Mission 1: dismiss Tank, Mission 1's card must still render
       const camp = await page.evaluate(() => { window.__economy.dismiss(window.game.roster, window.__account(), 'tank', window.__persist); window.game.ui.showCampaign(); document.querySelector('[data-a="csel"][data-id="first-contact"]').click(); return document.querySelector('.c-detail').textContent.replace(/\s+/g, ' '); });
       check('legacy save: Mission 1 card still renders "Tank joins" after Tank was dismissed', /Tank joins/.test(camp), camp.slice(0, 200));
       r.n = 6; // counted before the dismissal
     }
-    check(`${f}: migrates to v4, all 6 originals kept (6/12), backups kept, no intro owed`, r.v === 4 && r.n === 6 && r.b5 && r.b4 && (r.st === 'migrated' || r.st === 'repaired') && r.intro === 'infantry,heavy,medic', JSON.stringify(r));
+    check(`${f}: migrates to v5, all 6 originals kept (6/12), backups kept, no intro owed`, r.v === 5 && r.n === 6 && r.b5 && r.b4 && r.b6 && (r.st === 'migrated' || r.st === 'repaired') && r.intro === 'infantry,heavy,medic', JSON.stringify(r));
   }
   // >12 roster from history: keep everyone, block recruiting
   const big = JSON.parse(fx4);

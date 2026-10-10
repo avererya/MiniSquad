@@ -23,6 +23,15 @@
 // NOT restored from the defaults. v3 saves (and v1/v2 through the same path) are upgraded in
 // place: nothing in the roster or account is dropped; classes already recruitable count as
 // introduced. The raw pre-v4 save is copied once to SAVE_PRE_V05_KEY before the upgrade.
+//
+// v5 (v0.6, permanent death) adds per soldier: status 'kia' (fell, awaiting a decision), the
+// career fields service.downs / revives / deaths (0 for older saves: never tracked, nothing is
+// invented; missions, victories and kills were tracked since v0.3 and are kept), resurrections
+// (already stored, 0) and origin 'phoenix'; and in the account: pendingDecision (the casualty
+// decision queue, was always null), memorial (honored soldiers' final records), phoenix (grants)
+// and activeRun (KIA journal of the mission in progress). Older soldiers are always 'active'
+// (KIA was temporary before v0.6, so nobody is converted to KIA by the upgrade). The raw pre-v5
+// save is copied once to SAVE_PRE_V06_KEY before the upgrade.
 // Formats are never reset just because they are old. Each field is repaired on its own (bad
 // XP -> derived from level, bad ranks -> clamped, negative credits -> 0, unknown mission ids
 // in the campaign lists dropped) instead of throwing a soldier away.
@@ -35,7 +44,9 @@ import {
 } from './progression';
 import { CAMPAIGN, FIRST_MISSION, derivedMissionUnlocks, derivedSoldierUnlocks } from './campaign';
 import { type CandidateRecord, type DismissalRecord, type RecruitmentState, ROSTER_CAP, newRecruitment } from './progression';
-import { RECRUIT_ID, generateName, isTraitValidFor, nameKey, recruitClass, recruitableClasses, takenNames } from './recruitment';
+import { RECRUIT_ID, generateCandidate, generateName, isTraitValidFor, nameKey, recruitClass, recruitableClasses, takenNames } from './recruitment';
+import { newPhoenix, type ActiveRun, type CasualtyDecision, type FallenEntry, type KiaCause, type MemorialRecord, type PhoenixState } from './progression';
+import { PHOENIX_CANDIDATES, PHOENIX_LEVEL } from './casualties';
 
 export const SAVE_KEY = 'minisquad.save';
 export const SAVE_BACKUP_KEY = 'minisquad.save.invalid';
@@ -43,10 +54,12 @@ export const SAVE_BACKUP_KEY = 'minisquad.save.invalid';
 export const SAVE_LEGACY_KEY = 'minisquad.save.pre-v0.4';
 /** One-time copy of any pre-v4 save (v1/v2/v3), taken before it is upgraded to v4 (v0.5). */
 export const SAVE_PRE_V05_KEY = 'minisquad.save.pre-v0.5';
-export const SAVE_VERSION = 4;
+/** One-time copy of any pre-v5 save (v1-v4), taken before it is upgraded to v5 (v0.6). */
+export const SAVE_PRE_V06_KEY = 'minisquad.save.pre-v0.6';
+export const SAVE_VERSION = 5;
 
-export interface SaveFileV4 {
-  version: 4;
+export interface SaveFileV5 {
+  version: 5;
   roster: SoldierIdentity[];
   squad: (string | null)[];
   /** Campaign unlock flags of the named soldiers (kept after a dismissal). */
@@ -114,7 +127,7 @@ function cleanRanks<K extends string>(v: unknown, ids: K[], defs: Record<K, { co
 function cleanService(v: unknown): ServiceRecord {
   const s = newService();
   if (!isObj(v)) return s;
-  for (const k of ['missions', 'victories', 'kills'] as const) if (isInt(v[k]) && v[k] >= 0) s[k] = v[k];
+  for (const k of ['missions', 'victories', 'kills', 'downs', 'revives', 'deaths'] as const) if (isInt(v[k]) && v[k] >= 0) s[k] = v[k];
   return s;
 }
 
@@ -122,7 +135,7 @@ function cleanService(v: unknown): ServiceRecord {
  * One saved soldier merged onto its default identity (roster soldiers are fixed: class and
  * trait come from the defaults if the save disagrees). Returns null for unknown ids.
  */
-export function mergeSoldier(def: SoldierIdentity, v: Record<string, unknown>, notes: string[]): SoldierIdentity {
+export function mergeSoldier(def: SoldierIdentity, v: Record<string, unknown>, notes: string[], keepKia = false): SoldierIdentity {
   const who = def.name;
   const s: SoldierIdentity = { ...def };
   if (typeof v.name === 'string' && v.name.trim() && v.name.length <= 20) s.name = v.name.trim();
@@ -132,21 +145,23 @@ export function mergeSoldier(def: SoldierIdentity, v: Record<string, unknown>, n
   s.mods = cleanMods(v.mods, notes, who);
   s.progression = cleanProgression(v.progression, notes, who);
   s.training = cleanRanks(v.training, TRAINING_IDS, TRAINING, newTraining(), notes, who) as TrainingRanks;
-  s.status = 'active'; // v0.3: KIA is never permanent
+  // KIA was temporary before v0.6: only a v5 save can hold a fallen soldier (checked against the decision queue later)
+  s.status = keepKia && v.status === 'kia' ? 'kia' : 'active';
   s.resurrections = isInt(v.resurrections) && v.resurrections >= 0 ? v.resurrections : 0;
   s.service = cleanService(v.service);
+  if (v.origin === 'phoenix') s.origin = 'phoenix'; else delete s.origin;
   return s;
 }
 
 /** A saved recruit: own class + trait (validated), progression, training. Never dropped for a bad field. */
-function cleanRecruit(v: Record<string, unknown>, notes: string[]): SoldierIdentity {
+function cleanRecruit(v: Record<string, unknown>, notes: string[], keepKia = false): SoldierIdentity {
   const id = v.id as string;
   let classId = v.classId as SoldierIdentity['classId'];
   if (!(CLASS_IDS as string[]).includes(classId)) { notes.push(`Recruit ${id}: class ${String(v.classId)} invalid, set to Infantry.`); classId = 'infantry'; }
   let traitId = v.traitId as SoldierIdentity['traitId'];
   if (!isTraitValidFor(traitId, classId)) { notes.push(`Recruit ${id}: trait ${String(v.traitId)} invalid, set to Sharpshooter.`); traitId = 'sharpshooter'; }
   const base: SoldierIdentity = { id, name: '', classId, traitId, mods: {}, progression: newProgression(), training: newTraining(), status: 'active', resurrections: 0, service: newService() };
-  const s = mergeSoldier(base, { ...v, classId, traitId }, notes);
+  const s = mergeSoldier(base, { ...v, classId, traitId }, notes, keepKia);
   return s;
 }
 
@@ -252,6 +267,44 @@ function cleanAccount(v: unknown, notes: string[], legacy: boolean): AccountData
   return a;
 }
 
+// ---------------- v5 (v0.6) permanent-death state ----------------
+const CAUSES: KiaCause[] = ['bleedout', 'abandoned', 'interrupted'];
+const cleanCause = (v: unknown): KiaCause => (CAUSES.includes(v as KiaCause) ? v as KiaCause : 'bleedout');
+const cleanFallen = (v: unknown): FallenEntry | null => (isObj(v) && typeof v.id === 'string' && v.id ? { id: v.id, cause: cleanCause(v.cause) } : null);
+const str = (v: unknown, d = '') => (typeof v === 'string' && v.length <= 80 ? v : d);
+const num0 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+
+function cleanPending(v: unknown, notes: string[]): CasualtyDecision | null {
+  if (v === null || v === undefined) return null;
+  if (!isObj(v) || !Array.isArray(v.queue)) { notes.push('Pending casualty decision unreadable: rebuilt from fallen soldiers.'); return null; }
+  const seen = new Set<string>();
+  const queue = v.queue.map(cleanFallen).filter((x): x is FallenEntry => !!x && !seen.has(x.id) && !!seen.add(x.id));
+  const resolved = Array.isArray(v.resolved) ? v.resolved.filter(isObj).filter((x) => typeof x.id === 'string' && (x.outcome === 'resurrected' || x.outcome === 'memorial')).map((x) => ({
+    id: x.id as string, name: str(x.name, x.id as string), outcome: x.outcome as 'resurrected' | 'memorial', cost: num0(x.cost), affordable: x.affordable === true,
+  })) : [];
+  return { kind: 'casualties', runId: str(v.runId, 'unknown-run'), missionId: str(v.missionId, ''), at: num0(v.at), queue, total: Math.max(isInt(v.total) ? v.total : 0, queue.length + resolved.length), resolved };
+}
+
+function cleanPhoenix(v: unknown, notes: string[]): PhoenixState {
+  const p = newPhoenix();
+  if (v === undefined) return p;
+  if (!isObj(v)) { notes.push('Operation Phoenix data invalid: reset.'); return p; }
+  if (Array.isArray(v.grants)) p.grants = v.grants.filter(isObj).filter((g) => typeof g.id === 'string').map((g) => ({ id: g.id as string, at: num0(g.at), recruits: Array.isArray(g.recruits) ? g.recruits.filter((x): x is string => typeof x === 'string') : [] }));
+  if (isObj(v.pending) && typeof v.pending.id === 'string') {
+    const seen = new Set<string>();
+    const candidates = (Array.isArray(v.pending.candidates) ? v.pending.candidates : []).map(cleanCandidate)
+      .filter((c): c is CandidateRecord => !!c && c.classId === 'infantry' && !seen.has(c.id) && !!seen.add(c.id)).map((c) => ({ ...c, level: PHOENIX_LEVEL }));
+    if (!p.grants.some((g) => g.id === (v.pending as Record<string, unknown>).id)) p.pending = { id: v.pending.id, at: num0(v.pending.at), candidates };
+    else notes.push('Operation Phoenix grant already paid: duplicate pending grant dropped.');
+  }
+  return p;
+}
+
+function cleanActiveRun(v: unknown): ActiveRun | null {
+  if (!isObj(v) || typeof v.runId !== 'string' || !Array.isArray(v.kia)) return null;
+  return { runId: v.runId, missionId: str(v.missionId, ''), kia: v.kia.map(cleanFallen).filter((x): x is FallenEntry => !!x) };
+}
+
 /** Highest recruit id number in use anywhere (so the id counter can never hand out an old id). */
 function maxRecruitSeq(ids: string[]): number {
   let m = 0;
@@ -263,7 +316,7 @@ function storage(): Storage | null {
   try { return window.localStorage; } catch { return null; }
 }
 
-export function serialize(r: Roster, a: AccountData): SaveFileV4 {
+export function serialize(r: Roster, a: AccountData): SaveFileV5 {
   return {
     version: SAVE_VERSION,
     roster: r.soldiers.map((s) => ({ ...s, progression: s.progression ?? newProgression() })),
@@ -273,7 +326,10 @@ export function serialize(r: Roster, a: AccountData): SaveFileV4 {
       ...a, squadTraining: { ...a.squadTraining }, missions: Object.fromEntries(Object.entries(a.missions).map(([k, m]) => [k, { ...m }])), settledRuns: [...a.settledRuns],
       campaign: { unlockedMissions: [...a.campaign.unlockedMissions], selectedMission: a.campaign.selectedMission },
       recruitment: structuredClone(a.recruitment),
-      pendingDecision: null,
+      pendingDecision: structuredClone(a.pendingDecision),
+      memorial: structuredClone(a.memorial),
+      phoenix: structuredClone(a.phoenix),
+      activeRun: structuredClone(a.activeRun),
     },
   };
 }
@@ -297,7 +353,10 @@ export function writeSave(r: Roster, a: AccountData): WriteResult {
  *    unlock kept; empty recruitment state (classes already recruitable count as introduced)
  *  - unknown version (e.g. a newer build's save) -> raw text backed up, then read best-effort
  *    as v3 ('repaired'), so progress is kept wherever it can be understood
- *  - version 4 (v0.5) -> loaded, recruits + recruitment state validated
+ *  - version 4 (v0.5) -> migrated to v5 in place: every soldier is 'active', career fields not
+ *    tracked before start at 0, empty Memorial / no pending decision / no Phoenix grant
+ *  - version 5 (v0.6) -> loaded; fallen soldiers, the decision queue, Memorial, Phoenix grants
+ *    and the mission journal validated against each other (see the repairs below)
  * Unknown (non-recruit) soldier ids are dropped; missing named soldiers are restored unless
  * they were dismissed; recruits are kept (bad fields repaired), never dropped.
  */
@@ -311,14 +370,35 @@ export function parseSave(raw: string | null): LoadResult {
     return { roster: new Roster(), account: newAccount(), notes, status: 'reset', fromVersion: null };
   }
   const version = typeof data.version === 'number' ? data.version : null;
-  const known = version === 1 || version === 2 || version === 3 || version === 4;
+  const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5;
   const legacy = version === 1 || version === 2;
-  const preRecruit = version !== 4; // v1-v3 (and unknown): no recruitment state yet
+  const preRecruit = version !== 4 && version !== 5; // v1-v3 (and unknown): no recruitment state yet
+  const v5 = version === 5; // permanent-death state (only a v5 save can hold a fallen soldier)
   if (!known) notes.push(`Save version ${String(data.version)} not recognised: read best-effort (backup kept).`);
 
   const rawAccount = version === 1 ? undefined : data.account;
   const rawRec = isObj(rawAccount) ? rawAccount.recruitment : undefined;
   const dismissedIds = new Set(isObj(rawRec) && Array.isArray(rawRec.dismissed) ? rawRec.dismissed.filter(isObj).map((d) => d.id).filter((x): x is string => typeof x === 'string') : []);
+  // v5 Memorial: honored soldiers never come back (not restored from the defaults, a roster copy is dropped)
+  const memorial: MemorialRecord[] = [];
+  if (v5 && isObj(rawAccount) && rawAccount.memorial !== undefined) {
+    if (!Array.isArray(rawAccount.memorial)) notes.push('Memorial unreadable: dropped.');
+    else for (const m of rawAccount.memorial) {
+      if (!isObj(m) || !isObj(m.soldier) || typeof m.soldier.id !== 'string') { notes.push('Unreadable Memorial record dropped.'); continue; }
+      const sid = m.soldier.id;
+      if (memorial.some((x) => x.soldier.id === sid)) { notes.push(`Duplicate Memorial record for ${sid} dropped.`); continue; }
+      if (dismissedIds.has(sid)) { notes.push(`Dismissed soldier ${sid} removed from the Memorial (dismissed soldiers are never memorialized).`); continue; }
+      const named = defaultRoster().find((d) => d.id === sid);
+      if (!named && !RECRUIT_ID.test(sid)) { notes.push(`Unknown soldier ${sid} removed from the Memorial.`); continue; }
+      const soldier = named ? mergeSoldier(named, m.soldier, [], false) : cleanRecruit(m.soldier, [], false);
+      soldier.status = 'kia';
+      memorial.push({
+        eventId: str(m.eventId, `mm-${sid}`), soldier, missionId: str(m.missionId), runId: str(m.runId), cause: cleanCause(m.cause),
+        at: num0(m.at), cost: num0(m.cost), affordable: m.affordable === true,
+      });
+    }
+  }
+  const memorialIds = new Set(memorial.map((m) => m.soldier.id));
 
   const saved = new Map<string, Record<string, unknown>>();
   const order: string[] = [];
@@ -331,9 +411,10 @@ export function parseSave(raw: string | null): LoadResult {
   const soldiers: SoldierIdentity[] = [];
   for (const d of defaultRoster()) {
     if (dismissedIds.has(d.id)) { if (saved.has(d.id)) notes.push(`${d.name}: dismissed, not restored.`); continue; }
+    if (memorialIds.has(d.id)) { if (saved.has(d.id)) notes.push(`${d.name}: in the Memorial, roster copy dropped.`); continue; }
     const v = saved.get(d.id);
     if (!v) { notes.push(`${d.name}: missing in save, restored.`); soldiers.push(d); continue; }
-    soldiers.push(mergeSoldier(d, v, notes));
+    soldiers.push(mergeSoldier(d, v, notes, v5));
   }
   // recruits (any version: never thrown away for a bad field; a dismissed id is never revived)
   for (const id of order) {
@@ -341,9 +422,35 @@ export function parseSave(raw: string | null): LoadResult {
     if (ALL_SOLDIER_IDS.includes(id)) continue; // dismissed named soldier
     if (!RECRUIT_ID.test(id)) { notes.push(`Unknown soldier "${id}" dropped.`); continue; }
     if (dismissedIds.has(id)) { notes.push(`Recruit ${id} was dismissed: not restored.`); continue; }
-    soldiers.push(cleanRecruit(saved.get(id)!, notes));
+    if (memorialIds.has(id)) { notes.push(`Recruit ${id} is in the Memorial: roster copy dropped.`); continue; }
+    soldiers.push(cleanRecruit(saved.get(id)!, notes, v5));
   }
   const account = cleanAccount(rawAccount, notes, legacy);
+  account.memorial = memorial;
+  if (v5 && isObj(rawAccount)) {
+    account.pendingDecision = cleanPending(rawAccount.pendingDecision, notes);
+    account.phoenix = cleanPhoenix(rawAccount.phoenix, notes);
+    account.activeRun = cleanActiveRun(rawAccount.activeRun);
+  }
+  // decision queue <-> fallen soldiers: a queued id must be a fallen roster soldier; a fallen
+  // soldier must be queued (a death is never silently undone, nothing is decided automatically)
+  {
+    const d = account.pendingDecision;
+    if (d) {
+      const before = d.queue.length;
+      d.queue = d.queue.filter((q) => soldiers.some((s) => s.id === q.id));
+      if (d.queue.length !== before) notes.push('Pending decision for a missing soldier dropped.');
+      for (const q of d.queue) { const s = soldiers.find((x) => x.id === q.id)!; if (s.status !== 'kia') { s.status = 'kia'; notes.push(`${s.name}: awaiting a decision, marked fallen.`); } }
+    }
+    const orphans = soldiers.filter((s) => s.status === 'kia' && !account.pendingDecision?.queue.some((q) => q.id === s.id));
+    if (orphans.length) {
+      notes.push(`Fallen soldiers without a decision queued: ${orphans.map((s) => s.name).join(', ')}.`);
+      if (!account.pendingDecision) account.pendingDecision = { kind: 'casualties', runId: 'repair', missionId: '', at: 0, queue: [], total: 0, resolved: [] };
+      for (const s of orphans) { account.pendingDecision.queue.push({ id: s.id, cause: 'bleedout' }); account.pendingDecision.total++; }
+    }
+    if (account.pendingDecision && !account.pendingDecision.queue.length) account.pendingDecision = null;
+    if (account.pendingDecision && account.phoenix.pending) { notes.push('Operation Phoenix grant opened before every decision was made: withdrawn.'); account.phoenix.pending = null; }
+  }
 
   // unlocked soldiers: legacy saves owned everyone; v3+ lists them (repaired from mission records)
   const done = (id: string) => (account.missions[id]?.completions ?? 0) > 0;
@@ -367,7 +474,7 @@ export function parseSave(raw: string | null): LoadResult {
   const flags = new Set(unlocked);
   const rec = cleanRecruitment(preRecruit ? undefined : rawRec, notes, recruitableClasses(flags));
   if (!preRecruit && rawRec === undefined) notes.push('Recruitment data missing: starts empty.');
-  const seq = maxRecruitSeq([...soldiers.map((s) => s.id), ...rec.offers.map((o) => o.id), ...rec.dismissed.map((d) => d.id)]);
+  const seq = maxRecruitSeq([...soldiers.map((s) => s.id), ...rec.offers.map((o) => o.id), ...rec.dismissed.map((d) => d.id), ...memorial.map((m) => m.soldier.id), ...(account.phoenix.pending?.candidates.map((c) => c.id) ?? [])]);
   if (rec.nextSeq <= seq) { if (!preRecruit && rec.nextSeq !== 1) notes.push('Recruit id counter raised past existing ids.'); rec.nextSeq = seq + 1; }
   // offers can't collide with the roster (id or name) or reuse a registered name
   const rosterNames = new Set(soldiers.map((s) => nameKey(s.name)));
@@ -385,6 +492,20 @@ export function parseSave(raw: string | null): LoadResult {
     s.name = nn; seen.add(nameKey(nn));
   }
   for (const s of soldiers) if (!ALL_SOLDIER_IDS.includes(s.id) && !rec.usedNames.some((n) => nameKey(n) === nameKey(s.name))) rec.usedNames.push(s.name);
+  // Memorial names stay reserved forever
+  for (const m of memorial) if (!rec.usedNames.some((n) => nameKey(n) === nameKey(m.soldier.name))) rec.usedNames.push(m.soldier.name);
+  // an open Phoenix grant: candidates can't clash with the roster / registry; top up to the full set
+  const px = account.phoenix.pending;
+  if (px) {
+    const before2 = px.candidates.length;
+    px.candidates = px.candidates.filter((c) => !soldiers.some((s) => s.id === c.id || nameKey(s.name) === nameKey(c.name)) && !rec.usedNames.some((n) => nameKey(n) === nameKey(c.name)));
+    if (px.candidates.length !== before2) notes.push('Operation Phoenix candidates clashing with the roster dropped.');
+    if (px.candidates.length < PHOENIX_CANDIDATES) {
+      if (px.candidates.length < 3) notes.push('Operation Phoenix candidates topped up.');
+      const ctx = { flags: new Set(unlocked), progress: 1, taken: takenNames([...soldiers.map((s) => s.name), ...px.candidates.map((c) => c.name)], rec), rng: () => 0 };
+      while (px.candidates.length < PHOENIX_CANDIDATES) px.candidates.push({ ...generateCandidate(rec, ctx, 'infantry'), classId: 'infantry', level: PHOENIX_LEVEL });
+    }
+  }
   account.recruitment = rec;
 
   const rawSquad = Array.isArray(data.squad) ? data.squad : legacy ? LEGACY_DEFAULT_SQUAD : DEFAULT_SQUAD;
@@ -404,13 +525,15 @@ export function loadSave(): LoadResult {
   try { raw = ls ? ls.getItem(SAVE_KEY) : null; } catch { raw = null; }
   const res = parseSave(raw);
   const v = res.fromVersion;
-  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== SAVE_VERSION)
+  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== SAVE_VERSION)
     || (res.status === 'repaired' && v === null);
   if (backup && ls && raw !== null) { try { ls.setItem(SAVE_BACKUP_KEY, raw); } catch { /* full */ } }
   // never lose a legacy roster: keep the original v1/v2 text once, before the upgrade
   if ((v === 1 || v === 2) && ls && raw !== null) { try { if (ls.getItem(SAVE_LEGACY_KEY) === null) ls.setItem(SAVE_LEGACY_KEY, raw); } catch { /* full */ } }
   // v0.5: keep the pre-v4 text once (v1/v2/v3), before the v4 write
   if ((v === 1 || v === 2 || v === 3) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V05_KEY) === null) ls.setItem(SAVE_PRE_V05_KEY, raw); } catch { /* full */ } }
+  // v0.6: keep the pre-v5 text once (v1-v4), before the v5 write
+  if ((v === 1 || v === 2 || v === 3 || v === 4) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V06_KEY) === null) ls.setItem(SAVE_PRE_V06_KEY, raw); } catch { /* full */ } }
   if (res.notes.length) console.warn('[MiniSquad save]', res.notes.join(' '));
   writeSave(res.roster, res.account);
   return res;

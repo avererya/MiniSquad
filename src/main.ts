@@ -13,6 +13,8 @@ import { Roster } from './roster';
 import { TRAITS } from './traits';
 import * as campaign from './campaign';
 import * as recruitment from './recruitment';
+import * as casualties from './casualties';
+import { SimClock } from './clock';
 import { CAMPAIGN } from './campaign';
 
 const stage = document.getElementById('stage')!;
@@ -30,6 +32,11 @@ setAccount(loaded.account);
 game.roster = loaded.roster;
 const persist = () => writeSave(game.roster, getAccount());
 game.persist = persist;
+// v0.6: a roster mission that never reached its mission-end transaction (app closed / reloaded
+// mid-mission) is resolved now: soldiers who had already fallen in it stay KIA (decision queued).
+const hadJournal = !!loaded.account.activeRun;
+const interrupted = economy.recoverInterruptedRun(loaded.roster, loaded.account);
+if (hadJournal) persist();
 loaded.roster.onChange = () => { persist(); };
 game.selectMission(loaded.account.campaign.selectedMission);
 function useRoster(r: Roster, notice?: string) { r.onChange = () => { persist(); }; game.replaceRoster(r, notice); }
@@ -111,19 +118,34 @@ const tempIds = sq ? sq.split(/[,+ ]/).map((x) => game.roster.get(x.toLowerCase(
 hud.rebuildPanels();
 if (preset) game.reset(preset.classes);
 else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 6), 'temp');
-else hud.showCampaign(loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.'
-  : loaded.status === 'migrated' ? (loaded.fromVersion === 3
-    ? 'Save updated for v0.5: all your soldiers, XP, training, Credits and campaign progress were kept. New: the Recruitment Office (Barracks → RECRUIT).'
-    : 'Save updated: all your soldiers, XP, training and credits were kept. The campaign starts at Mission 1. New: the Recruitment Office (Barracks → RECRUIT).') : undefined);
+else {
+  const msg = loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.'
+    : loaded.status === 'migrated' ? (loaded.fromVersion === 4
+      ? 'Save updated for v0.6: everything was kept. New: KIA is now permanent — fallen soldiers can be resurrected or honored in the Memorial.'
+      : loaded.fromVersion === 3
+        ? 'Save updated for v0.6: all your soldiers, XP, training, Credits and campaign progress were kept. New: the Recruitment Office and permanent KIA.'
+        : 'Save updated: all your soldiers, XP, training and credits were kept. The campaign starts at Mission 1. New: the Recruitment Office and permanent KIA.') : undefined;
+  const why = interrupted.length ? `The last mission was interrupted: ${interrupted.map((f) => game.roster.get(f.id)?.name ?? f.id).join(', ')} fell before it ended.` : msg;
+  if (casualties.decisionBlock(getAccount())) hud.showDecisions(why);
+  else hud.showCampaign(why);
+}
 
-// fixed-step simulation, render every frame
-const STEP = 1 / 60;
-let acc = 0;
-let last = performance.now();
+// Fixed-step simulation, render every frame. SimClock (clock.ts): 1/60 s steps, each frame's
+// real delta clamped to 0.1 s (a frame drop or slow device slows the game down, it never
+// fast-forwards it), and nothing advances while the page is hidden. v0.6: hiding the page
+// (app switch, lock screen, tab change) also PAUSES a running mission, so backgrounding can never
+// bleed a soldier out; on return the player resumes with ⏸ / P and the clock restarts cleanly.
+const clock = new SimClock(1 / 60, 0.1);
+function onHidden() {
+  clock.suspend();
+  if (game.phase === 'playing') game.paused = true;
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) onHidden(); else clock.resume(performance.now()); });
+window.addEventListener('pagehide', onHidden);
+window.addEventListener('pageshow', () => clock.resume(performance.now()));
 function frame(now: number) {
-  acc += Math.min(0.1, (now - last) / 1000);
-  last = now;
-  while (acc >= STEP) { game.update(STEP); acc -= STEP; }
+  const steps = clock.advance(now, document.hidden);
+  for (let i = 0; i < steps; i++) game.update(clock.step);
   ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0);
   if (game.phase !== 'start') render(ctx, game); // the Barracks covers the whole screen
   hud.update();
@@ -137,5 +159,6 @@ requestAnimationFrame(frame);
 Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, __resetConfig: resetConfig });
 // roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
 Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded,
-  __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll, __recruitment: recruitment, __Roster: Roster });
+  __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll, __recruitment: recruitment, __Roster: Roster,
+  __casualties: casualties, __clock: clock, __SimClock: SimClock, __hud: hud });
 game.resetRosterSave = resetRosterSave;

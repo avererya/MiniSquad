@@ -21,7 +21,7 @@ const OUT = process.env.OUT || '';
 
   await reload();
   let sv = await save();
-  check('first launch: Campaign shown, save v4 written with 6 named soldier records', await page.isVisible('#menu.campaign') && sv.version === 4 && sv.account && sv.account.credits === 0 && sv.roster.length === 6, `version ${sv.version}, roster ${sv.roster.map((s) => s.id)}`);
+  check('first launch: Campaign shown, save v5 written with 6 named soldier records', await page.isVisible('#menu.campaign') && sv.version === 5 && sv.account && sv.account.credits === 0 && sv.roster.length === 6, `version ${sv.version}, roster ${sv.roster.map((s) => s.id)}`);
   check('first launch: Ace + Ranger unlocked and selected; Mission 1 only', sv.squad.filter(Boolean).join() === 'ace,ranger' && sv.unlockedSoldiers.join() === 'ace,ranger' && sv.account.campaign.unlockedMissions.join() === 'first-contact' && sv.account.campaign.selectedMission === 'first-contact', `${sv.squad} · ${sv.unlockedSoldiers} · ${JSON.stringify(sv.account.campaign)}`);
   check('save holds no runtime/effective stats', sv.roster.every((s) => Object.keys(s).sort().join() === 'classId,id,mods,name,progression,resurrections,service,status,training,traitId'), Object.keys(sv.roster[0]).join());
   await toBarracks();
@@ -113,19 +113,21 @@ const OUT = process.env.OUT || '';
   check('a mission writes no combat state into the save', JSON.stringify(sv).match(/"state"|"cooldown"|"maxHp"|"pos"|"fireRate":\d+\./) === null && sv.roster.every((s) => !('hp' in s) && Object.values(s.training).every(Number.isInteger)) && sv.squad.filter(Boolean).join() === 'patch,ace,havoc');
 
   // results: victory -> retry via Enter; defeat -> Campaign / Barracks
-  await page.evaluate(() => { const g = window.game; g.soldiers[1].state = 'kia'; g.win(); });
+  // (v0.6: KIA is permanent and needs a decision before a Retry; that flow is covered by tools/permadeath.cjs,
+  // so these Results-navigation checks use a wounded soldier / a squad wipe of downed soldiers instead)
+  await page.evaluate(() => { const g = window.game; g.soldiers[1].hp = 5; g.win(); });
   await page.waitForTimeout(100);
   if (OUT) await page.screenshot({ path: `${OUT}/results-victory-desktop.png` });
   await page.keyboard.press('Enter');
   const afterRetry = await page.evaluate(() => ({ phase: window.game.phase, st: window.game.soldiers.map((s) => s.state).join(), m: window.game.missionId }));
   check('results: Enter = Retry the same mission (fresh squad)', afterRetry.phase === 'playing' && afterRetry.st === 'active,active,active' && afterRetry.m === 'field-medicine', JSON.stringify(afterRetry));
-  await page.evaluate(() => { const g = window.game; g.soldiers.forEach((s) => g.downSoldier(s)); g.soldiers[0].state = 'kia'; });
+  await page.evaluate(() => { const g = window.game; g.soldiers.forEach((s) => g.downSoldier(s)); });
   await page.waitForTimeout(100);
   if (OUT) await page.screenshot({ path: `${OUT}/results-defeat-desktop.png` });
   await page.click('[data-a="campaign"]');
   check('results: Campaign button', await page.isVisible('#menu.campaign') && (await page.evaluate(() => window.game.phase)) === 'start');
   await page.click('[data-a="deploy"]');
-  await page.evaluate(() => { const g = window.game; g.soldiers.forEach((s) => g.downSoldier(s)); g.soldiers[0].state = 'kia'; });
+  await page.evaluate(() => { const g = window.game; g.soldiers.forEach((s) => g.downSoldier(s)); });
   await page.waitForTimeout(100);
   await page.click('[data-a="barracks"]');
   check('results: Barracks button', await page.isVisible('#menu.barracks') && (await page.evaluate(() => window.game.phase)) === 'start');
@@ -152,7 +154,7 @@ const OUT = process.env.OUT || '';
       traits: window.game.roster.soldiers.map((s) => s.traitId).join(), tankHp: window.__effectiveStats(window.game.roster.get('tank')).hp,
       cards: document.querySelectorAll('.s-card').length, backup: localStorage.getItem('minisquad.save.invalid'), saved: JSON.parse(localStorage.getItem('minisquad.save')),
     }));
-    const okBase = st.status === expectStatus && st.n === 6 && st.cards === (name.startsWith('unknown') || expectStatus === 'reset' ? 2 : 6) && st.traits === 'sharpshooter,quickReflexes,tough,triggerHappy,firstResponder,healer' && st.tankHp === 165 && st.saved.version === 4;
+    const okBase = st.status === expectStatus && st.n === 6 && st.cards === (name.startsWith('unknown') || expectStatus === 'reset' ? 2 : 6) && st.traits === 'sharpshooter,quickReflexes,tough,triggerHappy,firstResponder,healer' && st.tankHp === 165 && st.saved.version === 5;
     const okSlots = name.startsWith('duplicate') ? st.slots === 'tank' : name.startsWith('unknown') ? st.slots === 'ace' && st.saved.unlockedSoldiers.join() === 'ace,ranger' && st.saved.account.campaign.unlockedMissions.join() === 'first-contact,red-canyon' && st.saved.account.campaign.selectedMission === 'first-contact' : true;
     const okBackup = expectStatus === 'reset' || name.startsWith('future') ? st.backup === raw : true;
     check(`invalid save recovers: ${name}`, okBase && okSlots && okBackup, `status ${st.status}, slots ${st.slots}, tank hp ${st.tankHp}${expectStatus === 'reset' ? ', backup kept' : ''}${name.startsWith('unknown') ? ' ' + JSON.stringify(st.saved.account.campaign) : ''}`);
@@ -194,7 +196,7 @@ const OUT = process.env.OUT || '';
   await page.dblclick('[data-a="reset-confirm"]');
   await page.waitForTimeout(100);
   const rs = await page.evaluate(() => ({ sv: JSON.parse(localStorage.getItem('minisquad.save')), bk: JSON.parse(localStorage.getItem('minisquad.save.pre-reset')), notice: document.querySelector('.m-notice').textContent, owned: window.game.roster.owned().map((s) => s.id).join() }));
-  check('New Campaign (double-tapped): genuine fresh save: Ace + Ranger, M1, 0 CR, no recruits/offers/stars', rs.owned === 'ace,ranger' && rs.sv.version === 4 && rs.sv.account.credits === 0 && rs.sv.roster.length === 6 && rs.sv.unlockedSoldiers.join() === 'ace,ranger' && rs.sv.account.campaign.unlockedMissions.join() === 'first-contact' && Object.keys(rs.sv.account.missions).length === 0 && rs.sv.account.recruitment.offers.length === 0 && rs.sv.account.recruitment.usedNames.length === 0 && rs.sv.account.squadTraining.hp === 0 && rs.sv.roster.every((s) => s.progression.xp === 0) && /New campaign started/.test(rs.notice), JSON.stringify(rs.sv.account).slice(0, 160));
+  check('New Campaign (double-tapped): genuine fresh save: Ace + Ranger, M1, 0 CR, no recruits/offers/stars', rs.owned === 'ace,ranger' && rs.sv.version === 5 && rs.sv.account.credits === 0 && rs.sv.roster.length === 6 && rs.sv.unlockedSoldiers.join() === 'ace,ranger' && rs.sv.account.campaign.unlockedMissions.join() === 'first-contact' && Object.keys(rs.sv.account.missions).length === 0 && rs.sv.account.recruitment.offers.length === 0 && rs.sv.account.recruitment.usedNames.length === 0 && rs.sv.account.squadTraining.hp === 0 && rs.sv.roster.every((s) => s.progression.xp === 0) && /New campaign started/.test(rs.notice), JSON.stringify(rs.sv.account).slice(0, 160));
   check('New Campaign: old save backed up once under minisquad.save.pre-reset (not overwritten by the 2nd tap)', rs.bk && rs.bk.save === beforeReset && rs.bk.at > 0, rs.bk ? rs.bk.save.length + ' chars' : 'none');
 
   check('no page errors', errors.length === 0, errors.join(' | '));

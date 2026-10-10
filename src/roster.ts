@@ -77,7 +77,12 @@ export class Roster {
   isUnlocked(id: string) { return !!this.get(id) && (!Roster.isNamed(id) || this.unlocked.has(id)); }
   /** Owned soldiers (what the roster cap counts). Locked named soldiers are not counted. */
   owned(): SoldierIdentity[] { return this.soldiers.filter((s) => this.isUnlocked(s.id)); }
+  /** Owned soldiers, KIA awaiting a decision included (they occupy a roster slot until resolved). */
   activeCount() { return this.owned().length; }
+  /** v0.6: owned soldiers who can fight (not KIA). */
+  living(): SoldierIdentity[] { return this.owned().filter((s) => s.status !== 'kia'); }
+  /** v0.6: fell in a mission and awaits Resurrect / Memorial. */
+  isFallen(id: string) { return this.get(id)?.status === 'kia'; }
   /** Add a recruit (owned immediately). */
   add(s: SoldierIdentity) { if (!this.get(s.id)) this.soldiers.push(s); }
   /**
@@ -111,6 +116,8 @@ export class Roster {
     if (n > limit) return `Too many soldiers: this mission allows ${limit}. Remove ${n - limit}.`;
     const locked = this.squad().find((s) => !this.isUnlocked(s.id));
     if (locked) return `${locked.name} is locked.`;
+    const fallen = this.squad().find((s) => s.status === 'kia');
+    if (fallen) return `${fallen.name} has fallen: resolve them first.`;
     return null;
   }
   canDeploy(limit = SQUAD_SLOTS) { return this.deployBlock(limit) === null; }
@@ -123,6 +130,7 @@ export class Roster {
   select(id: string, slot?: number, limit = SQUAD_SLOTS): SelectResult {
     if (!this.get(id)) return { ok: false, reason: 'unknown soldier' };
     if (!this.isUnlocked(id)) return { ok: false, reason: `${this.get(id)!.name} is locked: ${this.unlockText(id)}` };
+    if (this.isFallen(id)) return { ok: false, reason: `${this.get(id)!.name} has fallen.` };
     if (slot === undefined && this.isSelected(id)) return { ok: true, slot: this.slotOf(id) };
     let target = slot ?? -1;
     if (slot === undefined) {

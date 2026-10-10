@@ -21,7 +21,8 @@ import { VIEW_W, VIEW_H } from './view';
 import { clamp, dist, rand, type Vec } from './util';
 import { sfx, setMuted, isMuted } from './audio';
 import { getAccount, type MissionReward } from './progression';
-import { newRunId, settleMission, type PersistFn } from './economy';
+import { journalKia, newRunId, recoverInterruptedRun, settleMission, type PersistFn } from './economy';
+import { decisionBlock } from './casualties';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -44,6 +45,8 @@ export interface GameUI {
   showStart(notice?: string): void;
   /** Show the Campaign screen (launch, Results -> Campaign). */
   showCampaign(notice?: string): void;
+  /** v0.6: the casualty decision / Operation Phoenix flow (blocks everything else while open). */
+  showDecisions(notice?: string): void;
   /** The roster object was replaced (dev save reset / unlock all). */
   rosterChanged(notice?: string): void;
   hideOverlay(): void;
@@ -144,6 +147,8 @@ export class Game implements InputHandler {
   // ---------------- lifecycle ----------------
   /** Why the Barracks selection can't deploy into the selected mission (null = it can). */
   deployBlock(): string | null {
+    const blocked = decisionBlock(getAccount());
+    if (blocked) return blocked;
     const def = campaignMission(this.missionId);
     if (!def || !scriptFor(this.missionId)) return 'No mission selected';
     if (!getAccount().campaign.unlockedMissions.includes(this.missionId)) return `Mission ${def.number} is locked`;
@@ -164,7 +169,12 @@ export class Game implements InputHandler {
    */
   deploy(identities: SoldierIdentity[], kind: 'roster' | 'temp' = 'roster'): DeployResult {
     if (!identities.length) return { ok: false, reason: 'Select at least one soldier to deploy.' };
+    this.abandonRunning();
     if (kind === 'roster') {
+      const blocked = decisionBlock(getAccount());
+      if (blocked) return { ok: false, reason: blocked };
+      const fallen = identities.find((i) => this.roster.get(i.id)?.status === 'kia');
+      if (fallen) return { ok: false, reason: `${fallen.name} has fallen` };
       if (identities.length > this.capacity) return { ok: false, reason: `This mission allows ${this.capacity} soldiers` };
       const locked = identities.find((i) => !this.roster.isUnlocked(i.id));
       if (locked) return { ok: false, reason: `${locked.name} is not unlocked yet` };
@@ -181,6 +191,12 @@ export class Game implements InputHandler {
    * A number = that many generic Infantry (v0.1 API); an array = generic class mix (dev presets).
    */
   reset(squad?: number | SoldierClassId[]) {
+    this.abandonRunning();
+    if (squad === undefined && this.deployment.kind === 'roster') {
+      // Retry of a roster mission (v0.6): only once every decision is made, with the same soldiers if they can still fight
+      if (decisionBlock(getAccount())) { this.leaveMission(); this.ui.showDecisions(); return; }
+      if (this.deployment.identities.some((i) => !this.roster.isUnlocked(i.id) || this.roster.isFallen(i.id))) { this.toBarracks(); return; }
+    }
     if (squad !== undefined) {
       const classes: SoldierClassId[] = typeof squad === 'number'
         ? Array.from({ length: clamp(squad, 1, CFG.squad.maxSize) }, () => 'infantry' as const)
@@ -191,11 +207,23 @@ export class Game implements InputHandler {
     this.startMission();
   }
 
-  /** Leave the mission screen and go back to the Barracks. Mission state is dropped; KIA is not permanent. */
-  toBarracks() { this.leaveMission(); this.ui.showStart(); }
-  /** Leave the mission screen for the Campaign screen. */
-  toCampaign() { this.leaveMission(); this.ui.showCampaign(); }
+  /** Leave the mission screen and go back to the Barracks (or the casualty flow, if decisions are pending). */
+  toBarracks() { this.leaveMission(); if (decisionBlock(getAccount())) this.ui.showDecisions(); else this.ui.showStart(); }
+  /** Leave the mission screen for the Campaign screen (or the casualty flow, if decisions are pending). */
+  toCampaign() { this.leaveMission(); if (decisionBlock(getAccount())) this.ui.showDecisions(); else this.ui.showCampaign(); }
+  /**
+   * v0.6: a roster mission is being replaced while still running (dev restart / mission picker):
+   * it counts as abandoned. Soldiers who already fell in it stay KIA (journal) and need a
+   * decision; everyone else comes home. Nothing happens for dev squads or finished missions.
+   */
+  private abandonRunning() {
+    if (this.phase !== 'playing' || this.deployment.kind !== 'roster') return;
+    if (getAccount().activeRun?.runId !== this.runId) return;
+    recoverInterruptedRun(this.roster, getAccount());
+    this.persist?.();
+  }
   private leaveMission() {
+    this.abandonRunning(); // v0.6: leaving a running roster mission (dev panel) settles its journaled deaths now
     this.phase = 'start';
     this.paused = false; this.targeting = null;
     this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
@@ -264,18 +292,19 @@ export class Game implements InputHandler {
   private settle() {
     if (this.deployment.kind !== 'roster') { this.lastReward = null; return; }
     // a mission force-started by dev tools while still locked never pays or unlocks anything
-    if (!getAccount().campaign.unlockedMissions.includes(this.mission.id)) { this.lastReward = null; return; }
+    // (v0.6: its deaths and career record still count: roster soldiers really fought)
+    const rewards = getAccount().campaign.unlockedMissions.includes(this.mission.id);
     const won = this.phase === 'won';
     const rows = this.stats.rows(this.soldiers);
     const opt = this.mission.optional;
     const reward = settleMission(this.roster, getAccount(), {
       missionId: this.mission.id, runId: this.runId, won,
-      deployed: rows.map((r) => ({ id: r.id, status: r.status, downs: r.downs })),
+      deployed: rows.map((r) => ({ id: r.id, status: r.status, downs: r.downs, revives: r.revives, cause: r.cause ?? undefined })),
       optional: { total: opt.length, completed: opt.filter((x) => x.completed).length, list: opt },
       stars: this.lastStars?.stars ?? 0,
-    }, Object.fromEntries(rows.map((r) => [r.id, r.kills])));
+    }, Object.fromEntries(rows.map((r) => [r.id, r.kills])), { rewards });
     if (reward) {
-      this.lastReward = reward;
+      this.lastReward = rewards ? reward : null;
       // the Campaign screen moves on to a newly unlocked mission (Retry still replays this one)
       if (reward.unlockedMissions.length) getAccount().campaign.selectedMission = reward.unlockedMissions[0];
       this.persist?.();
@@ -423,15 +452,30 @@ export class Game implements InputHandler {
     this.mission.emit(this, s.npc ? { type: 'npcDowned', unit: s } : { type: 'soldierDowned', unit: s });
   }
 
-  /** Bleed-out ran out (or left behind): KIA for this mission only. */
-  private kia(s: Unit) {
+  /**
+   * Bleed-out ran out, or left behind at extraction: KIA. v0.6: permanent for roster soldiers.
+   * The death is journaled and SAVED at once (a reload can't undo it); the roster itself changes
+   * in the mission-end transaction (economy.settleMission), exactly once.
+   */
+  private kia(s: Unit, cause: 'bleedout' | 'abandoned' = 'bleedout') {
+    if (s.state === 'kia' || s.state === 'dead') return;
     s.state = 'kia';
+    s.kiaCause = cause;
     s.bleed = 0;
-    s.reviving = false; s.reviver = null;
+    s.reviving = false; s.reviver = null; s.reviveProgress = 0;
     this.banner(`${s.name} KIA`, '#ff4040', 3);
+    if (!s.npc && s.identity && this.deployment.kind === 'roster' && this.phase === 'playing') {
+      journalKia(getAccount(), this.runId, this.mission.id, s.identity.id, cause);
+      this.persist?.();
+    }
     const ev: MissionEvent = s.npc ? { type: 'npcKia', unit: s } : { type: 'soldierKia', unit: s };
     this.mission.emit(this, ev);
   }
+  /** Extraction confirmed while this soldier was downed: left behind (KIA, abandoned). */
+  abandonSoldier(s: Unit) { if (s.state === 'downed') this.kia(s, 'abandoned'); }
+  /** HUD: the abandonment warning's buttons (see Mission.attempt). */
+  confirmExtraction() { return this.phase === 'playing' && this.mission.confirmExtraction(this); }
+  stayAndRescue() { return this.phase === 'playing' && this.mission.stayAndRescue(this); }
 
   banner(text: string, color: string, dur: number) {
     this.banners = this.banners.filter((b) => b.text !== text);
@@ -609,14 +653,17 @@ export class Game implements InputHandler {
   }
 
   /**
-   * RESCUE RULES (v0.4, game-wide). A downed soldier (or escorted captive) bleeds out in
-   * CFG.revive.bleedOut (20 s) -> KIA for this mission. A VALID revive pauses the bleed-out:
+   * RESCUE RULES (v0.4, game-wide; v0.6 KIA is permanent). A downed soldier (or escorted
+   * captive) bleeds out in CFG.revive.bleedOut (20 s of SIMULATION time: fixed 1/60 s steps,
+   * frames clamped, nothing runs while paused / the page is hidden) -> KIA. A VALID revive pauses the bleed-out:
    * a standing squad soldier inside the revive radius with a clear line to the downed one,
    * i.e. exactly when revive progress is accruing. Progress is a FRACTION (0..1), so it
    * survives a change of reviver: each second adds 1 / reviveTime of the reviver's class (as
    * modified by traits). Several revivers don't stack (the fastest counts). Interrupting
    * keeps the progress and resumes the remaining bleed-out. A finished revive restores
-   * CFG.revive.hpFrac (30%) of max HP.
+   * CFG.revive.hpFrac (30%) of max HP. The bleed-out keeps running through everything else
+   * (combat, movement, extraction and its warning, other soldiers' revives); only a valid
+   * revive of THIS soldier pauses it. Once KIA, a soldier can never be revived in the mission.
    */
   private updateDowned(dt: number) {
     const R = CFG.revive;

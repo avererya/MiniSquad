@@ -31,6 +31,8 @@ export class Hud implements GameUI {
   private overlay: HTMLElement;
   private muteBtn: HTMLElement;
   private panels: PanelRefs[] = [];
+  private xwarn: HTMLElement;
+  private xwarnKey = '';
   private tuning: Tuning;
   readonly menus: Menus;
 
@@ -41,6 +43,7 @@ export class Hud implements GameUI {
       <div id="topbtns"><button data-a="mute">🔊</button><button data-a="pause">⏸</button><button data-a="tune">⚙</button></div>
       <div id="hint"></div>
       <div id="panels"></div>
+      <div id="xwarn" role="alert" style="display:none"><div class="xw-title"></div><div class="xw-body"></div><div class="xw-btns"><button data-x="stay">STAY AND RESCUE</button><button data-x="go">CONFIRM EXTRACTION</button></div></div>
       <div id="overlay"></div>`;
     this.objText = root.querySelector('.obj-text')!;
     this.objSub = root.querySelector('.obj-sub')!;
@@ -59,6 +62,17 @@ export class Hud implements GameUI {
         if (a === 'mute') { setMuted(!isMuted()); this.rebuildPanels(); }
         else if (a === 'pause') { if (game.phase === 'playing') game.paused = !game.paused; }
         else if (a === 'tune') this.toggleTuning();
+      });
+    });
+    // v0.6 abandonment warning: never pauses anything; only its two buttons take touches (the
+    // rest of the box lets touches through to the joystick / canvas)
+    this.xwarn = root.querySelector('#xwarn')!;
+    this.xwarn.querySelectorAll<HTMLButtonElement>('button').forEach((b) => {
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation(); unlockAudio();
+        if (b.disabled) return;
+        const done = b.dataset.x === 'go' ? game.confirmExtraction() : game.stayAndRescue();
+        if (done) { this.xwarn.style.display = 'none'; this.xwarnKey = ''; } // closes at once (and can reopen on a new attempt)
       });
     });
     this.tuning = new Tuning(tuningRoot, game);
@@ -129,6 +143,8 @@ export class Hud implements GameUI {
       this.hint.style.display = '';
     } else this.hint.style.display = 'none';
 
+    this.updateWarning();
+
     const compact = this.panels.length >= 4;
     const crit = CFG.revive.criticalTime;
     for (const p of this.panels) {
@@ -143,7 +159,7 @@ export class Hud implements GameUI {
       if (u.state === 'downed') {
         cls = u.reviving ? 'downed reviving' : u.bleed <= crit ? 'downed critical' : 'downed';
         state = u.reviving
-          ? compact ? `REV ${Math.floor(u.reviveProgress * 100)}%` : `REVIVING ${Math.floor(u.reviveProgress * 100)}%${u.reviver ? ` · ${u.reviver.name}` : ''}`
+          ? compact ? `REV ${Math.floor(u.reviveProgress * 100)}% ⏸` : `REVIVING ${Math.floor(u.reviveProgress * 100)}% · ${Math.ceil(u.bleed)}s ⏸`
           : u.bleed <= crit ? `CRITICAL ${Math.ceil(u.bleed)}s` : compact ? `DOWN ${Math.ceil(u.bleed)}s` : `DOWN — ${Math.ceil(u.bleed)}s`;
       } else if (u.state === 'kia') { cls = 'kia'; state = 'KIA'; }
       else if (ab.activeLeft > 0) { cls = 'ok active'; state = `${abName}ON ${Math.ceil(ab.activeLeft)}s`; }
@@ -163,6 +179,32 @@ export class Hud implements GameUI {
     }
   }
 
+  /**
+   * "SOLDIER LEFT BEHIND!" (v0.6): compact, non-pausing, live countdown. Re-rendered only when its
+   * text changes (once per second), so it never flickers or re-appears per frame.
+   */
+  private updateWarning() {
+    const g = this.game;
+    const w = g.phase === 'playing' ? g.mission.extractWarning(g) : null;
+    if (!w) {
+      if (this.xwarnKey !== '') { this.xwarn.style.display = 'none'; this.xwarnKey = ''; }
+      return;
+    }
+    const n = w.downed.length;
+    const title = n === 1 ? 'SOLDIER LEFT BEHIND!' : `${n} SOLDIERS LEFT BEHIND!`;
+    const nm = (s: Unit) => (s.identity?.name ?? s.name).replace(/[&<>"']/g, '');
+    const body = n === 1
+      ? `${nm(w.downed[0])} is downed — ${Math.ceil(w.downed[0].bleed)} second${Math.ceil(w.downed[0].bleed) === 1 ? '' : 's'} remaining.${w.downed[0].reviving ? ' Revive in progress.' : ''}<br>Extracting now will mark ${nm(w.downed[0])} as KIA.`
+      : `${w.downed.map((s) => `${nm(s)} ${Math.ceil(s.bleed)}s${s.reviving ? ' ⏸' : ''}`).join(' · ')}<br>Extracting now will mark them KIA.`;
+    const key = `${title}|${body}|${w.armed}`;
+    if (key === this.xwarnKey) return;
+    this.xwarnKey = key;
+    this.xwarn.style.display = '';
+    this.xwarn.querySelector('.xw-title')!.textContent = title;
+    this.xwarn.querySelector('.xw-body')!.innerHTML = body;
+    this.xwarn.querySelectorAll<HTMLButtonElement>('button').forEach((b) => { b.disabled = !w.armed; });
+  }
+
   hideOverlay() { this.overlay.style.display = 'none'; this.overlay.innerHTML = ''; this.menus.hide(); }
 
   /** Barracks ("Return to Barracks", Campaign -> Squad). */
@@ -172,6 +214,8 @@ export class Hud implements GameUI {
 
   /** Mission Results (victory or defeat). */
   showEnd() { this.menus.showResults(); }
+  /** v0.6 casualty decisions / Operation Phoenix (blocking). */
+  showDecisions(notice?: string) { this.hideOverlay(); this.menus.showDecisions(notice); }
 
   /** The roster object was replaced (dev save reset): redraw the Barracks if it is open. */
   rosterChanged(notice = 'Roster reset to defaults.') {

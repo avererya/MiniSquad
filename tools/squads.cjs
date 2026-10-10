@@ -19,6 +19,9 @@ const RUNS = +(process.env.RUNS || 3);
     for (let run = 1; run <= RUNS; run++) {
       const r = await page.evaluate(({ ids }) => {
         const g = window.game;
+        // v0.6: KIA is permanent; this attribution tool resolves earlier casualties for free (top-up + resurrect)
+        // so every run deploys the same squad
+        let d; while ((d = window.__account().pendingDecision) && d.queue.length) { const s = g.roster.get(d.queue[0].id); window.__account().credits += window.__casualties.costFor(s); window.__economy.resurrect(g.roster, window.__account(), s.id, null); }
         g.deploy(ids.map((id) => g.roster.get(id)));
         const ledger = { dmg: 0, kills: 0 };
         const orig = g.damage.bind(g);

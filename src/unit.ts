@@ -46,6 +46,8 @@ export class Unit {
   reviveProgress = 0; // fraction 0..1 (rate depends on the reviver's class)
   reviving = false;
   reviver: Unit | null = null; // who is reviving this soldier right now
+  /** v0.6: how this soldier became KIA ('bleedout' / 'abandoned'), null while alive. */
+  kiaCause: 'bleedout' | 'abandoned' | null = null;
   path: Vec[] | null = null;
   pathTimer = 0;
   wander = Math.random() * 100;

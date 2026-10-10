@@ -13,6 +13,7 @@ import type { MissionEvent, ObjPoint, Objective } from './objectives';
 import { pointInRect, type Rect, type Vec } from './util';
 import { squadCentre } from './squad';
 import { sfx } from './audio';
+import { EXTRACT_REARM_S, EXTRACT_WARN_ARM_S } from './casualties';
 
 /** Anything that can extract the squad (timer + helicopter now; trucks/boats later). */
 export interface Extraction {
@@ -123,6 +124,27 @@ export class Mission {
   extraction: Extraction;
   failReason = '';
   private ended = false;
+  /**
+   * v0.6 EXTRACTION ATTEMPT (abandonment warning). An attempt starts when extraction is ready
+   * and every standing soldier (and the captive, where required) is in the zone.
+   *  - nobody downed: extraction completes (unchanged);
+   *  - a valid revive is running: extraction waits (v0.4 hold, unchanged);
+   *  - someone is downed and not being revived: the attempt HOLDS and the non-pausing
+   *    "SOLDIER LEFT BEHIND" warning opens ('warning'). Combat, bleed-out and everything else keep
+   *    running. The player chooses:
+   *      Confirm Extraction -> the downed soldiers are KIA (abandoned), the squad extracts;
+   *      Stay and Rescue    -> the attempt is cancelled ('stayed'): no warning, extraction stays on
+   *                            hold until every downed soldier is resolved (revived or bled out),
+   *                            or the squad leaves the zone (EXTRACT_REARM_S) and comes back, which
+   *                            starts a new attempt (and a new warning if someone is still down).
+   *    Ignoring the warning = extraction keeps holding; if the downed soldier bleeds out the warning
+   *    closes and extraction completes on its own. Nothing here ever pauses or extends a bleed-out.
+   */
+  attempt: 'idle' | 'warning' | 'stayed' = 'idle';
+  /** game.clock when the current warning opened (its buttons arm EXTRACT_WARN_ARM_S later). */
+  warnAt = 0;
+  /** Seconds the squad has not been all in the zone (an attempt ends after EXTRACT_REARM_S). */
+  private outT = 0;
 
   constructor(readonly script: MissionScript) {
     this.id = script.id;
@@ -261,23 +283,59 @@ export class Mission {
       case 'available': {
         this.extraction.update(game, dt);
         const downed = game.soldiers.filter((s) => s.state === 'downed');
+        const names = downed.map((s) => s.name).join(', ');
+        const npcOk = !npc || (npc.active && pointInRect(npc.pos, this.extraction.zone));
+        // v0.4: the helicopter waits while a downed soldier (or the captive) is being revived
+        const reviving = [...downed, ...(npc && npc.state === 'downed' ? [npc] : [])].some((s) => s.reviving);
+        const allIn = active.length > 0 && npcOk && active.every((s) => pointInRect(s.pos, this.extraction.zone));
+        this.outT = allIn ? 0 : this.outT + dt;
+        if (this.attempt !== 'idle' && (!downed.length || this.outT >= EXTRACT_REARM_S)) this.attempt = 'idle';
         const warn = [
-          downed.length ? `WARNING: ${downed.map((s) => s.name).join(', ')} DOWN — revive first or they will be lost!` : '',
+          downed.length && this.attempt === 'stayed' ? `EXTRACTION ON HOLD: rescue ${names}, or leave the zone and come back to extract without them` : '',
+          downed.length && this.attempt !== 'stayed' ? `WARNING: ${names} DOWN — revive first or they will be lost!` : '',
           npc && npc.state === 'downed' ? `${npc.label} DOWN — revive them before extracting!` : '',
           npc && npc.active && !pointInRect(npc.pos, this.extraction.zone) ? `Bring the ${npc.label.toLowerCase()} into the zone` : '',
         ].filter(Boolean).join(' · ');
         game.setObjective(npc ? 'Extraction ready: get everyone and the captive into the zone.' : 'Extraction ready: get everyone into the zone.', warn || undefined);
-        const npcOk = !npc || (npc.active && pointInRect(npc.pos, this.extraction.zone));
-        // v0.4: the helicopter waits while a downed soldier (or the captive) is being revived
-        const reviving = [...downed, ...(npc && npc.state === 'downed' ? [npc] : [])].some((s) => s.reviving);
-        if (active.length && npcOk && !reviving && active.every((s) => pointInRect(s.pos, this.extraction.zone))) {
-          for (const s of downed) s.state = 'kia'; // left behind
-          this.phase = 'done';
-          game.win();
-        }
+        if (!allIn || reviving) break; // hold (v0.4: a running revive keeps the helicopter waiting)
+        if (!downed.length) { this.complete(game); break; }
+        if (this.attempt === 'idle') { this.attempt = 'warning'; this.warnAt = game.clock; sfx('deny'); }
+        // 'warning' / 'stayed': hold until the player chooses or the downed soldiers' timers resolve
         break;
       }
     }
+  }
+
+  private complete(game: Game) {
+    this.attempt = 'idle';
+    this.phase = 'done';
+    game.win();
+  }
+
+  /** The abandonment warning (HUD): who would be left behind, or null when it is not open. */
+  extractWarning(game: Game): { downed: Unit[]; reviving: boolean; armed: boolean } | null {
+    if (this.phase !== 'available' || this.attempt !== 'warning') return null;
+    const downed = game.soldiers.filter((s) => s.state === 'downed');
+    if (!downed.length) return null;
+    return { downed, reviving: downed.some((s) => s.reviving), armed: game.clock - this.warnAt >= EXTRACT_WARN_ARM_S };
+  }
+
+  /** "Confirm Extraction": every downed soldier is left behind (KIA, abandoned) and the squad extracts. */
+  confirmExtraction(game: Game): boolean {
+    const w = this.extractWarning(game);
+    if (!w || !w.armed || game.phase !== 'playing') return false;
+    for (const s of w.downed) game.abandonSoldier(s);
+    if (game.phase !== 'playing') return true;
+    this.complete(game);
+    return true;
+  }
+
+  /** "Stay and Rescue": cancel this extraction attempt (timers are untouched). */
+  stayAndRescue(game: Game): boolean {
+    const w = this.extractWarning(game);
+    if (!w || !w.armed) return false;
+    this.attempt = 'stayed';
+    return true;
   }
 
   /** Dev / tests: complete every primary objective and make extraction available now. */

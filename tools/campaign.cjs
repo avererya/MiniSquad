@@ -1,4 +1,4 @@
-// v0.4 campaign autopilot: plays the campaign missions headlessly (accelerated fixed-step sim)
+// v0.4 campaign autopilot (v0.6: KIA is permanent; casualties are resolved between runs, KIA rate reported): plays the campaign missions headlessly (accelerated fixed-step sim)
 // with a simple "competent new player" policy, and reports per-mission balance numbers.
 //
 //   MODE=new     fresh save; plays M1 -> M5 in order like a new player (retrying a failed
@@ -35,6 +35,28 @@ const PREF = {
   'bring-them-home': ['doc', 'tank', 'ace', 'ranger', 'havoc', 'patch'],
 };
 
+// v0.6 permadeath: after a run, resolve every fallen soldier like a thrifty player would
+// (Resurrect when affordable, otherwise Memorial) and, if Operation Phoenix opens, enlist the
+// first three candidates. Returns what happened (for the KIA report).
+async function resolveCasualties(page) {
+  return page.evaluate(() => {
+    const g = window.game, a = window.__account(), E = window.__economy, C = window.__casualties;
+    const out = { resurrected: [], memorial: [], phoenix: null, spent: 0 };
+    let d;
+    while ((d = a.pendingDecision) && d.queue.length) {
+      const s = g.roster.get(d.queue[0].id), cost = C.costFor(s);
+      if (a.credits >= cost) { const r = E.resurrect(g.roster, a, s.id, window.__persist); if (!r.ok) { out.error = r.reason; break; } out.resurrected.push(`${s.name}(${cost})`); out.spent += cost; }
+      else { const r = E.memorialize(g.roster, a, s.id, window.__persist); if (!r.ok) { out.error = r.reason; break; } out.memorial.push(s.name); }
+    }
+    if (a.phoenix.pending) {
+      const r = E.enlistPhoenix(g.roster, a, a.phoenix.pending.candidates.slice(0, 3).map((c) => c.id), window.__persist, { cap: 6 });
+      out.phoenix = r.ok ? r.soldiers.map((s) => s.name) : 'refused: ' + r.reason;
+    }
+    out.credits = a.credits; out.living = window.__casualties.livingSoldiers(g.roster).length;
+    return out;
+  });
+}
+
 async function playOne(page, missionId, squadSpec, prefer = []) {
   return page.evaluate(async ({ missionId, squadSpec, PREF, OPT, prefer }) => {
     const g = window.game;
@@ -54,7 +76,7 @@ async function playOne(page, missionId, squadSpec, prefer = []) {
     g.input.move = () => mv;
     let path = null, pathT = 0, pathGoal = null;
     const bleedNotes = []; let minHp = 1, downs = 0, revives = 0, bleedouts = 0, maxNpcStuck = 0, extractionAt = null, firstObjAt = null;
-    const prev = new Map();
+    const prev = new Map(); let warnings = 0, warnState = 'idle';
     const MAXT = 60 * 60 * 9; // 9 game minutes
     for (let step = 0; step < MAXT && g.phase === 'playing'; step++) {
       const m = g.mission;
@@ -97,6 +119,10 @@ async function playOne(page, missionId, squadSpec, prefer = []) {
         }
       }
       g.update(1 / 60);
+      // v0.6 extraction warning: the autopilot never confirms; it ignores the buttons and walks to
+      // the downed soldier (above), which is the documented default (extraction stays on hold)
+      if (m.attempt === 'warning' && warnState !== 'warning') warnings++;
+      warnState = m.attempt;
       for (const s of g.soldiers) {
         const p = prev.get(s);
         if (p !== s.state) {
@@ -128,6 +154,8 @@ async function playOne(page, missionId, squadSpec, prefer = []) {
       stars: g.lastStars?.stars ?? 0,
       bleedNotes: bleedNotes.join(' | '), downs, revives, bleedouts, minHp: +minHp.toFixed(2),
       kia: g.soldiers.filter((s) => s.state === 'kia').length,
+      abandoned: g.soldiers.filter((s) => s.kiaCause === 'abandoned').length,
+      warnings: warnings,
       extracted: g.soldiers.filter((s) => s.state === 'active').length + '/' + g.soldiers.length,
       extractionAt: extractionAt === null ? null : +extractionAt.toFixed(0),
       xp: rw ? rw.soldiers.reduce((a, s) => a + s.xp, 0) : 0,
@@ -156,7 +184,9 @@ function summarise(rows) {
       mission, runs: rs.length, wins: wins.length, winRate: Math.round(100 * wins.length / rs.length) + '%',
       avgTimeWin: avg((r) => r.time, wins).toFixed(0), avgDowns: avg((r) => r.downs).toFixed(2), avgMinHp: avg((r) => r.minHp).toFixed(2),
       revives: rs.reduce((a, r) => a + r.revives, 0), bleedouts: rs.reduce((a, r) => a + r.bleedouts, 0),
-      kiaRuns: rs.filter((r) => r.kia > 0).length, fullExtract: wins.filter((r) => r.kia === 0).length,
+      kiaRuns: rs.filter((r) => r.kia > 0).length, kia: rs.reduce((a, r) => a + (r.kia || 0), 0),
+      kiaPerRun: avg((r) => r.kia || 0).toFixed(2), kiaRate: (100 * rs.reduce((a, r) => a + (r.kia || 0), 0) / Math.max(1, rs.reduce((a, r) => a + (r.squad?.length || 0), 0))).toFixed(1) + '%',
+      abandoned: rs.reduce((a, r) => a + (r.abandoned || 0), 0), fullExtract: wins.filter((r) => r.kia === 0).length,
       optional: wins.filter((r) => r.optional && !r.optional.includes(':N')).length + '/' + wins.length,
       avgStars: avg((r) => r.stars, wins).toFixed(2), avgXp: avg((r) => r.xp, wins).toFixed(0), avgCr: avg((r) => r.credits, wins).toFixed(0),
       escortRescues: rs.reduce((a, r) => a + (r.escortRescues || 0), 0),
@@ -211,7 +241,8 @@ function summarise(rows) {
           const r = await playOne(page, id, null, sc === 'originals' ? [] : sc === 'mixed' ? [prefer.find((x) => true), 'doc', 'tank', ...prefer].filter(Boolean) : prefer);
           r.mission = id; r.scenario = sc; r.attempt = attempt;
           rows.push(r);
-          console.log(JSON.stringify({ scenario: sc, mission: id, attempt, phase: r.phase, stars: r.stars, squad: r.squad.join(' '), recruits: r.recruits, error: r.error }));
+          r.resolution = await resolveCasualties(page);
+          console.log(JSON.stringify({ scenario: sc, mission: id, attempt, phase: r.phase, stars: r.stars, kia: r.kia, squad: r.squad.join(' '), recruits: r.recruits, resolution: r.resolution, error: r.error }));
           if (r.phase === 'won' || r.error) break;
         }
         for (const [fn, arg] of PLAN[sc][id] || []) console.log(JSON.stringify({ scenario: sc, after: id, action: fn, ...(await act(fn, arg)) }));
@@ -226,6 +257,7 @@ function summarise(rows) {
         for (let attempt = 1; attempt <= 4; attempt++) {
           const r = await playOne(page, id, null);
           r.mission = id; r.campaign = c + 1; r.attempt = attempt;
+          r.resolution = await resolveCasualties(page);
           rows.push(r);
           console.log(JSON.stringify(r));
           if (r.phase === 'won' || r.error) break;
@@ -244,6 +276,7 @@ function summarise(rows) {
     for (const id of MISSIONS) for (let i = 0; i < RUNS; i++) {
       const r = await playOne(page, id, spec);
       r.mission = id; r.run = i + 1;
+      if (!spec) r.resolution = await resolveCasualties(page);
       rows.push(r);
       console.log(JSON.stringify(r));
     }

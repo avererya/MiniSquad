@@ -7,7 +7,10 @@
 //             medkit -> the soldier who walked over it (it heals the whole squad).
 //             HP given back by a revive is NOT healing; it counts as a revive.
 //  - revives: the reviver whose revive tick completed the revive.
-//  - status:  final state when the mission ends (Standing / Downed / KIA). Not permanent.
+//  - status:  final state when the mission ends (Standing / Downed / KIA). v0.6: KIA is permanent
+//             (the mission-end transaction in economy.ts queues a Resurrect / Memorial decision);
+//             Downed at the end of a FAILED mission = recovered alive.
+//  - downs:   once per down event; revives: once per completed revive (career record, v0.6).
 import type { SoldierClassId } from './classes';
 import type { TraitId } from './traits';
 import type { Unit } from './unit';
@@ -48,8 +51,8 @@ export class MissionStats {
 
   static status(u: Unit): FinalStatus { return u.state === 'active' ? 'Standing' : u.state === 'downed' ? 'Downed' : 'KIA'; }
 
-  /** Rows in deployment order with final status. */
+  /** Rows in deployment order with final status (and how a KIA happened). */
   rows(soldiers: Unit[]) {
-    return soldiers.filter((s) => s.identity).map((s) => ({ ...this.bySoldier.get(s.identity!.id)!, status: MissionStats.status(s) }));
+    return soldiers.filter((s) => s.identity).map((s) => ({ ...this.bySoldier.get(s.identity!.id)!, status: MissionStats.status(s), cause: s.state === 'kia' ? (s.kiaCause ?? 'bleedout') : null }));
   }
 }

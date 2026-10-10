@@ -19,6 +19,17 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 #hint.deny { color: #ff8a8a; border: 1px solid rgba(255,120,120,0.6); }
 
 #panels { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 10px; }
+/* v0.6 abandonment warning: right of the joystick zone (left 45%), clear of the ability panels
+   (bottom right) and the top buttons; only its buttons take touches */
+#xwarn { position: absolute; top: 150px; left: 620px; width: 600px; padding: 12px 16px 14px; border-radius: 14px; background: rgba(60,0,0,0.82); border: 3px solid #ff4a3a; box-shadow: 0 6px 24px rgba(0,0,0,0.5); text-align: center; animation: xw-in 0.25s ease-out; }
+#xwarn .xw-title { font-size: 32px; font-weight: 900; color: #ff6a5a; letter-spacing: 0.5px; text-shadow: 0 2px 2px #000; }
+#xwarn .xw-body { font-size: 23px; font-weight: 800; color: #fff; margin: 6px 0 12px; line-height: 1.3; }
+#xwarn .xw-btns { display: flex; gap: 22px; justify-content: space-between; }
+#xwarn button { flex: 1; height: 74px; border-radius: 12px; border: 3px solid rgba(255,255,255,0.35); font-size: 23px; font-weight: 900; color: #fff; cursor: pointer; touch-action: manipulation; }
+#xwarn button[data-x="stay"] { background: #2f7d3a; }
+#xwarn button[data-x="go"] { background: #8a1c14; }
+#xwarn button:disabled { opacity: 0.5; }
+@keyframes xw-in { from { transform: scale(0.92); opacity: 0; } to { transform: none; opacity: 1; } }
 .panel { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); padding: 6px 10px 6px 6px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); min-width: 190px; }
 .panel .info { flex: 1; }
 .panel .info { min-width: 104px; }
@@ -506,3 +517,89 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   .d-head .d-port { width: 3.2em; height: 3.2em; }
 }
 .m-nav.c-reset { border-color: rgba(255,138,106,0.45); color: #ffb0a0; }
+
+/* ================= v0.6: permanent death — casualty decisions, Memorial, Phoenix, career ================= */
+#menu.decisions { background: radial-gradient(ellipse at 50% 0%, #3a2222 0%, #1d1416 50%, #120d0f 100%); }
+#menu.memorial { background: radial-gradient(ellipse at 50% 0%, #2c2c30 0%, #18181b 55%, #0f0f11 100%); }
+.gray { filter: grayscale(1) brightness(0.85); }
+.k-sub { color: #ffb0a0; font-weight: 900; letter-spacing: 0.06em; white-space: nowrap; font-size: max(11px, 0.85em); }
+.k-main { flex: 1; display: flex; flex-direction: column; gap: 0.6em; align-items: center; justify-content: center; min-height: 0; }
+.k-card { background: rgba(20,18,22,0.95); border: 2px solid rgba(255,110,90,0.45); border-radius: 0.9em; padding: 0.7em 1em; width: min(40em, 100%); display: flex; flex-direction: column; gap: 0.5em; }
+.k-who { display: flex; align-items: center; gap: 0.8em; }
+.k-kia { display: inline-block; font-size: max(11px, 0.55em); vertical-align: middle; background: #8a2a20; color: #fff; border-radius: 0.35em; padding: 0 0.45em; letter-spacing: 0.06em; }
+.k-cause { color: #ffb0a0; font-weight: 800; font-size: max(11px, 0.9em); }
+.k-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4em; }
+.k-facts span { background: rgba(0,0,0,0.35); border-radius: 0.5em; padding: 0.3em 0.45em; display: flex; flex-direction: column; text-align: center; min-width: 0; }
+.k-facts i { font-style: normal; color: #9aa3ad; font-weight: 800; font-size: max(11px, 0.78em); line-height: 1.15; }
+.k-facts b { color: #fff; font-size: 1.15em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.k-facts .short b { color: #ff8a6a; }
+.k-facts .ok b { color: #7dff8a; }
+.k-note { color: #b9b0aa; font-size: max(11px, 0.85em); font-weight: 700; line-height: 1.3; }
+.k-btns { display: flex; gap: 0.7em; width: min(40em, 100%); flex-wrap: wrap; }
+.k-btns .m-big { flex: 1 1 10em; font-size: 1.05em; padding: 0.55em 0.6em; min-height: 44px; }
+.k-confirm { border-color: #ff6a4a; }
+.k-roster { justify-content: flex-start; align-items: stretch; width: min(46em, 100%); margin: 0 auto; }
+.k-bar { display: flex; align-items: center; gap: 0.7em; flex-wrap: wrap; }
+.k-need { color: #dfe6da; font-weight: 800; font-size: max(11px, 0.92em); }
+.k-need .okc { color: #7dff8a; }
+.k-help { color: #9aa3ad; font-weight: 700; font-size: max(11px, 0.82em); line-height: 1.3; }
+.k-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45em; overflow-y: auto; min-height: 0; }
+.k-row { display: flex; align-items: center; gap: 0.5em; background: rgba(20,24,30,0.92); border: 2px solid rgba(255,255,255,0.12); border-radius: 0.6em; padding: 0.3em 0.45em; min-width: 0; }
+.k-row.fallen { opacity: 0.75; border-color: rgba(255,110,90,0.4); }
+.k-rid { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.15; }
+.k-rid b { text-transform: uppercase; color: #cfe6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-rid small { color: #9be7a5; font-size: max(11px, 0.78em); }
+.k-rid span { color: #9fb6d0; font-weight: 700; font-size: max(11px, 0.82em); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-row .pick { flex: none; min-height: 36px; min-width: 7em; padding: 0.3em 0.6em; }
+.k-row .pick:disabled { background: #2a2a2a; color: #777; }
+.k-tag { color: #ff8a6a; font-weight: 900; font-size: max(11px, 0.85em); letter-spacing: 0.06em; padding: 0 0.4em; }
+.px-main { gap: 0.5em; }
+.px-text { text-align: center; display: flex; flex-direction: column; gap: 0.2em; }
+.px-text b { color: #fff; font-size: 1.1em; }
+.px-text span { color: #ffd84a; font-weight: 900; letter-spacing: 0.08em; }
+.px-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5em; width: min(46em, 100%); }
+.px-card { display: flex; align-items: center; gap: 0.5em; text-align: left; background: rgba(20,24,30,0.94); border: 2px solid rgba(255,255,255,0.14); border-radius: 0.7em; padding: 0.35em 0.5em; color: #cfe6ff; min-height: 44px; min-width: 0; }
+.px-card.on { border-color: #ffd84a; box-shadow: 0 0 0 1px #ffd84a inset, 0 0 10px rgba(255,216,74,0.3); }
+.px-id { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.15; }
+.px-id b { text-transform: uppercase; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.px-id span { font-size: max(11px, 0.8em); color: #9fb6d0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.px-id .px-t { color: #ffd84a; }
+.px-chk { width: 1.6em; height: 1.6em; flex: none; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center; font-weight: 900; color: #222; }
+.px-card.on .px-chk { background: #ffd84a; border-color: #ffd84a; }
+.px-btns { align-items: center; width: min(46em, 100%); }
+.px-count { flex: 2 1 14em; color: #b9c4b0; font-weight: 700; font-size: max(11px, 0.85em); }
+.px-count b { color: #ffd84a; }
+.mm-main { flex: 1; min-height: 0; }
+.mm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.2em, 1fr)); gap: 0.6em; }
+.mm-card { display: flex; flex-direction: column; align-items: center; gap: 0.15em; background: rgba(28,28,32,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 0.7em; padding: 0.5em 0.4em; text-align: center; min-width: 0; }
+.mm-name { text-transform: uppercase; color: #e6e6e6; font-weight: 900; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-lv, .mm-st { color: #a0a0a8; font-weight: 700; font-size: max(11px, 0.8em); white-space: nowrap; }
+.mm-empty { color: #a0a0a8; font-weight: 700; text-align: center; margin-top: 3em; }
+.c-mem { border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.35); color: #c9c9d0; font-weight: 900; letter-spacing: 0.04em; border-radius: 0.5em; min-height: 34px; padding: 0.2em 0.6em; font-size: max(11px, 0.85em); white-space: nowrap; }
+.b-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.4em; flex-wrap: wrap; }
+.d-career { display: flex; flex-wrap: wrap; gap: 0.2em 0.35em; align-items: baseline; margin: 0 0 0.45em; font-size: max(11px, 0.85em); }
+.d-career > b { color: #ffd84a; letter-spacing: 0.06em; margin-right: 0.15em; }
+.d-career span { background: rgba(0,0,0,0.35); border-radius: 0.4em; padding: 0.05em 0.4em; white-space: nowrap; color: #9aa3ad; font-weight: 700; }
+.d-career i { font-style: normal; }
+.d-career em { font-style: normal; color: #fff; font-weight: 900; font-variant-numeric: tabular-nums; }
+.d-career .cs { display: none; }
+@media (max-width: 1000px), (max-height: 430px) { .d-career .cl { display: none; } .d-career .cs { display: inline; } }
+@media (orientation: landscape) and (max-height: 430px) { .d-prog { display: none; } }
+.r-fallen { display: flex; gap: 0.2em 0.8em; flex-wrap: wrap; justify-content: center; align-items: baseline; font-weight: 800; color: #ffb0a0; margin-bottom: 0.3em; font-size: max(11px, 0.9em); }
+.r-fallen > b { color: #ff6a5a; letter-spacing: 0.08em; }
+.r-fallen small { color: #9aa3ad; }
+.r-fallen em { flex-basis: 100%; font-style: normal; color: #ffcfb0; font-size: max(11px, 0.9em); }
+@media (orientation: landscape) and (max-height: 430px) {
+  .k-card { padding: 0.45em 0.7em; gap: 0.35em; }
+  .k-main { gap: 0.4em; }
+  .k-card .d-port { width: 3.2em; height: 3.2em; }
+  .k-btns .m-big { min-height: 40px; padding: 0.4em 0.5em; }
+  .px-grid { gap: 0.35em; }
+}
+@media (orientation: portrait) {
+  .k-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .k-list, .px-grid { grid-template-columns: 1fr; }
+}
+/* v0.6: on narrow phones the Barracks header has no room for the Memorial icon (the tabs would
+   slide under the Credits); the Memorial stays one tap away from the Campaign header. */
+@media (max-width: 700px) { .m-icon[data-a="memorial"][data-from="barracks"] { display: none; } }

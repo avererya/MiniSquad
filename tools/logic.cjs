@@ -7,7 +7,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
   await page.click('[data-a="deploy"]');
-  const res = await page.evaluate(() => {
+  const res = await page.evaluate(async () => {
     const g = window.game; const out = [];
     // v0.4: these rule checks use the comms-outpost map, which is now Mission 3 (Field Medicine)
     // (fresh browser profile: unlock everything first so roster checks can use all six soldiers)
@@ -85,7 +85,12 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     g.downSoldier(g.soldiers[1]); g.soldiers[1].pos = { x: 2000, y: 700 };
     g.soldiers[0].pos = { x: 3200, y: 250 }; g.anchor = { x: 3200, y: 250 };
     step(0.2);
-    check('extraction: win, downed left behind = KIA', g.phase === 'won' && g.soldiers[1].state === 'kia', `${g.phase} ${g.soldiers.map(x => x.state)}`);
+    // v0.6: the extraction HOLDS and the "soldier left behind" warning opens (nothing pauses); Confirm
+    // (armed after 0.6 s) leaves the downed soldier behind = KIA (abandoned)
+    const held = g.phase === 'playing' && g.mission.attempt === 'warning' && !g.confirmExtraction();
+    step(0.5);
+    const conf = g.confirmExtraction();
+    check('extraction with a downed soldier: holds + warning, Confirm -> win, left behind = KIA', held && conf && g.phase === 'won' && g.soldiers[1].state === 'kia' && g.soldiers[1].kiaCause === 'abandoned', `held ${held} confirm ${conf} ${g.phase} ${g.soldiers.map(x => x.state)}`);
 
     // ============ v0.2.1: classes ============
     const expect = {
@@ -473,17 +478,26 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     const res1 = { menu: document.getElementById('menu').className, rows: [...document.querySelectorAll('.r-table tbody tr')].map(r => r.textContent.replace(/\s+/g, ' ').trim()) };
     check('results: shown on victory with per-soldier rows + KIA status', res1.menu === 'results' && res1.rows.length === 2 && /^Ace.*KIA.*no XP$/i.test(res1.rows[0]) && /^Havoc.*Standing.*\+\d+ XP$/i.test(res1.rows[1]) && /MISSION COMPLETE/.test(document.querySelector('.r-title').textContent),
       `${res1.menu}: ${res1.rows.join(' | ')}`);
-    document.querySelector('[data-a="retry"]').click();
+    // v0.6: Ace's KIA is permanent -> Results offer only RESOLVE CASUALTIES; Retry is blocked until decided
+    const resBtns = [...document.querySelectorAll('.r-btns button')].map((b) => b.dataset.a).join();
+    check('v0.6 results with a KIA: only "Resolve casualties" (no Retry / Campaign / Barracks)', resBtns === 'resolve' && window.__account().pendingDecision?.queue[0]?.id === 'ace', resBtns);
+    window.__account().credits += 1000;
+    document.querySelector('[data-a="resolve"]').click();
+    const decScreen = document.getElementById('menu').className;
+    document.querySelector('[data-a="resurrect"]').click();
+    check('v0.6: casualty screen -> Resurrect (1000 CR) -> Ace active again, nothing pending', decScreen === 'decisions' && byId('ace').status === 'active' && byId('ace').resurrections === 1 && !window.__account().pendingDecision, `${decScreen} ace ${byId('ace').status}`);
+    g.reset();
     check('retry: same squad, fresh HP/state/stats/cooldowns', g.phase === 'playing' && g.time === 0 && g.soldiers.map(s => s.identity.id).join() === 'ace,havoc' && g.soldiers.every(s => s.state === 'active' && s.hp === s.maxHp && s.ability.cooldownLeft === 0) && statOf('ace').damage === 0 && document.getElementById('menu').className === 'hidden',
       `${g.phase} ${g.soldiers.map(s => `${s.name}:${s.state}:${s.hp}`).join(' ')} stats ace dmg ${statOf('ace').damage}`);
     g.soldiers.forEach(s => g.downSoldier(s)); step(0.05);
     const failed = g.phase === 'failed' && /MISSION FAILED/.test(document.querySelector('.r-title')?.textContent || '') && [...document.querySelectorAll('.r-status')].every(x => x.textContent === 'Downed');
+    await new Promise((r) => setTimeout(r, 700)); // v0.6: menu taps are ignored for 600 ms after a resurrection (double-tap guard)
     document.querySelector('[data-a="barracks"]').click();
     const cards = [...document.querySelectorAll('.s-card')];
     check('defeat -> results (Downed) -> Return to Barracks', failed && g.phase === 'start' && document.getElementById('menu').className === 'barracks' && cards.length === 6, `failed ok ${failed}, phase ${g.phase}, cards ${cards.length}`);
-    check('KIA is not permanent: everyone available again', !document.getElementById('menu').textContent.includes('KIA') && cards.every(c => /AVAILABLE|IN SQUAD/.test(c.textContent)), cards.map(c => c.querySelector('.s-status').textContent).join(','));
-    g.deploy([byId('ace')]);
-    check('KIA soldier redeploys at full health', g.soldiers[0].state === 'active' && g.soldiers[0].hp === 100, `${g.soldiers[0].state} ${g.soldiers[0].hp}`);
+    check('v0.6: soldiers downed when a mission fails are recovered (no KIA, no decision)', !window.__account().pendingDecision && cards.every(c => /AVAILABLE|IN SQUAD|TRAINED/.test(c.textContent)) && R.soldiers.every(s => s.status === 'active'), cards.map(c => c.querySelector('.s-status').textContent).join(','));
+    const dep = g.deploy([byId('ace')]);
+    check('resurrected soldier redeploys at full health', dep.ok && g.soldiers[0]?.state === 'active' && g.soldiers[0]?.hp === 100, `${JSON.stringify(dep)} ${g.soldiers[0]?.state} ${g.soldiers[0]?.hp}`);
 
     check('CFG still equals the defaults after all trait checks', JSON.stringify(CFG) === cfgSnapshot, '');
     R.slots = savedSlots;

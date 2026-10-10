@@ -37,6 +37,9 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
       const killTag = (tag) => { for (const e of g.enemies.filter((x) => x.active && x.tag === tag)) g.damage(e, 1e6, g.soldiers[0]); };
       const deployIds = (ids, kind = 'roster') => { const r = g.deploy(ids.map((id) => R().get(id)), kind); g.invuln = false; return r; };
       const centre = (z) => ({ x: z.x + z.w / 2, y: z.y + z.h / 2 });
+      // v0.6: a KIA is permanent and blocks the next deploy until decided; these v0.4 star checks resolve it for
+      // free (top up exactly the resurrection price, then resurrect: Credits unchanged)
+      const resolveFree = () => { let d; while ((d = A().pendingDecision) && d.queue.length) { const s = R().get(d.queue[0].id); A().credits += window.__casualties.costFor(s); window.__economy.resurrect(R(), A(), s.id, null); } };
       const allTo = (p) => { g.soldiers.forEach((s, i) => { s.pos = g.findOpenNear({ x: p.x + (i % 3) * 20 - 20, y: p.y + Math.floor(i / 3) * 20 }, 10); }); g.anchor = { ...p }; };
 
       // ---- capacity table ----
@@ -81,6 +84,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
       check('M1 replay, one revive: 2 stars (full extraction), best stays 3, nothing re-unlocked', rw.stars === 2 && rw.bestStars === 3 && A().missions['first-contact'].bestStars === 3 && !rw.firstClear && rw.unlockedSoldiers.length === 0 && rw.unlockedMissions.length === 0, `stars ${rw.stars}, best ${rw.bestStars}`);
       g.reset(); clearEnemies(); g.soldiers[1].state = 'kia'; g.win();
       check('M1 replay with a KIA: 1 star', g.lastReward.stars === 1 && A().missions['first-contact'].bestStars === 3, g.lastReward.stars);
+      resolveFree();
       g.reset(); clearEnemies(); g.soldiers.forEach((s) => g.downSoldier(s)); step(0.05);
       check('defeat: 0 stars, best never lowered, no reward', g.phase === 'failed' && g.lastStars.stars === 0 && A().missions['first-contact'].bestStars === 3 && g.lastReward.credits === 0, `${g.phase} ${g.lastStars.stars}`);
       const runs = A().settledRuns.length; g.win(); g.ui.showEnd();
@@ -120,6 +124,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
       check('M3 overlap: "Extract every soldier" pays as the optional, no whole-squad line', rw.xpLines.map((l) => l.label).join() === 'Victory,Optional objectives 1/1,Nobody downed' && rw.creditLines.every((l) => !/Whole squad/.test(l.label)) && rw.stars === 3, rw.xpLines.map((l) => l.label).join());
       g.reset(); clearEnemies(); g.soldiers[2].state = 'kia'; g.win();
       check('M3 with a KIA: optional failed, 1 star', g.lastReward.stars === 1 && !g.mission.optional[0].completed, g.lastReward.stars);
+      resolveFree();
       check('M3 first clear unlocks Mission 4 only', A().campaign.unlockedMissions.join() === 'first-contact,heavy-support,field-medicine,red-canyon', A().campaign.unlockedMissions.join());
 
       // ---- M4: stars without optionals ----
@@ -271,7 +276,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     const old = JSON.parse(V03);
     let sv = await save();
     const st = await page.evaluate(() => ({ status: window.__loadStatus.status, from: window.__loadStatus.fromVersion, notice: document.querySelector('.m-notice')?.textContent || '' }));
-    check('v0.3 save migrated to v4 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 4 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
+    check('v0.3 save migrated to v5 in place (status, notice on Campaign)', st.status === 'migrated' && st.from === 2 && sv.version === 5 && await page.isVisible('#menu.campaign') && /kept/.test(st.notice), `${st.status} from v${st.from}: "${st.notice}"`);
     const xpSame = old.roster.every((s) => { const n = sv.roster.find((x) => x.id === s.id); return n.progression.xp === s.progression.xp && JSON.stringify(n.training) === JSON.stringify(s.training); });
     check('v0.3 save: credits, XP, training, squad training, settled runs kept', sv.account.credits === old.account.credits && xpSame && JSON.stringify(sv.account.squadTraining) === JSON.stringify(old.account.squadTraining) && sv.account.settledRuns.length === old.account.settledRuns.length, `credits ${sv.account.credits}`);
     check('v0.3 save: all 6 soldiers unlocked, campaign starts at Mission 1', sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.join() === 'first-contact' && sv.account.campaign.selectedMission === 'first-contact', `${sv.unlockedSoldiers} ${JSON.stringify(sv.account.campaign)}`);

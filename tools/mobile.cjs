@@ -159,7 +159,9 @@ const DEVICES = [
     check(`${dev.name}: unavailable ability shows feedback`, /RECHARGING/.test(hint), hint);
     // ---------- Results ----------
     const RESULT_SEL = '#menu .r-card, #menu [data-a="retry"], #menu [data-a="campaign"], #menu [data-a="barracks"]';
-    await page.evaluate(() => { const g = window.game; g.soldiers[2].state = 'kia'; g.win(); });
+    // (v0.6: a KIA is permanent and replaces these buttons with RESOLVE CASUALTIES; the KIA Results /
+    // casualty screens on phones are covered by tools/permadeath-mobile.cjs)
+    await page.evaluate(() => { const g = window.game; g.soldiers[2].state = 'downed'; g.win(); }); // same Results content as v0.5's KIA row, without a permanent death
     await page.waitForTimeout(150);
     let Rl = await menuLayout(RESULT_SEL);
     check(`${dev.name} landscape: victory Results fit, buttons tappable`, Rl.n === 4 && Rl.boxes.every((b) => b.inside && b.aligned) && !Rl.menuScroll && Rl.minFont >= 10, `font ${Rl.fontPx}px ${JSON.stringify(Rl.boxes.map((b) => `${b.w}x${b.h}`))}`);
@@ -172,8 +174,8 @@ const DEVICES = [
     await page.tap('[data-a="retry"]');
     await page.waitForTimeout(100);
     const rt = await page.evaluate(() => ({ phase: window.game.phase, ids: window.game.soldiers.map((s) => `${s.identity.id}:${s.state}:${s.hp}`).join() }));
-    check(`${dev.name}: Retry restarts with the same squad, KIA cleared`, rt.phase === 'playing' && rt.ids === 'ace:active:100,havoc:active:150,doc:active:80', JSON.stringify(rt));
-    await page.evaluate(() => { const g = window.game; g.invuln = false; g.soldiers.forEach((s) => g.downSoldier(s)); g.soldiers[1].state = 'kia'; });
+    check(`${dev.name}: Retry restarts with the same squad, fresh HP`, rt.phase === 'playing' && rt.ids === 'ace:active:100,havoc:active:150,doc:active:80', JSON.stringify(rt));
+    await page.evaluate(() => { const g = window.game; g.invuln = false; g.soldiers.forEach((s) => g.downSoldier(s)); });
     await page.waitForTimeout(150);
     Rl = await menuLayout(RESULT_SEL);
     check(`${dev.name} landscape: defeat Results fit`, Rl.n === 4 && Rl.boxes.every((b) => b.inside && b.aligned), '');

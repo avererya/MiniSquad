@@ -17,7 +17,7 @@
 // then the floor (PROGRESSION.spreadFloorDeg) on the standing cone. The moving penalty is
 // scaled by the same factor, so the moving cone = standing + penalty is never below the floor.
 import type { SoldierStats } from './config';
-import type { SoldierClassId } from './classes';
+import type { SoldierClassId, SoldierIdentity } from './classes';
 import type { TraitId } from './traits';
 import { FIRST_MISSION } from './campaign';
 
@@ -150,6 +150,54 @@ export const ROSTER_CAP = 12;
 export const newRecruitment = (introduced: SoldierClassId[] = ['infantry']): RecruitmentState =>
   ({ offers: [], nextSeq: 1, usedNames: [], introduced: [...introduced], dismissed: [], rosterCap: ROSTER_CAP, recruited: 0, refreshes: 0 });
 
+// ---------------- permanent death (v0.6) ----------------
+// Rules + prices live in casualties.ts, the transactions in economy.ts; the persisted state is
+// declared here (plain data) like the recruitment state above.
+/** Why a soldier fell: bled out, left behind at extraction, or the mission was abandoned (app closed / restarted mid-mission). */
+export type KiaCause = 'bleedout' | 'abandoned' | 'interrupted';
+export interface FallenEntry { id: string; cause: KiaCause }
+/**
+ * The blocking post-mission decision (v0.5 reserved `pendingDecision` for it). Created in the
+ * mission-end transaction for every KIA soldier; resolved one soldier at a time (Resurrect or
+ * Memorial). While it exists: no deploying, recruiting, refreshing or training.
+ */
+export interface CasualtyDecision {
+  kind: 'casualties';
+  /** Mission run that produced these casualties (settled exactly once). */
+  runId: string;
+  missionId: string;
+  at: number;
+  /** Soldiers still awaiting a decision, in order (the first one is shown). */
+  queue: FallenEntry[];
+  /** Casualties in this batch ("Fallen Soldier n of total"). */
+  total: number;
+  /** Decisions taken so far in this batch (affordable: credits >= cost at that moment). */
+  resolved: { id: string; name: string; outcome: 'resurrected' | 'memorial'; cost: number; affordable: boolean }[];
+}
+/** A fallen soldier honored in the Memorial: the full final record (never resurrectable). */
+export interface MemorialRecord {
+  eventId: string;
+  /** Final snapshot: id, name, class, trait, XP/level, training, career, resurrections. */
+  soldier: SoldierIdentity;
+  missionId: string;
+  runId: string;
+  cause: KiaCause;
+  at: number;
+  /** Resurrection price at confirmation and whether it was affordable then (Operation Phoenix rule). */
+  cost: number;
+  affordable: boolean;
+}
+/** Operation Phoenix: emergency recruits after a total, unaffordable collapse. */
+export interface PhoenixState {
+  /** Grants already paid (one per collapse; the id is derived from the casualty batch). */
+  grants: { id: string; at: number; recruits: string[] }[];
+  /** An open grant: candidates to pick three from (persisted, so a reload shows the same people). */
+  pending: { id: string; at: number; candidates: CandidateRecord[] } | null;
+}
+/** Mission journal: KIA that happened in the running mission, saved immediately (a reload can't undo a death). */
+export interface ActiveRun { runId: string; missionId: string; kia: FallenEntry[] }
+export const newPhoenix = (): PhoenixState => ({ grants: [], pending: null });
+
 export interface AccountData {
   credits: number;
   squadTraining: SquadTrainingRanks;
@@ -160,14 +208,20 @@ export interface AccountData {
   campaign: CampaignProgress;
   /** v0.5 Recruitment Office state (offers, names, introductions, dismissals). */
   recruitment: RecruitmentState;
-  /**
-   * Future (not used in v0.5): a blocking post-mission decision (e.g. resurrect a fallen
-   * soldier) that must be resolved before deploying, recruiting or buying. Always null now.
-   */
-  pendingDecision: null;
+  /** v0.6: fallen soldiers awaiting Resurrect / Memorial (null = nothing pending). */
+  pendingDecision: CasualtyDecision | null;
+  /** v0.6: the Memorial (honored soldiers, oldest first). Never counts toward the roster cap. */
+  memorial: MemorialRecord[];
+  /** v0.6: Operation Phoenix grants. */
+  phoenix: PhoenixState;
+  /** v0.6: journal of the mission in progress (null outside a roster mission with a KIA). */
+  activeRun: ActiveRun | null;
 }
 export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
-export const newAccount = (): AccountData => ({ credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(), pendingDecision: null });
+export const newAccount = (): AccountData => ({
+  credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(),
+  pendingDecision: null, memorial: [], phoenix: newPhoenix(), activeRun: null,
+});
 
 let account: AccountData = newAccount();
 export const getAccount = () => account;
@@ -219,7 +273,7 @@ export interface MissionOutcome {
   runId: string;
   won: boolean;
   /** Deployed roster soldiers in deployment order. */
-  deployed: { id: string; status: FinalStatus; downs: number }[];
+  deployed: { id: string; status: FinalStatus; downs: number; revives?: number; cause?: KiaCause }[];
   /**
    * Optional objectives this mission offers. `list` (v0.4) names them; an entry with
    * replaces 'fullExtraction' IS the whole-squad-extracted achievement, so the global
@@ -261,6 +315,10 @@ export interface MissionReward {
   credits: number;
   creditsAfter: number;
   soldiers: SoldierReward[];
+  /** v0.6: soldiers who fell in this run (now awaiting a decision). */
+  fallen: FallenEntry[];
+  /** false: a run that paid nothing by rule (mission force-started while locked). */
+  rewarded: boolean;
 }
 
 /**

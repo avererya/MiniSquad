@@ -5,6 +5,11 @@
 // screen (stats, stars, optional objectives, XP and level-ups, Credits, unlocks).
 // Flow: Campaign -> Barracks (squad for the selected mission) -> Deploy -> Mission -> Results
 // -> Retry / Campaign / Barracks. Campaign can also deploy the saved squad directly.
+// v0.6: when soldiers fell, Results -> the casualty DECISIONS screen (one fallen soldier at a time:
+// Resurrect / Manage Roster (restricted: dismissals only) / Honor in Memorial with a separate,
+// delayed confirmation), then Operation Phoenix when the squad collapsed. While decisions are
+// pending every other screen redirects there (also on launch). The Memorial screen lists the
+// honored soldiers (Barracks / Campaign).
 import type { Game } from './game';
 import { ABILITY_NAMES, CLASSES, CLASS_IDS, classStats, effectiveStats, newProgression, type SoldierIdentity } from './classes';
 import { CFG } from './config';
@@ -18,8 +23,9 @@ import {
   PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
 } from './progression';
-import { buySquadTraining, buyTraining, dismiss, dismissBlock, lineupKey, openOffice, recruit, recruitBlock, refreshOffers, rename } from './economy';
-import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignProgress, priceOf, refundOf, startingLevelFor } from './recruitment';
+import { buySquadTraining, buyTraining, dismiss, dismissBlock, dismissRefund, enlistPhoenix, lineupKey, memorialize, openOffice, recruit, recruitBlock, refreshOffers, rename, resurrect } from './economy';
+import { MEMORIAL_ARM_MS, PHOENIX_RECRUITS, casualtyPosition, costFor, decisionBlock, pendingCasualties } from './casualties';
+import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignProgress, priceOf, startingLevelFor } from './recruitment';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -27,7 +33,10 @@ const num = (v: number) => String(Math.round(v * 100) / 100);
 const cr = (v: number) => v.toLocaleString('en-US');
 const pct = (f: number) => (Math.abs(f) < 1e-9 ? '0%' : `${f > 0 ? '+' : '−'}${num(Math.abs(f * 100))}%`);
 
-type Screen = 'none' | 'campaign' | 'barracks' | 'results';
+type Screen = 'none' | 'campaign' | 'barracks' | 'results' | 'decisions' | 'memorial';
+const CAUSE_TEXT = { bleedout: 'Bled out', abandoned: 'Left behind at extraction', interrupted: 'Fell in an abandoned mission' } as const;
+/** v0.6: taps are ignored this long after a resurrection / Memorial / Phoenix enlistment (the next card can't be hit by a double tap). */
+const DECISION_LOCK_MS = 600;
 const stars = (n: number, of = 3) => `<span class="stars" title="${n}/${of} stars">${'★'.repeat(n)}<i>${'★'.repeat(Math.max(0, of - n))}</i></span>`;
 export type BarracksTab = 'roster' | 'training' | 'squad' | 'recruit';
 const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING'], ['recruit', 'RECRUIT']];
@@ -70,6 +79,15 @@ export class Menus {
   private refreshTimer = 0;
   /** After a recruitment transaction every tap is ignored briefly (a double tap can't hit the new offer / next card). */
   private txLockUntil = 0;
+  /** v0.6 decisions screen: 'fallen' (current casualty) | 'confirm' (Memorial confirmation) | 'roster' (restricted dismissals). */
+  decView: 'fallen' | 'confirm' | 'roster' = 'fallen';
+  /** Memorial confirmation: performance.now() when it opened (the confirm button arms MEMORIAL_ARM_MS later). */
+  private confirmAt = 0;
+  private confirmTimer = 0;
+  /** Operation Phoenix: candidate ids picked so far (not saved; the candidates are). */
+  phoenixPicks: string[] = [];
+  /** Where the Memorial screen returns to. */
+  private memorialBack: 'campaign' | 'barracks' = 'barracks';
 
   constructor(private root: HTMLElement, private game: Game, private openSettings: () => void) {
     root.addEventListener('click', (e) => this.onClick(e));
@@ -98,6 +116,7 @@ export class Menus {
 
   // ---------------- Campaign ----------------
   showCampaign(notice?: string) {
+    if (decisionBlock(getAccount())) { this.showDecisions(notice); return; }
     if (this.screen === 'barracks') this.newSoldiers.clear();
     if (this.screen !== 'campaign') this.resetOpen = false;
     this.screen = 'campaign';
@@ -139,6 +158,7 @@ export class Menus {
           <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(acc.credits)}</b></div>
           <button class="m-nav c-reset" data-a="reset-open" title="Wipe all progress and start a new campaign">NEW CAMPAIGN…</button>
           <button class="m-nav" data-a="to-barracks" title="Barracks: soldiers, training (B)">BARRACKS</button>
+          <button class="m-icon" data-a="memorial" data-from="campaign" title="Memorial (${acc.memorial.length} honored)" aria-label="Memorial">🕯️</button>
           <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
           <div class="m-notice"></div>
         </header>
@@ -213,6 +233,7 @@ export class Menus {
 
   // ---------------- Barracks ----------------
   showBarracks(notice?: string) {
+    if (decisionBlock(getAccount())) { this.showDecisions(notice); return; }
     if (this.screen === 'barracks') this.newSoldiers.clear(); // badges last for one Barracks visit
     this.screen = 'barracks';
     this.root.className = 'barracks';
@@ -235,6 +256,7 @@ export class Menus {
           <nav class="m-tabs">${tabs}</nav>
           <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(acc.credits)}</b></div>
           ${this.tab !== 'roster' && this.tab !== 'recruit' ? `<button class="m-deploy" data-a="deploy" ${this.game.deployBlock() ? 'disabled' : ''} title="Deploy the selected squad (Enter)">DEPLOY ▸</button>` : ''}
+          <button class="m-icon" data-a="memorial" data-from="barracks" title="Memorial (${acc.memorial.length} honored)" aria-label="Memorial">🕯️</button>
           <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
           <div class="m-notice"></div>
         </header>
@@ -405,7 +427,8 @@ export class Menus {
           <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${lp.max ? `LV ${lp.level} · MAX LEVEL` : `LV ${lp.level} · XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
           <table class="d-stats"><thead><tr><th>Stat</th><th>Class base</th><th>Effective</th></tr></thead><tbody>${tr}</tbody></table>
           ${!locked && !sel && full && this.targetSlot === null ? '<div class="d-full">Squad full for this mission: remove someone, or tap a squad slot first to replace its soldier.</div>' : ''}
-          <div class="d-prog">Training: ${ranks} · Missions ${s.service.missions} (won ${s.service.victories}) · Kills ${s.service.kills}</div>
+          <div class="d-prog">Training: ${ranks}</div>
+          ${this.careerHtml(s)}
           ${locked ? `<div class="d-full">🔒 ${esc(this.game.roster.unlockText(s.id))}</div>` : ''}
           <div class="d-btns">
             ${locked ? '<button class="m-big" disabled>LOCKED</button>' : sel ? `<button class="m-big alt" data-a="deselect" data-id="${s.id}">REMOVE FROM SQUAD</button>`
@@ -413,7 +436,7 @@ export class Menus {
               : full ? `<button class="m-big" disabled title="Squad full">SQUAD FULL</button>`
               : `<button class="m-big" data-a="select" data-id="${s.id}">ADD TO SQUAD</button>`}
             <button class="m-big alt" data-a="train" data-id="${s.id}" ${locked ? 'disabled' : ''}>TRAIN</button>
-            ${locked ? '' : `<button class="m-big danger" data-a="dismiss" data-id="${s.id}" ${dBlock ? 'disabled' : ''} title="${esc(dBlock ?? `Dismiss for +${refundOf(s.classId)} CR`)}">DISMISS…</button>`}
+            ${locked ? '' : `<button class="m-big danger" data-a="dismiss" data-id="${s.id}" ${dBlock ? 'disabled' : ''} title="${esc(dBlock ?? `Dismiss for +${dismissRefund(s)} CR`)}">DISMISS…</button>`}
             <button class="m-big alt" data-a="close">CLOSE</button>
           </div>
           ${!locked && dBlock && !/mission/i.test(dBlock) ? `<div class="d-note">${esc(dBlock)}</div>` : ''}
@@ -569,10 +592,10 @@ export class Menus {
             <div class="d-id">
               <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${s.progression?.level ?? 1}</span></div>
               <div class="d-cls">${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
-              <div class="x-refund">Refund <b>+${cr(refundOf(s.classId))} CR</b></div>
+              <div class="x-refund">Refund <b>+${cr(dismissRefund(s))} CR</b>${s.origin === 'phoenix' ? ' <small>(Operation Phoenix recruit: no refund)</small>' : ''}</div>
             </div>
           </div>
-          <div class="x-warn">⚠ ${esc(s.name)} leaves for good. Levels, XP and every training rank bought for them are permanently lost (training is not refunded). This cannot be undone.</div>
+          <div class="x-warn">⚠ ${esc(s.name)} leaves for good. Levels, XP and every training rank bought for them are permanently lost (training is not refunded). Dismissed soldiers are not honored in the Memorial. This cannot be undone.</div>
           ${block ? `<div class="d-full">${esc(block)}</div>` : ''}
           <div class="d-btns">
             <button class="m-big alt" data-a="dismiss-cancel">CANCEL</button>
@@ -648,7 +671,7 @@ export class Menus {
       if (this.trainId === id) this.trainId = g.roster.owned()[0]?.id ?? '';
       g.forgetSoldier(id);
     }
-    this.renderBarracks();
+    this.rerender();
     this.notice(res.ok ? `${s?.name ?? 'Soldier'} dismissed (+${cr(res.refund)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
   }
 
@@ -674,6 +697,226 @@ export class Menus {
     n.classList.add('on');
     clearTimeout(this.noticeTimer);
     this.noticeTimer = window.setTimeout(() => n.classList.remove('on'), 3500);
+  }
+
+  // ---------------- v0.6: career record ----------------
+  /** Six lifetime stats, compact (soldier details). */
+  private careerHtml(s: SoldierIdentity) {
+    const c = s.service;
+    const cells: [string, string, number][] = [['Missions completed', 'Missions', c.victories], ['Kills', 'Kills', c.kills], ['Times downed', 'Downed', c.downs], ['Revives performed', 'Revives', c.revives], ['Deaths', 'Deaths', c.deaths], ['Resurrections', 'Resurrected', s.resurrections]];
+    return `<div class="d-career" title="Career record (lifetime)"><b>CAREER</b>${cells.map(([l, sh, v]) => `<span title="${l}"><i class="cl">${l}</i><i class="cs">${sh}</i> <em>${v}</em></span>`).join('')}</div>`;
+  }
+
+  /** Redraw whatever screen is open (after a transaction). */
+  private rerender() {
+    if (this.screen === 'decisions') this.renderDecisions();
+    else if (this.screen === 'barracks') this.renderBarracks();
+    else if (this.screen === 'campaign') this.renderCampaign();
+    else if (this.screen === 'memorial') this.renderMemorial();
+  }
+
+  // ---------------- v0.6: casualty decisions + Operation Phoenix ----------------
+  /**
+   * The blocking post-mission flow. Shown on launch, after Results, and instead of any other
+   * screen while a decision is pending. Nothing here is automatic: each fallen soldier needs an
+   * explicit Resurrect or (confirmed) Memorial; Operation Phoenix needs three picks.
+   */
+  showDecisions(notice?: string) {
+    const a = getAccount();
+    if (!decisionBlock(a)) { this.decView = 'fallen'; this.showCampaign(notice); return; }
+    if (this.screen !== 'decisions') { this.decView = 'fallen'; this.dismissId = null; this.phoenixPicks = []; }
+    this.screen = 'decisions';
+    this.detailsId = null; this.renameId = null; this.resetOpen = false;
+    this.root.className = 'decisions';
+    this.renderDecisions();
+    if (notice) this.notice(notice);
+  }
+
+  private renderDecisions() {
+    const a = getAccount();
+    const d = pendingCasualties(a);
+    if (!d && !a.phoenix.pending) { this.showCampaign(); return; }
+    const head = (title: string, extra = '') => `
+        <header class="m-head">
+          <div class="m-title">${title}</div>${extra}
+          <div class="m-spacer"></div>
+          <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(a.credits)}</b></div>
+          <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
+          <div class="m-notice"></div>
+        </header>`;
+    let body = '';
+    if (!d) body = head('OPERATION PHOENIX') + this.phoenixHtml();
+    else {
+      const s = this.game.roster.get(d.queue[0].id);
+      if (!s) { body = head('FALLEN SOLDIERS') + '<div class="k-main"><div class="k-card">Missing soldier.</div></div>'; }
+      else {
+        const pos = casualtyPosition(d);
+        const title = `FALLEN SOLDIER ${pos.index} OF ${pos.total}`;
+        if (this.decView === 'roster') body = head('MANAGE ROSTER', `<span class="k-sub">${esc(title)}</span>`) + this.restrictedRosterHtml(s);
+        else if (this.decView === 'confirm') body = head(title) + this.memorialConfirmHtml(s);
+        else body = head(title) + this.fallenHtml(s, d.queue[0].cause);
+      }
+    }
+    this.root.innerHTML = `<div class="m-wrap">${body}</div>${this.dismissId && this.game.roster.get(this.dismissId) ? this.dismissHtml(this.game.roster.get(this.dismissId)!) : ''}`;
+    this.drawPortraits();
+  }
+
+  private fallenHtml(s: SoldierIdentity, cause: keyof typeof CAUSE_TEXT) {
+    const a = getAccount(), cost = costFor(s), short = Math.max(0, cost - a.credits);
+    const t = s.traitId ? TRAITS[s.traitId] : null;
+    const prev = s.resurrections;
+    return `
+      <div class="k-main">
+        <section class="k-card">
+          <div class="k-who">
+            <canvas class="d-port gray" data-cls="${s.classId}"></canvas>
+            <div class="d-id">
+              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${s.progression?.level ?? 1}</span> <span class="k-kia">KIA</span></div>
+              <div class="d-cls">${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
+              <div class="k-cause">${CAUSE_TEXT[cause] ?? 'Fell in action'}</div>
+            </div>
+          </div>
+          <div class="k-facts">
+            <span><i>Resurrected before</i><b>${prev === 0 ? 'Never' : `${prev}×`}</b></span>
+            <span><i>Resurrection cost</i><b>${cr(cost)} CR</b></span>
+            <span><i>Your Credits</i><b>${cr(a.credits)} CR</b></span>
+            <span class="${short ? 'short' : 'ok'}"><i>${short ? 'Shortfall' : 'Affordable'}</i><b>${short ? `${cr(short)} CR` : '✓'}</b></span>
+          </div>
+          <div class="k-note">Resurrection restores ${esc(s.name)} exactly as they were: level, XP, training and career record. ${short ? 'Not enough Credits: dismiss reserve soldiers in Manage Roster, or honor them in the Memorial.' : ''}</div>
+        </section>
+        <div class="k-btns">
+          <button class="m-big" data-a="resurrect" data-id="${s.id}" ${short ? 'disabled' : ''} title="${short ? `Need ${cr(short)} more Credits` : `Resurrect for ${cr(cost)} CR`}">RESURRECT NOW · ${cr(cost)} CR</button>
+          <button class="m-big alt" data-a="manage">MANAGE ROSTER</button>
+          <button class="m-big danger" data-a="mem-open" data-id="${s.id}">HONOR IN MEMORIAL…</button>
+        </div>
+      </div>`;
+  }
+
+  /** The permanent-loss confirmation: its own screen, confirm button armed after MEMORIAL_ARM_MS. */
+  private memorialConfirmHtml(s: SoldierIdentity) {
+    const left = this.confirmAt + MEMORIAL_ARM_MS - performance.now();
+    const armed = left <= 0;
+    return `
+      <div class="k-main">
+        <section class="k-card k-confirm">
+          <div class="x-title">HONOR ${esc(s.name.toUpperCase())} IN THE MEMORIAL?</div>
+          <div class="k-who"><canvas class="d-port gray" data-cls="${s.classId}"></canvas>
+            <div class="d-id"><div class="d-name">${esc(s.name)} <span class="s-lv">LV ${s.progression?.level ?? 1}</span></div><div class="d-cls">${CLASSES[s.classId].label} · ${s.service.kills} kills · resurrected ${s.resurrections}×</div></div></div>
+          <div class="x-warn">⚠ This decision is permanent. This soldier cannot be resurrected later.</div>
+          <div class="rn-help">${esc(s.name)} leaves the roster for good. Their final record is kept in the Memorial. No Credits are paid.</div>
+        </section>
+        <div class="k-btns">
+          <button class="m-big alt" data-a="mem-back">◂ BACK</button>
+          <button class="m-big danger" data-a="mem-confirm" data-id="${s.id}" ${armed ? '' : 'disabled'}>${armed ? 'CONFIRM — HONOR IN MEMORIAL' : `CONFIRM IN ${Math.ceil(left / 1000)}…`}</button>
+        </div>
+      </div>`;
+  }
+
+  /** Restricted Barracks: only dismissals (to raise Credits). No recruiting, training, renaming or deploying. */
+  private restrictedRosterHtml(fallen: SoldierIdentity) {
+    const a = getAccount(), r = this.game.roster, cost = costFor(fallen), short = Math.max(0, cost - a.credits);
+    const rows = r.owned().map((s) => {
+      const t = s.traitId ? TRAITS[s.traitId].name : '';
+      if (s.status === 'kia') return `<div class="k-row fallen"><canvas class="slot-port gray" data-cls="${s.classId}"></canvas><span class="k-rid"><b>${esc(s.name)} <small>LV ${s.progression?.level ?? 1}</small></b><span>${CLASSES[s.classId].short} · ${t}</span></span><span class="k-tag">FALLEN</span></div>`;
+      const block = dismissBlock(r, s.id);
+      return `<div class="k-row"><canvas class="slot-port" data-cls="${s.classId}"></canvas><span class="k-rid"><b>${esc(s.name)} <small>LV ${s.progression?.level ?? 1}</small></b><span>${CLASSES[s.classId].short} · ${t}</span></span>
+        <button class="pick out" data-a="dismiss" data-id="${s.id}" ${block ? 'disabled' : ''} title="${esc(block ?? 'Dismiss for good')}">${block ? 'KEEP' : `DISMISS · +${cr(dismissRefund(s))}`}</button></div>`;
+    }).join('');
+    const living = r.living().length;
+    return `
+      <div class="k-main k-roster">
+        <div class="k-bar">
+          <button class="m-nav back" data-a="manage-back">◂ BACK TO ${esc(fallen.name.toUpperCase())}</button>
+          <span class="k-need">Resurrect ${esc(fallen.name)}: <b>${cr(cost)} CR</b> · ${short ? `<b class="warn">${cr(short)} CR short</b>` : '<b class="okc">affordable ✓</b>'}</span>
+        </div>
+        <div class="k-help">Dismiss reserve soldiers for their refund (Infantry 200 · Heavy Gunner 250 · Medic 250; training is not refunded). Dismissal is permanent. ${living <= 1 ? 'Your last living soldier can\'t be dismissed.' : ''}</div>
+        <div class="k-list t-scroll">${rows}</div>
+      </div>`;
+  }
+
+  private phoenixHtml() {
+    const g = getAccount().phoenix.pending!;
+    const picks = this.phoenixPicks.filter((id) => g.candidates.some((c) => c.id === id));
+    const cards = g.candidates.map((c) => {
+      const t = TRAITS[c.traitId], on = picks.includes(c.id), st = Menus.candidateStats(c);
+      return `<button class="px-card ${on ? 'on' : ''}" data-a="px-pick" data-id="${c.id}" aria-pressed="${on}">
+          <canvas class="slot-port" data-cls="infantry"></canvas>
+          <span class="px-id"><b>${esc(c.name)}</b><span title="Infantry · level 1">LV 1 · HP ${num(Math.round(st.hp))}</span><span class="px-t">${t.name}</span></span>
+          <span class="px-chk">${on ? '✓' : ''}</span>
+        </button>`;
+    }).join('');
+    return `
+      <div class="k-main px-main">
+        <div class="px-text"><b>Your squad has fallen. Command has authorized three emergency recruits.</b><span>Rebuild. Regroup. Fight back.</span></div>
+        <div class="px-grid">${cards}</div>
+        <div class="k-btns px-btns">
+          <span class="px-count">Selected <b>${picks.length} / ${PHOENIX_RECRUITS}</b> · free · level 1 Infantry · squad training applies · no dismissal refund</span>
+          <button class="m-big" data-a="px-enlist" ${picks.length === PHOENIX_RECRUITS ? '' : 'disabled'}>ENLIST ${PHOENIX_RECRUITS} RECRUITS</button>
+        </div>
+      </div>`;
+  }
+
+  private doResurrect(id: string) {
+    const g = this.game, name = g.roster.get(id)?.name ?? 'Soldier';
+    const res = resurrect(g.roster, getAccount(), id, g.persist);
+    this.decView = 'fallen';
+    if (!decisionBlock(getAccount())) { this.showCampaign(res.ok ? `${name} is back on active duty (−${cr(res.cost)} CR).` : res.reason); return; }
+    this.renderDecisions();
+    this.notice(res.ok ? `${name} is back on active duty (−${cr(res.cost)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
+  }
+
+  private doMemorial(id: string) {
+    const g = this.game, name = g.roster.get(id)?.name ?? 'Soldier';
+    if (performance.now() < this.confirmAt + MEMORIAL_ARM_MS) return; // not armed yet
+    const res = memorialize(g.roster, getAccount(), id, g.persist);
+    this.decView = 'fallen';
+    if (res.ok) { g.forgetSoldier(id); this.newSoldiers.delete(id); if (this.trainId === id) this.trainId = g.roster.owned()[0]?.id ?? ''; }
+    if (!decisionBlock(getAccount())) { this.showCampaign(res.ok ? `${name} was honored in the Memorial.` : res.reason); return; }
+    this.renderDecisions();
+    this.notice(res.ok ? `${name} was honored in the Memorial.` : res.reason);
+  }
+
+  private doEnlist() {
+    const g = this.game;
+    const res = enlistPhoenix(g.roster, getAccount(), this.phoenixPicks, g.persist, { cap: g.capacity });
+    if (!res.ok) { this.renderDecisions(); this.notice(res.reason); return; }
+    this.phoenixPicks = [];
+    res.soldiers.forEach((x) => this.newSoldiers.add(x.id));
+    this.tab = 'roster';
+    this.showBarracks(`Operation Phoenix: ${res.soldiers.map((x) => x.name).join(', ')} joined. Earlier missions can be replayed from the Campaign screen.`);
+  }
+
+  // ---------------- v0.6: Memorial ----------------
+  showMemorial(from: 'campaign' | 'barracks' = 'barracks') {
+    if (decisionBlock(getAccount())) { this.showDecisions(); return; }
+    this.memorialBack = from;
+    this.screen = 'memorial';
+    this.root.className = 'memorial';
+    this.renderMemorial();
+  }
+
+  private renderMemorial() {
+    const list = getAccount().memorial;
+    const cards = list.map((m) => {
+      const s = m.soldier;
+      return `<div class="mm-card" data-id="${esc(s.id)}" title="${esc(CAUSE_TEXT[m.cause] ?? '')}">
+          <canvas class="s-port gray" data-cls="${s.classId}"></canvas>
+          <b class="mm-name">${esc(s.name)}</b>
+          <span class="mm-lv">LV ${s.progression?.level ?? 1} · ${CLASSES[s.classId].short}</span>
+          <span class="mm-st">${s.service.kills} kills · ${s.resurrections} res.</span>
+        </div>`;
+    }).join('');
+    this.root.innerHTML = `
+      <div class="m-wrap">
+        <header class="m-head">
+          <button class="m-nav back" data-a="memorial-back">◂ ${this.memorialBack === 'campaign' ? 'CAMPAIGN' : 'BARRACKS'}</button>
+          <div class="m-title">MEMORIAL</div>
+          <div class="m-spacer"></div>
+          <div class="m-notice"></div>
+        </header>
+        <div class="mm-main t-scroll">${list.length ? `<div class="mm-grid">${cards}</div>` : '<div class="mm-empty">No soldier has been lost for good. Keep it that way.</div>'}</div>
+      </div>`;
+    this.drawPortraits();
   }
 
   // ---------------- Results ----------------
@@ -712,7 +955,7 @@ export class Menus {
     ].join('') : '';
     let rewards: string;
     if (g.deployment.kind !== 'roster') rewards = `<div class="r-none">${g.deployment.kind === 'generic' ? 'Dev preset squad (generic soldiers)' : 'Temporary dev squad'}: no XP, Credits, stars or unlocks.</div>`;
-    else if (!rw || !won) rewards = `<div class="r-none">No XP or Credits for a failed mission.</div><div class="r-total">Credits <b class="r-cr">${cr(getAccount().credits)}</b></div>`;
+    else if (!rw || !won) rewards = `<div class="r-none">${won ? 'No rewards: this mission was not unlocked yet.' : 'No XP or Credits for a failed mission.'}</div><div class="r-total">Credits <b class="r-cr">${cr(getAccount().credits)}</b></div>`;
     else {
       const lines = rw.creditLines.map((l) => `<tr><td>${l.label}</td><td>+${cr(l.amount)}</td></tr>`).join('');
       const xpl = rw.xpLines.map((l) => `${l.amount}`).join(' + ');
@@ -729,6 +972,10 @@ export class Menus {
     const opts = m.optionals.length ? m.optionals.map((o) => `<span class="${o.state === 'complete' ? 'ok' : 'no'}">${o.state === 'complete' ? '✓' : '✗'} ${esc(o.label)}${o.state === 'complete' ? ` <small>+${PROGRESSION.xp.perOptionalObjective} XP · +${PROGRESSION.credits.perOptionalObjective} CR</small>` : ''}</span>`).join('') : '';
     const tag = rw && won ? (rw.firstClear ? '<span class="r-tag first">FIRST CLEAR</span>' : '<span class="r-tag">REPLAY</span>') : '';
     const why = won ? 'The squad made it out.' : m.failReason || 'The whole squad is down.';
+    // v0.6: fallen soldiers (permanent) and the pending decision
+    const fallenRows = g.stats.rows(g.soldiers).filter((r) => r.status === 'KIA');
+    const pending = g.deployment.kind === 'roster' && !!decisionBlock(getAccount());
+    const fallenHtml = fallenRows.length ? `<div class="r-fallen"><b>FALLEN</b> ${fallenRows.map((r) => `<span>✝ ${esc(r.name)} <small>${CAUSE_TEXT[r.cause ?? 'bleedout']}</small></span>`).join('')}${g.deployment.kind === 'roster' ? '<em>Permanent: decide Resurrect or Memorial before the next mission.</em>' : ''}</div>` : '';
     this.root.innerHTML = `
       <div class="m-wrap r-wrap">
         <div class="r-card ${won ? 'won' : 'lost'}">
@@ -737,6 +984,7 @@ export class Menus {
           <div class="r-stars">${stars(starN)}${newBest ? '<span class="r-tag first">NEW BEST</span>' : ''}<div class="r-crit">${crit}</div></div>
           <div class="r-sub">${why} · Mission time <b>${fmtTime(g.time)}</b></div>
           ${opts ? `<div class="r-opts"><b>OPTIONAL</b> ${opts}</div>` : ''}
+          ${fallenHtml}
           ${unlocks ? `<div class="r-unls">${unlocks}</div>` : ''}
           ${levelUps ? `<div class="r-lvls">${levelUps}</div>` : ''}
           <div class="r-body">
@@ -747,11 +995,12 @@ export class Menus {
             <aside class="r-rewards">${rewards}</aside>
           </div>
           <div class="r-btns">
+            ${pending ? `<button class="m-big danger" data-a="resolve">RESOLVE CASUALTIES ▸</button>` : `
             <button class="m-big ${won ? 'alt' : ''}" data-a="retry">RETRY</button>
             <button class="m-big ${won ? '' : 'alt'}" data-a="campaign">CAMPAIGN</button>
-            <button class="m-big alt" data-a="barracks">BARRACKS</button>
+            <button class="m-big alt" data-a="barracks">BARRACKS</button>`}
           </div>
-          <div class="r-note">Enter retry · C campaign · B barracks · KIA only lasts for the mission: everyone is back in the Barracks.</div>
+          <div class="r-note">${pending ? 'Fallen soldiers need a decision before anything else.' : 'Enter retry · C campaign · B barracks · KIA is permanent'}</div>
         </div>
       </div>`;
   }
@@ -765,6 +1014,40 @@ export class Menus {
     unlockAudio();
     const a = el.dataset.a, id = el.dataset.id, g = this.game, r = g.roster;
     switch (a) {
+      // ----- v0.6 decisions -----
+      case 'resurrect': case 'mem-confirm': case 'px-enlist': {
+        e.stopPropagation();
+        const now = performance.now(), key = `${a}:${id ?? ''}`;
+        if (key === this.lastBuy.key && now - this.lastBuy.t < DECISION_LOCK_MS) return;
+        this.lastBuy = { key, t: now };
+        if (a === 'mem-confirm' && now < this.confirmAt + MEMORIAL_ARM_MS) return;
+        this.txLockUntil = now + DECISION_LOCK_MS;
+        if (a === 'resurrect') this.doResurrect(id!); else if (a === 'mem-confirm') this.doMemorial(id!); else this.doEnlist();
+        return;
+      }
+      case 'mem-open': {
+        e.stopPropagation();
+        this.decView = 'confirm'; this.confirmAt = performance.now();
+        clearTimeout(this.confirmTimer);
+        const tick = () => { if (this.screen === 'decisions' && this.decView === 'confirm') { this.renderDecisions(); if (performance.now() < this.confirmAt + MEMORIAL_ARM_MS) this.confirmTimer = window.setTimeout(tick, 250); } };
+        this.confirmTimer = window.setTimeout(tick, 250);
+        this.renderDecisions();
+        return;
+      }
+      case 'mem-back': case 'manage-back': e.stopPropagation(); this.decView = 'fallen'; this.renderDecisions(); return;
+      case 'manage': e.stopPropagation(); this.decView = 'roster'; this.renderDecisions(); return;
+      case 'resolve': e.stopPropagation(); g.toCampaign(); return;
+      case 'px-pick': {
+        e.stopPropagation();
+        const i = this.phoenixPicks.indexOf(id!);
+        if (i >= 0) this.phoenixPicks.splice(i, 1);
+        else if (this.phoenixPicks.length < PHOENIX_RECRUITS) this.phoenixPicks.push(id!);
+        else { this.renderDecisions(); this.notice(`Choose exactly ${PHOENIX_RECRUITS}: tap a selected recruit to swap.`); return; }
+        this.renderDecisions();
+        return;
+      }
+      case 'memorial': e.stopPropagation(); this.showMemorial(el.dataset.from === 'campaign' ? 'campaign' : 'barracks'); return;
+      case 'memorial-back': e.stopPropagation(); if (this.memorialBack === 'campaign') this.showCampaign(); else this.showBarracks(); return;
       case 'recruit': case 'refresh': case 'dismiss-confirm': {
         e.stopPropagation();
         const now = performance.now(), key = `${a}:${id ?? el.dataset.key ?? ''}`;
@@ -775,9 +1058,9 @@ export class Menus {
         if (a === 'recruit') this.doRecruit(id!); else this.doDismiss(id!);
         return;
       }
-      case 'dismiss': this.dismissId = id!; break;
-      case 'dismiss-cancel': this.dismissId = null; break;
-      case 'dismiss-cancel-bg': if (e.target === el) this.dismissId = null; else return; break;
+      case 'dismiss': this.dismissId = id!; if (this.screen === 'decisions') { e.stopPropagation(); this.renderDecisions(); return; } break;
+      case 'dismiss-cancel': this.dismissId = null; if (this.screen === 'decisions') { e.stopPropagation(); this.renderDecisions(); return; } break;
+      case 'dismiss-cancel-bg': if (e.target === el) this.dismissId = null; else return; if (this.screen === 'decisions') { e.stopPropagation(); this.renderDecisions(); return; } break;
       case 'rename': this.renameId = id!; this.renameDraft = r.get(id!)?.name ?? ''; this.renameError = ''; e.stopPropagation(); this.renderBarracks(); this.focusRename(); return;
       case 'rename-save': e.stopPropagation(); this.submitRename(); return;
       case 'rename-cancel': this.renameId = null; break;
@@ -864,6 +1147,15 @@ export class Menus {
   private onKey(e: KeyboardEvent) {
     if (!this.visible || e.repeat) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (this.screen === 'decisions') {
+      // buttons only (no keyboard shortcut can resurrect or memorialize); Esc steps back
+      if (e.code === 'Escape') {
+        if (this.dismissId) this.dismissId = null; else this.decView = 'fallen';
+        this.renderDecisions();
+      }
+      return;
+    }
+    if (this.screen === 'memorial') { if (e.code === 'Escape') { if (this.memorialBack === 'campaign') this.showCampaign(); else this.showBarracks(); } return; }
     if (this.screen === 'barracks') {
       if (e.code === 'Escape') {
         if (this.dismissId) this.dismissId = null;

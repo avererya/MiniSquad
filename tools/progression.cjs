@@ -84,6 +84,11 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       check('no double award: win() again, Results re-render, same run id settled again', A().credits === cr1 && again === null && byId('ace').progression.xp === 100, `credits ${A().credits}, settle again -> ${again}`);
       const resultsText = document.getElementById('menu').textContent;
       check('Results show XP per soldier, credit breakdown and total', /\+100 XP/.test(resultsText) && /no XP/.test(resultsText) && /Victory\+500/.test(resultsText.replace(/\s+/g, '')) && /First-time completion/.test(resultsText) && /750/.test(resultsText), resultsText.replace(/\s+/g, ' ').slice(0, 160));
+      // v0.6: Doc's KIA is permanent: the mission-end transaction queued a decision, which blocks the
+      // retry until it is resolved. Resurrect Doc (top-up first, so the Credit checks below are unchanged)
+      const pend = A().pendingDecision && { queue: A().pendingDecision.queue.map((q) => ({ ...q })) };
+      A().credits += 1000; const rs = E.resurrect(R, A(), 'doc', null);
+      check('v0.6: Doc KIA is permanent -> pending decision; resurrect (1000 CR) restores Doc for the retry', pend && pend.queue.map((q) => q.id).join() === 'doc' && rs.ok && rs.cost === 1000 && byId('doc').status === 'active' && byId('doc').resurrections === 1 && byId('doc').service.deaths === 1 && A().credits === cr1 && A().pendingDecision === null, `pending ${pend && pend.queue.map((q) => q.id)}, resurrect ${JSON.stringify(rs)}`);
       // retry: new run, replay rewards; full extraction + flawless
       g.reset(); clearEnemies();
       const run2 = g.runId;
@@ -222,7 +227,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.reload(); await page.waitForTimeout(200); // reload while on Results
     sv = await save();
     check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
-    check('UI: Campaign header shows credits + version "MiniSquad v0.5 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.5 · [0-9a-f]{7,}$|^MiniSquad v0\.5 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    check('UI: Campaign header shows credits + version "MiniSquad v0.6 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.6 · [0-9a-f]{7,}$|^MiniSquad v0\.6 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
     await page.click('[data-a="csel"][data-id="first-contact"]'); // the campaign moved on to M2: replay M1
     await page.click('[data-a="deploy"]');
     await page.evaluate(() => window.game.win());
@@ -279,7 +284,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const notice = await page.textContent('.m-notice').catch(() => '');
     await page.click('[data-a="to-barracks"]');
     const m = await page.evaluate(() => ({ status: window.__loadStatus.status, slots: window.game.roster.slots.join(), saved: JSON.parse(localStorage.getItem('minisquad.save')), notice: document.querySelector('.m-notice').textContent, cards: document.querySelectorAll('.s-card').length }));
-    check('UI: v0.2.2 save migrated in place on load (squad kept, v4 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 4 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
+    check('UI: v0.2.2 save migrated in place on load (squad kept, v5 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 5 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
     const backup = await page.evaluate(() => localStorage.getItem('minisquad.save.pre-v0.4'));
     check('UI: the original v0.2.2 save text is kept once as a pre-v0.4 backup', backup === V022raw, `backup ${backup ? backup.length : 0} chars`);
     check('B: no page errors', errors.length === 0, errors.join(' | '));
