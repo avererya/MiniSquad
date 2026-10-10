@@ -63,7 +63,7 @@ async function playOne(page, missionId, ids, opts = {}) {
     const g = window.game;
     g.selectMission(missionId, true);
     const cap = g.capacity;
-    const pick = ids ?? [...new Set([...(opts.prefer || []), ...PREF, ...g.roster.owned().map((s) => s.id)])].filter((id) => g.roster.isUnlocked(id) && g.roster.get(id)?.status !== 'kia').slice(0, cap);
+    const pick = ids ? ids.slice(0, cap) : [...new Set([...(opts.prefer || []), ...PREF, ...g.roster.owned().map((s) => s.id)])].filter((id) => g.roster.isUnlocked(id) && g.roster.get(id)?.status !== 'kia').slice(0, cap);
     const dep = g.deploy(pick.map((id) => g.roster.get(id)), 'roster');
     if (!dep.ok) return { error: dep.reason, pick };
     const squad = g.soldiers.map((s) => `${s.name}/${s.identity.classId[0].toUpperCase()}${s.identity.progression?.level ?? '?'}`);
