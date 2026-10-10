@@ -37,7 +37,8 @@ const OUT = process.env.OUT || '';
   check('Campaign previews upcoming soldiers (Tank M1, Doc M2, Havoc M5, Patch at M7)', /Tank joins/.test(previews[0]) && /Doc joins/.test(previews[1]) && /Havoc joins/.test(previews[2]) && /Patch \(Medic\) joins at the Mission 7/.test(previews[3]), previews.map((x) => x.replace(/\s+/g, ' ').slice(0, 60)).join(' | '));
   await page.click('[data-a="csel"][data-id="first-contact"]');
   await toBarracks();
-  check('Mission 1: 2 slots shown (SQUAD 2/2)', (await page.evaluate(() => document.querySelectorAll('.slot').length)) === 2, '');
+  const sq = await page.evaluate(() => ({ all: document.querySelectorAll('.b-slots .slot').length, open: document.querySelectorAll('.b-slots .slot:not(.locked)').length, locked: document.querySelectorAll('.b-slots .slot.locked').length, deploy: document.querySelectorAll('[data-a="deploy"]').length }));
+  check('Mission 1: 6 squares, 2 open + 4 locked; no Deploy in the Barracks (v0.6.1)', sq.all === 6 && sq.open === 2 && sq.locked === 4 && sq.deploy === 0, JSON.stringify(sq));
 
   // dev: two-tap "unlock all" (clearly says it modifies the save)
   await page.keyboard.press('Backquote');
@@ -55,8 +56,11 @@ const OUT = process.env.OUT || '';
   await toBarracks();
 
   // selection via the UI (cap 3)
-  for (let i = 0; i < 2; i++) await page.click('.slot-x');
-  check('removing all: Deploy disabled', await page.isDisabled('[data-a="deploy"]') && (await slots()) === '');
+  for (let i = 0; i < 2; i++) await page.click('.b-slots button.slot');
+  check('removing all (tap squares): empty squad, 3 empty + 3 locked squares', (await slots()) === '' && (await page.evaluate(() => document.querySelectorAll('.b-slots .slot.empty').length + ':' + document.querySelectorAll('.b-slots .slot.locked').length)) === '3:3');
+  await page.click('.b-go');
+  check('removing all: Campaign Deploy disabled', await page.isDisabled('.c-btns [data-a="deploy"]'));
+  await page.click('.c-btns [data-a="to-barracks"]');
   for (const id of ['havoc', 'patch', 'ranger']) await page.click(`.s-card[data-id="${id}"] .pick`);
   const fullBtn = await page.textContent('.s-card[data-id="ace"] .pick');
   await page.click('.s-card[data-id="ace"] .pick'); // refused
@@ -65,10 +69,13 @@ const OUT = process.env.OUT || '';
   await page.click('.s-card[data-id="havoc"] .pick'); // remove havoc
   await page.click('.s-card[data-id="havoc"] .pick'); // re-add: appended (packed list)
   check('UI: removed soldier re-added at the end, no duplicates', (await slots()) === 'patch,ranger,havoc', await slots());
-  await page.click('.slot[data-slot="1"]'); // choose slot 2 for replacement
   const hint = await page.textContent('.m-hint');
+  await page.click('.b-slots .slot[data-slot="1"]'); // v0.6.1: tapping a square removes that soldier
+  const afterTap = await slots();
+  await page.click('.b-slots .slot[data-slot="1"]'); // remove Havoc too, then re-add in order
   await page.click('.s-card[data-id="ace"] .pick');
-  check('UI: tap slot 2, then Ace -> replaces Ranger', (await slots()) === 'patch,ace,havoc' && /slot 2/.test(hint), `${await slots()} · hint "${hint}"`);
+  await page.click('.s-card[data-id="havoc"] .pick');
+  check('UI: tap square 2 removes Ranger; re-pick -> Patch, Ace, Havoc', afterTap === 'patch,havoc' && (await slots()) === 'patch,ace,havoc' && /remove/i.test(hint), `${afterTap} -> ${await slots()} · hint "${hint}"`);
   // details panel
   await page.click('.s-card[data-id="tank"] .s-name');
   const det = await page.evaluate(() => [...document.querySelectorAll('.d-stats tbody tr')].map((r) => [...r.cells].map((c) => c.textContent.trim()).join(' ')));

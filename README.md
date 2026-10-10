@@ -6,7 +6,9 @@ This repository holds **Combat Prototype v0.1**, a disposable web feel prototype
 
 ## Status
 
-`v0.6` (permanent death, resurrection & the Memorial; the original build is tagged `prototype-v0.1`).
+`v0.6.1` (permanent death, resurrection & the Memorial, plus a Barracks UI pass; the original build is tagged `prototype-v0.1`).
+
+- v0.6.1: the Barracks **Roster** shows the selected squad as six square slots along the bottom of the screen (deploy order; tap a square to remove that soldier). Slots above the current mission's squad size are shown locked with the mission that opens them (M6+, M7+, M13+). Roster cards use the full width. **Deploy happens only from the Campaign screen**: the Barracks has no Deploy buttons; the squad bar's MISSION ▸ button (and ◂ CAMPAIGN) return to the briefing, which lists the selected soldiers, offers EDIT SQUAD ▸ and DEPLOY. The Barracks header keeps the tabs in their own strip (two-line labels on phones) so Credits can never overlap them.
 
 - v0.6: **KIA is permanent.** A soldier who bleeds out (20 s) or is left behind at extraction stays dead after the mission. Before the next mission every fallen soldier needs a decision, one at a time: **Resurrect** (Credits, price by that soldier's own resurrection count, everything restored) or **Honor in Memorial** (permanent). A non-pausing "SOLDIER LEFT BEHIND!" warning appears before an extraction would abandon a downed soldier. Soldiers have a six-stat career record. If the whole roster is lost and no resurrection was affordable, **Operation Phoenix** grants three free recruits. Hiding the page (app switch, lock screen) pauses a running mission. Save v5 (migrates v4 and older). See [Permanent death](#permanent-death-v06) below.
 

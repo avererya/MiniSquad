@@ -63,13 +63,13 @@ const DEVICES = [
     await page.tap('.c-btns [data-a="to-barracks"]');
     await page.waitForTimeout(150);
     // ---------- Barracks ----------
-    const BARRACKS_SEL = '.s-card, .slot, [data-a="deploy"], .s-card .pick';
+    const BARRACKS_SEL = '.s-card, .b-slots .slot, .b-go, .s-card .pick';
     let P = await menuLayout(BARRACKS_SEL);
-    check(`${dev.name} portrait: Barracks usable (6 cards, no sideways scroll)`, P.n === 6 + 3 + 1 + 6 && !P.hOverflow && P.fontPx >= 11, `font ${P.fontPx}px, vertical scroll ${P.menuScroll}`);
+    check(`${dev.name} portrait: Barracks usable (6 cards, no sideways scroll)`, P.n === 6 + 6 + 1 + 6 && !P.hOverflow && P.fontPx >= 11, `font ${P.fontPx}px, vertical scroll ${P.menuScroll}`);
     await page.screenshot({ path: `${OUT}/m-${dev.name}-portrait-barracks.png` });
     const barracksChecks = async (tag) => {
       const L = await menuLayout(BARRACKS_SEL);
-      check(`${dev.name} ${tag}: all cards, slots, Deploy on screen`, L.n === 16 && L.boxes.every((b) => b.inside) && !L.menuScroll && !L.hOverflow, `font ${L.fontPx}px, out: ${L.boxes.filter((b) => !b.inside).length}, scroll ${L.menuScroll}`);
+      check(`${dev.name} ${tag}: all cards, 6 squad squares, MISSION button on screen`, L.n === 19 && L.boxes.every((b) => b.inside) && !L.menuScroll && !L.hOverflow, `font ${L.fontPx}px, out: ${L.boxes.filter((b) => !b.inside).length}, scroll ${L.menuScroll}`);
       check(`${dev.name} ${tag}: Barracks hitboxes aligned, buttons >= 28px`, L.boxes.every((b) => b.aligned) && L.boxes.slice(-6).every((b) => b.h >= 28), L.boxes.map((b) => b.aligned ? '' : 'X').join(''));
     };
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
@@ -86,14 +86,15 @@ const DEVICES = [
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
     await barracksChecks('landscape after rotation');
     // pick Havoc instead of Ranger by tapping (remove slot 2), then add Doc
-    await page.tap('.slot[data-slot="1"] .slot-x');
+    await page.tap('.b-slots .slot[data-slot="1"]');
     await page.tap('.s-card[data-id="havoc"] .pick');
     await page.tap('.s-card[data-id="doc"] .pick');
     const picked = await page.evaluate(() => window.game.roster.slots.filter(Boolean).join());
     check(`${dev.name}: squad picked by tapping (Ace, Havoc, Doc)`, picked === 'ace,havoc,doc', picked);
     await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-selection.png` });
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(300); // deploy in portrait, then rotate
-    await page.tap('[data-a="deploy"]');
+    await page.tap('.b-go'); await page.waitForTimeout(100); // v0.6.1: deploy from the Campaign screen only
+    await page.tap('.c-btns [data-a="deploy"]');
     await page.waitForTimeout(200);
     const dep = await page.evaluate(() => window.game.soldiers.map((s) => s.identity.id).join());
     check(`${dev.name}: Deploy starts the mission with the picked soldiers`, dep === 'ace,havoc,doc', dep);

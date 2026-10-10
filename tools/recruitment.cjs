@@ -107,7 +107,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   await page.click('[data-a="to-barracks"]');
   let sv = await save();
   check('fresh save is v5 (v0.6) with empty offers until the office is opened', sv.version === 5 && sv.account.recruitment.offers.length === 0 && sv.account.pendingDecision === null && sv.account.recruitment.rosterCap === 12, JSON.stringify(sv.account.recruitment).slice(0, 120));
-  check('Barracks shows Deployed 2 / 2 and Roster 2 / 12', /DEPLOYED\s*2 \/ 2/.test(await page.textContent('.b-counts')) && /ROSTER\s*2 \/ 12/.test(await page.textContent('.b-counts')), await page.textContent('.b-counts'));
+  check('Barracks shows Squad 2 / 2 and Roster 2 / 12', /SQUAD\s*2 \/ 2/.test(await page.textContent('.b-counts')) && /ROSTER\s*2 \/ 12/.test(await page.textContent('.b-counts')), await page.textContent('.b-counts'));
   await toRecruit();
   const o1 = await offers();
   sv = await save();

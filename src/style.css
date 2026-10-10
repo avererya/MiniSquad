@@ -160,23 +160,7 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 .pick.out { background: #3a2a2a; color: #ffb0a0; }
 .pick.full { background: #333; color: #888; }
 
-.b-squad { background: rgba(20,24,30,0.92); border: 2px solid rgba(255,255,255,0.12); border-radius: 0.8em; padding: 0.6em; display: flex; flex-direction: column; gap: 0.45em; }
-.b-squad-title { font-weight: 900; letter-spacing: 0.1em; color: #ffd84a; display: flex; justify-content: space-between; }
-.b-squad-title span { color: #cfe6ff; }
-.slot { display: flex; align-items: center; gap: 0.45em; min-height: 3.3em; border-radius: 0.6em; padding: 0.25em 0.4em; background: rgba(255,255,255,0.06); border: 2px dashed rgba(255,255,255,0.18); cursor: pointer; }
-.slot:not(.empty) { border-style: solid; border-color: rgba(47,127,240,0.6); background: rgba(47,127,240,0.15); }
-.slot.target { border-color: #ff9a3a; border-style: solid; box-shadow: 0 0 10px rgba(255,154,58,0.45); }
-.slot-n { width: 1.6em; height: 1.6em; flex: none; border-radius: 50%; background: rgba(0,0,0,0.5); font-weight: 900; display: flex; align-items: center; justify-content: center; }
-.slot-empty { color: #8a949e; font-weight: 700; font-size: max(11px, 0.9em); }
 .slot-port { width: 2.8em; height: 2.8em; flex: none; }
-.slot-id { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.15; }
-.slot-id b { text-transform: uppercase; color: #cfe6ff; }
-.slot-id small { font-size: max(11px, 0.75em); color: #9be7a5; font-weight: 900; }
-.slot-id span { font-size: max(11px, 0.85em); color: #9fb6d0; line-height: 1.15; overflow-wrap: anywhere; }
-.slot-x { width: 2.2em; height: 2.2em; min-width: 30px; min-height: 30px; flex: none; border: none; border-radius: 0.5em; background: rgba(0,0,0,0.45); color: #ffb0a0; font-weight: 900; }
-.b-order { font-size: max(11px, 0.85em); color: #b9c4b0; font-weight: 700; }
-.b-squad .m-big { width: 100%; font-size: 1.4em; }
-.b-mission { font-size: max(11px, 0.8em); color: #7d8790; text-align: center; }
 
 .m-modal { position: fixed; inset: 0; z-index: 6; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; overflow-y: auto; touch-action: pan-y;
   padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
@@ -378,9 +362,6 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 .c-btns .m-big { flex: 1; }
 .c-list .m-ver { margin-top: 0.3em; }
 
-.b-mission { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0 0.5em; background: rgba(47,127,240,0.15); border: 1px solid rgba(47,127,240,0.5); border-radius: 0.5em; padding: 0.2em 0.4em; cursor: pointer; text-align: center; line-height: 1.2; }
-.b-mission b { color: #cfe6ff; text-transform: uppercase; font-size: max(11px, 0.9em); }
-.b-mission span { color: #9fb6d0; font-size: max(11px, 0.8em); font-weight: 800; }
 .slot.over { border-color: #ff6a4a !important; background: rgba(255,80,60,0.15) !important; }
 .slot.over .slot-id span { color: #ff9a80; font-weight: 800; }
 .b-over { color: #ff9a80; font-weight: 800; font-size: max(11px, 0.85em); display: flex; align-items: center; gap: 0.4em; flex-wrap: wrap; }
@@ -603,3 +584,95 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 /* v0.6: on narrow phones the Barracks header has no room for the Memorial icon (the tabs would
    slide under the Credits); the Memorial stays one tap away from the Campaign header. */
 @media (max-width: 700px) { .m-icon[data-a="memorial"][data-from="barracks"] { display: none; } }
+
+/* ================= v0.6.1: Barracks squad bar (6 squares along the bottom), header that never overlaps ================= */
+/* Header: the tabs live in their own clipped, scrollable strip, so nothing can slide under the Credits. */
+.b-head { gap: 0.6em; }
+.b-head .m-tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.b-head .m-tabs::-webkit-scrollbar { display: none; }
+.b-head .m-tab { flex: none; }
+.b-head .m-credits, .b-head .m-nav, .b-head .m-title { flex: none; }
+@media (orientation: landscape) and (max-width: 1100px) {
+  .b-head { gap: 0.4em; }
+  .b-head .m-tab { white-space: normal; line-height: 1.05; max-width: 6.6em; text-align: center; padding: 0.2em 0.45em; }
+  .b-head .m-credits { padding: 0.25em 0.45em; }
+}
+@media (orientation: landscape) and (max-width: 900px) {
+  .b-head .m-title { display: none; }
+}
+@media (orientation: landscape) and (max-width: 720px) {
+  .b-head .m-credits span { display: none; }
+  .b-head .m-credits::after { content: ' CR'; color: #b9a86a; font-size: max(11px, 0.75em); }
+}
+
+/* Roster cards use the full width; the squad bar sticks to the bottom of the screen. */
+.has-bar .b-main { display: flex; flex-direction: column; align-items: stretch; gap: 0.4em; }
+.has-bar .b-roster { grid-template-columns: repeat(auto-fill, minmax(15em, 1fr)); }
+.has-bar .b-main .m-ver { text-align: right; }
+.b-bar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: stretch; gap: 0.6em;
+  margin: 0 -0.2em; padding: 0.4em 0.5em; border-radius: 0.8em 0.8em 0 0;
+  background: rgba(14,18,14,0.96); border: 2px solid rgba(255,216,74,0.35); border-bottom: none; box-shadow: 0 -6px 16px rgba(0,0,0,0.45); }
+.b-info { flex: 1 1 9em; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0.3em; }
+.b-info .b-counts { flex-wrap: wrap; }
+.b-info .b-count { flex: none; }
+.b-hint { display: block !important; }
+.b-hint.warn { color: #ff9a80; font-weight: 800; }
+.b-hint .pick { padding: 0.15em 0.5em; margin-top: 0.15em; }
+.b-slots { display: grid; grid-template-columns: repeat(6, 4.9em); gap: 0.35em; flex: none; }
+.b-slots .slot { position: relative; width: 4.9em; height: 4.9em; min-height: 0; padding: 0.15em; gap: 0; border-radius: 0.6em;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; text-align: center; overflow: hidden;
+  font: inherit; color: inherit; background: rgba(255,255,255,0.04); border: 2px dashed rgba(255,255,255,0.28); cursor: default; }
+.b-slots button.slot { cursor: pointer; border-style: solid; border-color: #ffd84a; background: rgba(47,127,240,0.22); }
+.b-slots button.slot:active { transform: scale(0.96); }
+.b-slots .slot.over { border-color: #ff6a4a !important; background: rgba(255,80,60,0.18) !important; }
+.b-slots .slot.over .slot-lv { color: #ff9a80; }
+.b-slots .slot.target { border-color: #ff9a3a; box-shadow: 0 0 10px rgba(255,154,58,0.45); }
+.b-slots .slot-n { position: absolute; top: 0.15em; left: 0.15em; width: 1.5em; height: 1.5em; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 900; font-size: 11px; background: rgba(0,0,0,0.6); color: #ffd84a; }
+.b-slots .slot-x { position: absolute; top: 0.15em; right: 0.15em; width: 1.5em; height: 1.5em; min-width: 0; min-height: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; background: rgba(0,0,0,0.6); color: #ffb0a0; }
+.b-slots .slot-port { display: block; width: 2.5em; height: 2.5em; flex: none; }
+.b-slots .slot-name { max-width: 100%; font-weight: 900; font-size: max(11px, 0.78em); color: #cfe6ff; text-transform: uppercase; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b-slots .slot-lv { font-weight: 900; font-size: max(11px, 0.7em); color: #9be7a5; line-height: 1.1; }
+.b-slots .slot.empty { justify-content: center; }
+.b-slots .slot-plus { font-size: 1.6em; font-weight: 900; color: rgba(255,255,255,0.35); line-height: 1; }
+.b-slots .slot-empty { font-size: max(11px, 0.68em); font-weight: 900; letter-spacing: 0.06em; color: #8a949e; }
+.b-slots .slot.locked { justify-content: center; border-style: solid; border-color: rgba(255,255,255,0.08); background: repeating-linear-gradient(135deg, rgba(0,0,0,0.5) 0 6px, rgba(0,0,0,0.3) 6px 12px); }
+.b-slots .slot.locked .slot-n { color: #6d7680; }
+.b-slots .slot-lock { font-size: 1.3em; opacity: 0.75; line-height: 1.1; }
+.b-slots .slot-when { font-size: max(11px, 0.68em); font-weight: 900; color: #8a949e; letter-spacing: 0.04em; }
+.b-go { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15em; max-width: 9em; min-height: 40px;
+  border: none; border-radius: 0.6em; padding: 0.3em 0.7em; background: #2b3440; color: #fff; box-shadow: 0 3px 0 #161c24; }
+.b-go b { font-size: 1.05em; font-weight: 900; letter-spacing: 0.05em; color: #ffd84a; white-space: nowrap; }
+.b-go small { font-size: max(11px, 0.72em); font-weight: 800; color: #9fb6d0; line-height: 1.1; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.c-squad { color: #cfe6ff; font-weight: 800; }
+
+@media (orientation: landscape) and (max-height: 430px) {
+  .b-slots { grid-template-columns: repeat(6, 4.8em); gap: 0.3em; }
+  .b-slots .slot { width: 4.8em; height: 4.8em; padding: 0.1em; }
+  .b-slots .slot-port { width: 2.1em; height: 2.1em; }
+  .b-slots .slot-name, .b-slots .slot-lv { line-height: 1.05; }
+  .b-bar { padding: 0.3em 0.4em; gap: 0.45em; }
+  .has-bar .b-roster { grid-template-columns: repeat(auto-fill, minmax(14em, 1fr)); gap: 0.45em; }
+}
+/* short landscape phones: compact cards (trait | HP on one line) so six soldiers + the bar fit without scrolling */
+@media (orientation: landscape) and (max-height: 430px) {
+  .has-bar .b-main { gap: 0.3em; }
+  .has-bar .b-main .m-ver { display: none; }
+  .has-bar .s-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.2em 0.4em; padding: 0.35em 0.5em 0.4em; }
+  .has-bar .s-top { grid-column: 1 / -1; }
+  .has-bar .s-port { width: 2.7em; height: 2.7em; }
+  .has-bar .s-trait b { font-size: 1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .has-bar .s-bot .s-status { display: none; }
+  .has-bar .s-card .pick { grid-column: 1 / -1; }
+}
+@media (orientation: landscape) and (max-width: 700px) {
+  .b-go small { display: none; }
+  .b-go { padding: 0.3em 0.5em; }
+}
+@media (orientation: portrait) {
+  .b-bar { flex-wrap: wrap; }
+  .b-info { flex-basis: 100%; }
+  .b-slots { grid-template-columns: repeat(6, minmax(0, 1fr)); flex: 1 1 100%; }
+  .b-slots .slot { width: auto; height: auto; aspect-ratio: 1; }
+  .b-go { flex: 1 1 100%; max-width: none; }
+}

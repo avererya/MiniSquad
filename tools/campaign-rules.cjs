@@ -288,16 +288,17 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     await page.keyboard.press('Enter');
     check('over limit: Enter does not deploy', (await page.evaluate(() => window.game.phase)) === 'start', '');
     await page.click('[data-a="to-barracks"]');
-    const ov = await page.evaluate(() => ({ over: document.querySelectorAll('.slot.over').length, slots: document.querySelectorAll('.slot').length, trim: !!document.querySelector('[data-a="trim"]'), dis: document.querySelector('[data-a="deploy"]').disabled }));
+    const ov = await page.evaluate(() => ({ over: document.querySelectorAll('.b-slots .slot.over').length, slots: document.querySelectorAll('.b-slots button.slot').length, trim: !!document.querySelector('[data-a="trim"]'), dis: !document.querySelector('[data-a="deploy"]') }));
     if (OUT) await page.screenshot({ path: `${OUT}/barracks-over-limit.png` });
-    check('over limit: Barracks marks the extra slot, offers KEEP FIRST 2, Deploy disabled', ov.over === 1 && ov.slots === 3 && ov.trim && ov.dis, JSON.stringify(ov));
+    check('over limit: Barracks marks the extra slot, offers KEEP FIRST 2, no Deploy there', ov.over === 1 && ov.slots === 3 && ov.trim && ov.dis, JSON.stringify(ov));
     await page.reload(); await page.waitForTimeout(200);
     sv = await save();
     check('over limit: the saved squad is never trimmed silently (after reload)', sv.squad.filter(Boolean).join() === 'ranger,havoc,patch', sv.squad.join());
     await page.click('[data-a="to-barracks"]');
     await page.click('[data-a="trim"]');
     sv = await save();
-    check('KEEP FIRST 2 trims only on request, saved', sv.squad.filter(Boolean).join() === 'ranger,havoc' && !(await page.isDisabled('[data-a="deploy"]')), sv.squad.join());
+    await page.click('.b-go');
+    check('KEEP FIRST 2 trims only on request, saved; Campaign Deploy enabled', sv.squad.filter(Boolean).join() === 'ranger,havoc' && !(await page.isDisabled('.c-btns [data-a="deploy"]')), sv.squad.join());
     // legacy player replays the campaign; Mission 3 first clear does not pay the outpost bonus twice
     const leg = await page.evaluate(() => {
       const g = window.game, o = [];

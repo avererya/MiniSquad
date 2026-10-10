@@ -3,8 +3,8 @@
 // (tabs: Roster / Training / Squad Training / Recruit (v0.5), plus a details panel with
 // Rename / Dismiss and their confirmation dialogs) and the mission Results
 // screen (stats, stars, optional objectives, XP and level-ups, Credits, unlocks).
-// Flow: Campaign -> Barracks (squad for the selected mission) -> Deploy -> Mission -> Results
-// -> Retry / Campaign / Barracks. Campaign can also deploy the saved squad directly.
+// Flow: Campaign (pick a mission, review the squad) -> [EDIT SQUAD -> Barracks roster -> back]
+// -> Deploy (Campaign only, v0.6.1) -> Mission -> Results -> Retry / Campaign / Barracks.
 // v0.6: when soldiers fell, Results -> the casualty DECISIONS screen (one fallen soldier at a time:
 // Resurrect / Manage Roster (restricted: dismissals only) / Honor in Memorial with a separate,
 // delayed confirmation), then Operation Phoenix when the squad collapsed. While decisions are
@@ -18,7 +18,7 @@ import { SQUAD_SLOTS, defaultRoster } from './roster';
 import { drawClassPortrait } from './render';
 import { unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
-import { CAMPAIGN, MISSION_TYPE_LABEL, SOLDIER_UNLOCK, STARTING_SOLDIERS, STAR_TEXT, campaignMission, capacityFor, type CampaignMission } from './campaign';
+import { CAMPAIGN, CAPACITY_TABLE, MISSION_TYPE_LABEL, SOLDIER_UNLOCK, STARTING_SOLDIERS, STAR_TEXT, campaignMission, capacityFor, type CampaignMission } from './campaign';
 import {
   PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
@@ -209,6 +209,7 @@ export class Menus {
     const best = rec?.bestStars ?? 0;
     const starRows = [STAR_TEXT.one, STAR_TEXT[m.stars.two], STAR_TEXT[m.stars.three]]
       .map((t, i) => `<li class="${best > i ? 'got' : ''}"><b>${'★'.repeat(i + 1)}</b> ${i ? '+ ' : ''}${t}</li>`).join('');
+    const names = r.squad().map((s) => esc(s.name)).join(', ');
     const squadNow = n === 0 ? 'none selected' : `${n} selected${n > cap ? ` <b class="warn">— over the limit, remove ${n - cap}</b>` : ''}`;
     const block = st === 'locked' || st === 'soon' ? 'Mission locked' : this.game.roster.deployBlock(cap);
     return `
@@ -220,12 +221,12 @@ export class Menus {
           <div><h4>OBJECTIVES</h4><ul>${m.primary.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
           <div><h4>OPTIONAL <small>+${PROGRESSION.xp.perOptionalObjective} XP · +${PROGRESSION.credits.perOptionalObjective} CR each</small></h4><ul>${m.optional.length ? m.optional.map((x) => `<li>${esc(x.label)}</li>`).join('') : '<li class="dim">None</li>'}</ul></div>
           <div><h4>STARS</h4><ul class="c-stars">${starRows}</ul></div>
-          <div><h4>SQUAD</h4><ul><li>Up to <b>${cap}</b> soldiers</li><li>Selected: ${squadNow}</li><li class="dim">${esc(m.teaches)}</li></ul></div>
+          <div><h4>SQUAD</h4><ul><li>Up to <b>${cap}</b> soldiers</li><li>Selected: ${squadNow}</li>${n ? `<li class="c-squad">${names}</li>` : ''}<li class="dim">${esc(m.teaches)}</li></ul></div>
         </div>
         <div class="c-first"><b>FIRST CLEAR</b> ${firstLine}</div>
         ${st === 'locked' ? `<div class="c-lock">🔒 Clear Mission ${prev?.number ?? 1} (${esc(prev?.name ?? '')}) to unlock.</div>` : ''}
         <div class="c-btns">
-          <button class="m-big alt" data-a="to-barracks" ${st === 'locked' || st === 'soon' ? 'disabled' : ''}>SQUAD ▸</button>
+          <button class="m-big alt" data-a="to-barracks" data-tab="roster" ${st === 'locked' || st === 'soon' ? 'disabled' : ''} title="Choose the squad in the Barracks roster (B)">EDIT SQUAD ▸</button>
           <button class="m-big" data-a="deploy" ${block ? 'disabled' : ''} title="${block ? esc(block) : 'Deploy the selected squad (Enter)'}">DEPLOY</button>
         </div>
       </section>`;
@@ -248,14 +249,14 @@ export class Menus {
     const acc = getAccount();
     const tabs = TABS.map(([id, label]) => `<button class="m-tab ${this.tab === id ? 'on' : ''}" data-a="tab" data-tab="${id}">${label}</button>`).join('');
     const body = this.tab === 'training' ? this.trainingHtml() : this.tab === 'squad' ? this.squadTrainingHtml() : this.tab === 'recruit' ? this.recruitHtml() : this.rosterHtml();
+    const wrapCls = `m-wrap${this.tab === 'roster' ? ' has-bar' : ''}`;
     this.root.innerHTML = `
-      <div class="m-wrap">
-        <header class="m-head">
+      <div class="${wrapCls}">
+        <header class="m-head b-head">
           <button class="m-nav back" data-a="to-campaign" title="Campaign (C)">◂ CAMPAIGN</button>
           <div class="m-title">BARRACKS</div>
           <nav class="m-tabs">${tabs}</nav>
           <div class="m-credits" title="Credits (account-wide)"><span>CREDITS</span> <b class="m-cr">${cr(acc.credits)}</b></div>
-          ${this.tab !== 'roster' && this.tab !== 'recruit' ? `<button class="m-deploy" data-a="deploy" ${this.game.deployBlock() ? 'disabled' : ''} title="Deploy the selected squad (Enter)">DEPLOY ▸</button>` : ''}
           <button class="m-icon" data-a="memorial" data-from="barracks" title="Memorial (${acc.memorial.length} honored)" aria-label="Memorial">🕯️</button>
           <button class="m-icon" data-a="settings" title="Settings (\`)">⚙</button>
           <div class="m-notice"></div>
@@ -268,7 +269,7 @@ export class Menus {
     this.drawPortraits();
   }
 
-  // ----- Roster tab (squad selection; unchanged flow) -----
+  // ----- Roster tab (v0.6.1: squad selection; the squad sits in 6 square slots along the bottom) -----
   private rosterHtml() {
     const r = this.game.roster, g = this.game;
     const cap = g.capacity;
@@ -276,29 +277,28 @@ export class Menus {
     // campaign soldiers are previewed on the Campaign screen, not as roster cards.
     const cards = r.owned().map((s) => this.cardHtml(s)).join('');
     const n = r.count();
-    const shown = Math.min(SQUAD_SLOTS, Math.max(cap, n));
-    const slots = r.slots.slice(0, shown).map((id, i) => this.slotHtml(id, i, cap)).join('');
-    const squad = r.squad();
+    const slots = r.slots.slice(0, SQUAD_SLOTS).map((id, i) => this.slotHtml(id, i, cap)).join('');
     const over = n > cap;
-    const order = squad.length ? squad.map((s, i) => `${i + 1}. ${esc(s.name)}`).join(' · ') : 'No soldiers selected';
-    const hint = this.targetSlot !== null ? `Choose a soldier for slot ${this.targetSlot + 1}` : `Tap a soldier for details · pick up to ${cap}`;
     const m = campaignMission(g.missionId)!;
+    const rosterCap = getAccount().recruitment.rosterCap;
+    const hint = this.targetSlot !== null ? `Choose a soldier for slot ${this.targetSlot + 1}`
+      : over ? `Too many for this mission (max ${cap}).` : n === 0 ? 'Tap soldiers to add them' : 'Tap a square to remove';
     return `
         <div class="b-main">
           <section class="b-roster">${cards}</section>
-          <aside class="b-squad">
-            <div class="b-mission" data-a="to-campaign" title="${MISSION_TYPE_LABEL[m.type]} · tap to change mission"><b>M${m.number} ${esc(m.name)}</b><span>max ${cap}</span></div>
-            <div class="b-counts"><span class="b-count" title="Soldiers selected / this mission's limit">DEPLOYED <b class="${over ? 'warn' : ''}">${n} / ${cap}</b></span><span class="b-count" title="Soldiers in your roster / roster cap">ROSTER <b class="${r.activeCount() > getAccount().recruitment.rosterCap ? 'warn' : ''}">${r.activeCount()} / ${getAccount().recruitment.rosterCap}</b></span></div>
-            <div class="m-hint ${this.targetSlot !== null ? 'tgt' : ''}">${hint}</div>
-            ${slots}
-            ${over ? `<div class="b-over">Too many for this mission (max ${cap}). <button class="pick in" data-a="trim">KEEP FIRST ${cap}</button></div>` : `<div class="b-order">Deploy order: ${order}</div>`}
-            <button class="m-big" data-a="deploy" ${g.deployBlock() ? 'disabled' : ''}>DEPLOY</button>
-            <div class="m-ver">${VERSION_LABEL}</div>
-          </aside>
-        </div>`;
+          <div class="m-ver">${VERSION_LABEL}</div>
+        </div>
+        <footer class="b-bar">
+          <div class="b-info">
+            <div class="b-counts"><span class="b-count" title="Soldiers selected / this mission's limit">SQUAD <b class="${over ? 'warn' : ''}">${n} / ${cap}</b></span><span class="b-count" title="Soldiers in your roster / roster cap">ROSTER <b class="${r.activeCount() > rosterCap ? 'warn' : ''}">${r.activeCount()} / ${rosterCap}</b></span></div>
+            <div class="m-hint b-hint ${this.targetSlot !== null ? 'tgt' : ''} ${over ? 'warn' : ''}">${hint}${over ? ` <button class="pick in" data-a="trim">KEEP FIRST ${cap}</button>` : ''}</div>
+          </div>
+          <div class="b-slots" aria-label="Selected squad, deploy order">${slots}</div>
+          <button class="b-go" data-a="to-campaign" title="Back to the mission briefing to deploy (C)"><small>M${m.number} · ${esc(m.name)}</small><b>MISSION ▸</b></button>
+        </footer>`;
   }
 
-  private xpBar(s: SoldierIdentity, cls = 'xp') {
+    private xpBar(s: SoldierIdentity, cls = 'xp') {
     const lp = levelProgress(s.progression?.xp ?? 0);
     const title = lp.max ? 'Max level' : `XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`;
     return `<span class="${cls}" title="${title}"><i style="width:${Math.round(lp.frac * 100)}%"></i></span>`;
@@ -354,15 +354,21 @@ export class Menus {
       </div>`;
   }
 
+  /** One square of the bottom squad bar: soldier (tap = remove), empty, over the limit, or locked. */
   private slotHtml(id: string | null, i: number, cap: number) {
-    const s = id ? this.game.roster.get(id)! : null;
+    const s = id ? this.game.roster.get(id) ?? null : null;
+    const num = `<span class="slot-n">${i + 1}</span>`;
+    if (!s && i >= cap) {
+      const from = CAPACITY_TABLE.find((row) => row.max > i)?.from ?? 0;
+      const when = from ? `M${from}+` : '';
+      return `<div class="slot locked" data-slot="${i}" title="Slot ${i + 1} locked${from ? `: squads of ${i + 1} from Mission ${from}` : ''}">${num}<span class="slot-lock">🔒</span><span class="slot-when">${when}</span></div>`;
+    }
     const tgt = this.targetSlot === i ? 'target' : '';
-    if (!s) return `<div class="slot empty ${tgt}" data-a="slot" data-slot="${i}"><span class="slot-n">${i + 1}</span><span class="slot-empty">${tgt ? 'Pick a soldier' : 'Empty slot'}</span></div>`;
-    const t = s.traitId ? TRAITS[s.traitId].name : '';
+    if (!s) return `<div class="slot empty ${tgt}" data-slot="${i}" title="Empty slot: tap a soldier card to add">${num}<span class="slot-plus">+</span><span class="slot-empty">EMPTY</span></div>`;
     const over = i >= cap;
-    return `<div class="slot ${tgt} ${over ? 'over' : ''}" data-a="slot" data-slot="${i}"><span class="slot-n">${i + 1}</span><canvas class="slot-port" data-cls="${s.classId}"></canvas>
-      <span class="slot-id"><b>${esc(s.name)} <small>LV ${s.progression?.level ?? 1}</small></b><span>${over ? 'OVER LIMIT — remove to deploy' : `${CLASSES[s.classId].short} · ${t}`}</span></span>
-      <button class="slot-x" data-a="clear" data-slot="${i}" title="Remove">✕</button></div>`;
+    return `<button class="slot ${tgt} ${over ? 'over' : ''}" data-a="clear" data-slot="${i}" title="${esc(s.name)}: tap to remove${over ? ' (over this mission\'s limit)' : ''}">${num}<span class="slot-x" aria-hidden="true">✕</span>
+      <canvas class="slot-port" data-cls="${s.classId}"></canvas>
+      <span class="slot-name">${esc(s.name)}</span><span class="slot-lv">${over ? 'OVER' : `LV ${s.progression?.level ?? 1}`}</span></button>`;
   }
 
   /** Which pipeline layers change a stat for this soldier (details table tag). */
@@ -1070,7 +1076,7 @@ export class Menus {
       case 'retry': g.reset(); return;
       case 'barracks': g.toBarracks(); return;
       case 'campaign': g.toCampaign(); return;
-      case 'to-barracks': this.showBarracks(); return;
+      case 'to-barracks': if (el.dataset.tab) { this.tab = el.dataset.tab as BarracksTab; this.detailsId = null; this.targetSlot = null; } this.showBarracks(); return;
       case 'to-campaign': this.showCampaign(); return;
       case 'reset-open': this.resetOpen = true; this.renderCampaign(); return;
       case 'reset-cancel': this.resetOpen = false; this.renderCampaign(); return;
@@ -1139,7 +1145,9 @@ export class Menus {
   }
 
   private deploy() {
-    if (this.screen === 'campaign' && this.campaignSel !== this.game.missionId) { this.notice('This mission is locked.'); return; }
+    // v0.6.1: deployment happens only from the Campaign screen (the mission briefing)
+    if (this.screen !== 'campaign') return;
+    if (this.campaignSel !== this.game.missionId) { this.notice('This mission is locked.'); return; }
     const res = this.game.deploySelected();
     if (!res.ok) this.notice(res.reason);
   }
@@ -1165,7 +1173,6 @@ export class Menus {
         else { this.showCampaign(); return; }
         this.renderBarracks();
       } else if (this.dismissId || this.renameId) { /* dialogs: buttons only (no Enter shortcut for a dismissal) */ }
-      else if (e.code === 'Enter' && !this.detailsId) { e.preventDefault(); this.deploy(); }
       else if (e.code === 'KeyC' && !this.detailsId) this.showCampaign();
     } else if (this.screen === 'campaign') {
       if (e.code === 'Enter' && !this.resetOpen) { e.preventDefault(); this.deploy(); }

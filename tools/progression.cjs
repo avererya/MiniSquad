@@ -227,7 +227,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.reload(); await page.waitForTimeout(200); // reload while on Results
     sv = await save();
     check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
-    check('UI: Campaign header shows credits + version "MiniSquad v0.6 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.6 · [0-9a-f]{7,}$|^MiniSquad v0\.6 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    check('UI: Campaign header shows credits + version "MiniSquad v0.6.1 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.6\.1 · [0-9a-f]{7,}$|^MiniSquad v0\.6\.1 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
     await page.click('[data-a="csel"][data-id="first-contact"]'); // the campaign moved on to M2: replay M1
     await page.click('[data-a="deploy"]');
     await page.evaluate(() => window.game.win());
@@ -270,9 +270,10 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     // squad change keeps upgrades (v0.4: reload lands on the Campaign screen; squad is Ace + Ranger)
     await page.click('[data-a="to-barracks"]');
     await page.click('[data-tab="roster"]');
-    await page.click('.slot[data-slot="1"] .slot-x');
+    await page.click('.b-slots .slot[data-slot="1"]');
     await page.click('.s-card[data-id="ranger"] .pick');
-    await page.click('[data-a="deploy"]');
+    await page.click('.b-go');
+    await page.click('.c-btns [data-a="deploy"]');
     const hasTank = await page.evaluate(() => window.game.soldiers.some((s) => s.identity.id === 'tank'));
     await page.evaluate(() => window.game.toBarracks());
     check('UI: squad change keeps Tank\'s training', !hasTank && (await page.evaluate(() => window.game.roster.get('tank').training.damage)) === 2);
@@ -324,10 +325,10 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       check(`${dev.name} ${tab}: no text under 11px, no clipped labels`, L.minFont >= 11 && L.clipped === 0, `min ${L.minFont}px ${L.smallest.join(' | ')}, clipped ${L.clipped}`);
     };
     // Mission 1 allows 2 soldiers: 2 slots shown
-    await tabCheck('Roster', '.s-card .pick, .slot, [data-a="deploy"]', 6 + 2 + 1);
+    await tabCheck('Roster', '.s-card .pick, .b-slots .slot, .b-go', 6 + 6 + 1);
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-roster.png` });
     await page.tap('[data-tab="training"]'); await page.waitForTimeout(100);
-    await tabCheck('Training', '.t-pick, .t-buy, [data-a="deploy"]', 6 + 5 + 1);
+    await tabCheck('Training', '.t-pick, .t-buy, .m-icon[data-a="settings"]', 6 + 5 + 1);
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-training.png` });
     await page.tap('.t-row[data-stat="hp"] .t-buy');
     const bought = await page.evaluate(() => [window.game.roster.get('ace').training.hp, window.__account().credits]);
@@ -335,20 +336,22 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     // rotate to portrait and back while on Training
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(400);
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
-    await tabCheck('Training after rotation', '.t-pick, .t-buy, [data-a="deploy"]', 6 + 5 + 1);
+    await tabCheck('Training after rotation', '.t-pick, .t-buy, .m-icon[data-a="settings"]', 6 + 5 + 1);
     await page.tap('[data-tab="squad"]'); await page.waitForTimeout(100);
-    await tabCheck('Squad Training', '.t-buy, [data-a="deploy"]', 4 + 1);
+    await tabCheck('Squad Training', '.t-buy, .m-icon[data-a="settings"]', 4 + 1);
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-squad-training.png` });
     await page.tap('[data-tab="roster"]'); await page.waitForTimeout(100);
     await page.tap('.s-card[data-id="ace"] .s-name');
     const D = await layout('.d-card, .d-btns .m-big');
     check(`${dev.name}: details panel fits with level/XP/training (+ Dismiss)`, D.n === 5 && D.boxes.every((b) => b.inside && b.aligned), '');
     await page.tap('.d-btns [data-a="close"]');
-    // deploy straight from the Training tab header (quick deploy)
+    // v0.6.1: no Deploy in the Barracks; back to the Campaign screen and deploy there
     await page.tap('[data-tab="training"]');
-    await page.tap('.m-deploy');
+    const noDeploy = (await page.$$('[data-a="deploy"]')).length === 0;
+    await page.tap('.m-nav.back'); await page.waitForTimeout(100);
+    await page.tap('.c-btns [data-a="deploy"]');
     const dep = await page.evaluate(() => window.game.phase);
-    check(`${dev.name}: Deploy straight from the Training tab`, dep === 'playing', dep);
+    check(`${dev.name}: no Deploy on Training; Campaign ◂ then Deploy starts the mission`, noDeploy && dep === 'playing', dep);
     await page.evaluate(() => { window.game.roster.get('ace').progression.xp = 740; window.game.win(); });
     // (the deployed copy is what was deployed; set the roster XP so the award crosses LV 4 -> 5)
     await page.waitForTimeout(150);
