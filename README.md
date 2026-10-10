@@ -148,10 +148,10 @@ Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps
   - When no soldier is in its line of sight, it closes in.
   - **Hidden damage modifiers**, never shown in game text: Infantry 75%, Heavy Gunner 65%, Medic 75%, grenades 100%, Sniper 160%. Players are meant to discover the Sniper weakness.
   - Defeat: "THE IRON WARDEN IS DOWN! — PROCEED TO EXTRACTION".
-- **Hostage formation** (Missions 5 and 7, `escortRing` in `src/squad.ts`): the captive walks at the squad anchor and the soldiers hold a ring around them. The ring is a single point ahead for 1 soldier, two flanks for 2, and evenly spaced for 3 or more. It is oriented along the movement, or toward the nearest visible threat when standing still. Slots are reassigned only when the squad changes. A slot blocked by a wall is pulled in to half the radius.
+- **Hostage formation** (Missions 5 and 7, `escortRing` in `src/squad.ts`): the captive walks at the squad anchor and the soldiers hold a ring around them. The ring is a single point ahead for 1 soldier, two flanks for 2, and evenly spaced for 3 or more. It is oriented along the movement, or toward the nearest visible threat when standing still. Slots are reassigned only when the squad changes. A slot blocked by a wall is pulled in to half the radius. Enemies aim at the captive only when no guarding soldier is in view, and rounds aimed at a soldier only hit the escorted captive inside a 5 px "head down" radius (`CFG.escort.strayHitRadius`). Rounds aimed at the captive use the full body, so the captive stays vulnerable.
 - **Save v7**: adds `account.classUnlocks` ({unlocked, notified}). Older saves (v1-v6) are copied once to `minisquad.save.pre-v0.6.2`, then upgraded in place. Everything is kept and the new chapter opens after Mission 5. Class unlocks are rebuilt from cleared milestones. A pre-v7 save has no Sniper class, so a "sniper" recruit or offer from a tampered save is repaired (recruit to Infantry, offer dropped) with a note. `tools/fixtures/v0.6.1-save.json` is a real v6 save produced by the v0.6.1 build and is used by `tools/chapter2.cjs`.
 - **Tests**:
-  - `tools/chapter2.cjs`: spec section 13, 93 checks.
+  - `tools/chapter2.cjs`: spec section 13, 94 checks.
   - `tools/chapter2-mobile.cjs`: iPhone SE, iPhone 14 and Pixel 7 landscape HUD and menus, rotation, and screenshots.
   - `tools/maps.cjs`: reachability on all 10 maps.
   - `tools/chapter2-sim.cjs`: spec section 14. These are automated simulations with a scripted player, **not** human playtests.
@@ -173,6 +173,8 @@ Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps
 ### Known issues (v0.6.2)
 
 - The automated sims finish missions faster than the spec's target durations (see the simulation results). A scripted bot that never hesitates is faster than people, so human timings are still needed before re-tuning.
+- Mission 5's optional (captive takes no damage) is still strict: one grazing hit fails it. In automated sims the scripted bot met it in a minority of runs (see the simulation results). Human skill (clearing pursuers before moving) should do better, but this is unverified.
+- A freshly recruited level 3 Sniper (75 HP) is the soldier most often downed on Mission 10 in the sims. A level-matched Sniper clearly helps (see the simulation results). Recommend humans test whether new Snipers need positioning help (for example, holding at the back of the formation) before any HP change.
 - `tools/logic.cjs`: the Ranger Quick Reflexes move-speed check is still intermittent. This is pre-existing and also fails on the v0.6.1 baseline.
 
 ## Planned cleanup (playtest notes, not changed in v0.6 / v0.6.1)
