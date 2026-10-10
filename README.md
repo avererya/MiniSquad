@@ -144,7 +144,7 @@ Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps
   - HP 2,400.
   - **MG**: 0.9 s windup with a visible telegraph and the HUD reading "MG WINDING UP", then a 2.2 s burst that turns slowly, then a 1.5 s rest. Once the windup has started it is committed.
   - **Rocket**: the first fires at 20 s, then every 24 ± 3 s. A red circle (radius 95) follows its target for 1.0 s, then locks for the remaining 1.5 s of the 2.5 s warning. The HUD and a banner read "ROCKET! MOVE!". 55 damage at the centre; cover between the blast and a soldier blocks it.
-  - **Reinforcements**: called at 65% HP (2 rifles, armored, sniper) and at 30% HP (3 rifles, armored, sniper) through three arena gates. The HUD boss bar has ticks at both thresholds.
+  - **Reinforcements**: called at 65% HP (2 rifles, armored, sniper) and at 30% HP (2 rifles, armored) through three arena gates. He stops the MG for about 3.5 s while he calls (a telegraphed rocket still lands). The HUD boss bar has ticks at both thresholds.
   - When no soldier is in its line of sight, it closes in.
   - **Hidden damage modifiers**, never shown in game text: Infantry 75%, Heavy Gunner 65%, Medic 75%, grenades 100%, Sniper 160%. Players are meant to discover the Sniper weakness.
   - Defeat: "THE IRON WARDEN IS DOWN! — PROCEED TO EXTRACTION".
