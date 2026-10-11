@@ -106,7 +106,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   await fresh();
   await page.click('[data-a="to-barracks"]');
   let sv = await save();
-  check('fresh save is v8 (v0.7A) with empty offers until the office is opened', sv.version === 8 && sv.account.recruitment.offers.length === 0 && sv.account.pendingDecision === null && sv.account.recruitment.rosterCap === 12, JSON.stringify(sv.account.recruitment).slice(0, 120));
+  check('fresh save is v9 (v0.7B) with empty offers until the office is opened', sv.version === 9 && sv.account.recruitment.offers.length === 0 && sv.account.pendingDecision === null && sv.account.recruitment.rosterCap === 12, JSON.stringify(sv.account.recruitment).slice(0, 120));
   check('Barracks shows Squad 2 / 2 and Roster 2 / 12', /SQUAD\s*2 \/ 2/.test(await page.textContent('.b-counts')) && /ROSTER\s*2 \/ 12/.test(await page.textContent('.b-counts')), await page.textContent('.b-counts'));
   await toRecruit();
   const o1 = await offers();
@@ -361,7 +361,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   // v0.6: the service record gained downs / revives / deaths (0: never tracked before); the v0.3 fields are compared
   const strip = (r) => r.map((s) => ({ id: s.id, name: s.name, classId: s.classId, traitId: s.traitId, xp: s.progression.xp, level: s.progression.level, training: s.training, service: { missions: s.service.missions, victories: s.service.victories, kills: s.service.kills } }));
-  check('v0.4 fixture -> v8: status migrated, no repair notes, pre-v0.5 backup = original text', mig.status === 'migrated' && mig.from === 3 && mig.notes.length === 0 && mig.backup === fx4 && mig.sv.version === 8, `${mig.status} ${mig.notes.join(';')}`);
+  check('v0.4 fixture -> v9: status migrated, no repair notes, pre-v0.5 backup = original text', mig.status === 'migrated' && mig.from === 3 && mig.notes.length === 0 && mig.backup === fx4 && mig.sv.version === 9, `${mig.status} ${mig.notes.join(';')}`);
   check('v0.4 migration keeps soldiers, XP, levels, training, traits, service records exactly', same(strip(mig.sv.roster), strip(src.roster)), '');
   check('v0.4 migration keeps credits, squad training, missions/stars, campaign, unlocks, squad', mig.sv.account.credits === src.account.credits && same(mig.sv.account.squadTraining, src.account.squadTraining) && same(mig.sv.account.missions, src.account.missions) && same(mig.sv.account.campaign, src.account.campaign) && same(mig.sv.unlockedSoldiers, src.unlockedSoldiers) && same(mig.sv.squad, src.squad) && same(mig.sv.account.settledRuns, src.account.settledRuns), `${mig.sv.account.credits} CR, ${mig.sv.unlockedSoldiers}`);
   check('v0.4 migration: no introduction owed for classes already recruitable; migration notice shown', same(mig.sv.account.recruitment.introduced, ['infantry', 'heavy', 'medic']) && /v0\.6/.test(mig.notice || ''), mig.notice);
@@ -385,7 +385,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
       check('legacy save: Mission 1 card still renders "Unlock Tank + Heavy Gunner recruitment" after Tank was dismissed', /Unlock Tank \+ Heavy Gunner recruitment/.test(camp), camp.slice(0, 200));
       r.n = 6; // counted before the dismissal
     }
-    check(`${f}: migrates to v8, all 6 originals kept (6/12), backups kept, no intro owed`, r.v === 8 && r.n === 6 && r.b5 && r.b4 && r.b6 && r.b61 && (r.st === 'migrated' || r.st === 'repaired') && r.intro === 'infantry,heavy,medic', JSON.stringify(r));
+    check(`${f}: migrates to v9, all 6 originals kept (6/12), backups kept, no intro owed`, r.v === 9 && r.n === 6 && r.b5 && r.b4 && r.b6 && r.b61 && (r.st === 'migrated' || r.st === 'repaired') && r.intro === 'infantry,heavy,medic', JSON.stringify(r));
   }
   // >12 roster from history: keep everyone, block recruiting
   const big = JSON.parse(fx4);

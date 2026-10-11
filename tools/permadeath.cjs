@@ -613,7 +613,7 @@ function installHelpers() {
   add(await run((fx) => {
     const out = [], check = (name, ok, detail) => out.push({ name, ok: !!ok, detail: String(detail) });
     const { g, a } = T, src = JSON.parse(fx), ls = window.__loadStatus;
-    check('v0.5 fixture: migrated from v4 to v8 (v0.7A save format)', ls.status === 'migrated' && ls.fromVersion === 4 && T.store().version === 8, `${ls.status} ${ls.fromVersion}`);
+    check('v0.5 fixture: migrated from v4 to v9 (v0.7B save format)', ls.status === 'migrated' && ls.fromVersion === 4 && T.store().version === 9, `${ls.status} ${ls.fromVersion}`);
     check('v0.5 fixture: exact pre-v0.6 backup written', localStorage.getItem('minisquad.save.pre-v0.6') === fx, '');
     const lost = [];
     for (const s of src.roster) {

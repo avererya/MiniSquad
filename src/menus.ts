@@ -29,7 +29,7 @@ import {
 } from './economy';
 import { MEMORIAL_ARM_MS, PHOENIX_RECRUITS, casualtyPosition, costFor, decisionBlock, pendingCasualties } from './casualties';
 import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignFlags, campaignProgress, priceOf, startingLevelFor } from './recruitment';
-import { CLASS_BRANCHES, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, eliteSpec, isElite, levelTag, promotionReady, specOf, type EliteSpecDef } from './elite';
+import { CLASS_BRANCHES, ELITE_LEVEL_CAP, ELITE_PROGRESSION, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, eliteBonusFrac, eliteProgress, eliteSpec, isElite, levelTag, promotionReady, specOf, type EliteSpecDef } from './elite';
 import { promote, promotionBlock } from './economy';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -383,7 +383,10 @@ export class Menus {
   }
 
     private xpBar(s: SoldierIdentity, cls = 'xp') {
-    if (isElite(s)) return `<span class="${cls} elite" title="Elite: XP is banked for Elite levels (coming soon)"><i style="width:100%"></i></span>`;
+    if (isElite(s)) {
+      const ep = eliteProgress(s.progression!.eliteXp);
+      return `<span class="${cls} elite${ep.max ? ' max' : ''}" title="${ep.max ? 'Elite MAX LEVEL' : `Elite XP ${ep.into}/${ep.need} to ELITE ${ep.level + 1}`}"><i style="width:${Math.round(ep.frac * 100)}%"></i></span>`;
+    }
     const lp = levelProgress(s.progression?.xp ?? 0);
     const title = lp.max ? 'Max level' : `XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`;
     return `<span class="${cls}" title="${title}"><i style="width:${Math.round(lp.frac * 100)}%"></i></span>`;
@@ -455,14 +458,14 @@ export class Menus {
     const over = i >= cap;
     return `<button class="slot ${tgt} ${over ? 'over' : ''}" data-a="clear" data-slot="${i}" title="${esc(s.name)}: tap to remove${over ? ' (over this mission\'s limit)' : ''}">${num}<span class="slot-x" aria-hidden="true">✕</span>
       <canvas class="slot-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
-      <span class="slot-name">${esc(s.name)}</span><span class="slot-lv${isElite(s) ? ' elite' : ''}">${over ? 'OVER' : isElite(s) ? `★ ${specOf(s)!.short}` : `LV ${s.progression?.level ?? 1}`}</span></button>`;
+      <span class="slot-name">${esc(s.name)}</span><span class="slot-lv${isElite(s) ? ' elite' : ''}">${over ? 'OVER' : isElite(s) ? `★${Math.max(1, s.progression!.eliteLevel)} ${specOf(s)!.short}` : `LV ${s.progression?.level ?? 1}`}</span></button>`;
   }
 
   /** Which pipeline layers change a stat for this soldier (details table tag). */
-  private sources(s: SoldierIdentity, key: 'hp' | 'damage' | 'fireRate' | 'spread' | 'moveSpeed' | 'reviveTime' | 'healMul' | 'range') {
+  private sources(s: SoldierIdentity, key: 'hp' | 'damage' | 'fireRate' | 'spread' | 'moveSpeed' | 'reviveTime' | 'healMul' | 'range' | 'aimTime') {
     const out: string[] = [];
     const lv = s.progression?.level ?? 1, acc = getAccount();
-    if (lv > 1 && (key === 'hp' || key === 'damage' || key === 'fireRate')) out.push(`LV ${lv}`);
+    if (lv > 1 && (key === 'hp' || key === 'damage' || key === 'fireRate')) out.push(isElite(s) ? `Recruit ${lv}` : `LV ${lv}`);
     const tKey = key === 'spread' ? 'accuracy' : key;
     if ((TRAINING_IDS as string[]).includes(tKey) && s.training[tKey as TrainingStat] > 0) out.push('Training');
     if (s.progression && (SQUAD_TRAINING_IDS as string[]).includes(tKey) && acc.squadTraining[tKey as SquadTrainingStat] > 0) out.push('Squad');
@@ -471,6 +474,9 @@ export class Menus {
     const mk = key === 'spread' ? 'spreadMul' : key === 'healMul' ? 'healMul' : `${key}Mul`;
     if (tm && tm[mk] !== undefined) out.push(t!.name);
     if (key === 'reviveTime' && specOf(s)?.id === 'med-surgeon') out.push('Miracle Worker');
+    // v0.7B Elite-level bonus
+    const sp = specOf(s), el = s.progression?.eliteLevel ?? 1;
+    if (sp && el > 1 && (key === 'hp' || key === 'damage' || `${mk}` in (ELITE_PROGRESSION.classAtCap[s.classId] ?? {}))) out.push(`ELITE ${el}`);
     return out.join(' + ');
   }
 
@@ -490,11 +496,12 @@ export class Menus {
       ['Revive time (as reviver)', base.reviveTime, eff.reviveTime, ' s', 'reviveTime'],
       ['Range', base.range, eff.range, ' px', 'range'],
     ];
+    if (s.classId === 'sniper') rows.push(['Aim time before shot', base.aimTime, eff.aimTime, ' s', 'aimTime']);
     if (s.classId === 'medic') {
       const h = CFG.fieldTreatment.healFrac * 100;
       rows.push(['Field Treatment heal', h, h * eff.healMul, '% max HP', 'healMul']);
     }
-    const lower = new Set(['Spread, standing', 'Spread, moving', 'Revive time (as reviver)']); // smaller is better
+    const lower = new Set(['Spread, standing', 'Spread, moving', 'Revive time (as reviver)', 'Aim time before shot']); // smaller is better
     const tr = rows.map(([label, b, e, u, key]) => {
       const changed = Math.abs(b - e) > 1e-9;
       const better = changed && (lower.has(label) ? e < b : e > b);
@@ -520,7 +527,7 @@ export class Menus {
             <button class="m-icon" data-a="close" title="Close (Esc)">✕</button>
           </div>
           ${sp ? this.eliteBoxHtml(s, sp) : !locked && promotionReady(s) ? this.promoHtml(s) : ''}
-          <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${sp ? `ELITE ${Math.max(1, p!.eliteLevel)} · Recruit LV ${lp.level} complete · Elite XP banked ${cr(p!.eliteXp)} (Elite levels coming soon)` : lp.max ? `LV ${lp.level} · MAX LEVEL` : `LV ${lp.level} · XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
+          <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${sp ? this.eliteXpText(s) : lp.max ? `LV ${lp.level} · MAX LEVEL` : `LV ${lp.level} · XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
           <table class="d-stats"><thead><tr><th>Stat</th><th>Class base</th><th>Effective</th></tr></thead><tbody>${tr}</tbody></table>
           ${!locked && !sel && full && this.targetSlot === null ? '<div class="d-full">Squad full for this mission: remove someone, or tap a squad slot first to replace its soldier.</div>' : ''}
           <div class="d-prog">Training: ${ranks}</div>
@@ -550,8 +557,29 @@ export class Menus {
               <div class="el-head"><b>ELITE · ${esc(sp.title.toUpperCase())}</b> <span class="el-perm">PERMANENT SPECIALIZATION</span></div>
               <div class="el-role">${esc(sp.role)} · Passive: <b>${esc(sp.passive)}</b></div>
               <div class="el-desc">${esc(sp.desc)}</div>
+              <div class="el-lvl">${this.eliteBonusText(s)}</div>
             </div>
           </div>`;
+  }
+
+  /** v0.7B: "ELITE 7 · Elite XP 120 / 870 to ELITE 8" or "ELITE 30 · MAX LEVEL". */
+  private eliteXpText(s: SoldierIdentity) {
+    const ep = eliteProgress(s.progression!.eliteXp), lv = Math.max(1, s.progression!.eliteLevel);
+    return ep.max || lv >= ELITE_LEVEL_CAP ? `ELITE ${lv} · <b class="el-max">MAX LEVEL</b> · Elite XP ${cr(s.progression!.eliteXp)}`
+      : `ELITE ${lv} · Elite XP ${cr(ep.into)} / ${cr(ep.need)} to ELITE ${lv + 1}`;
+  }
+
+  /** v0.7B: the Elite-level bonus this soldier has now (vs their own Elite Level 1). */
+  private eliteBonusText(s: SoldierIdentity) {
+    const lv = Math.max(1, s.progression!.eliteLevel), t = eliteBonusFrac(lv), A = ELITE_PROGRESSION.atCap;
+    if (t <= 0) return `Elite level bonus: none yet (grows each Elite level up to ELITE ${ELITE_LEVEL_CAP})`;
+    const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
+    const parts = [`+${pct(A.hp * t)} max HP`, `+${pct(A.damage * t)} damage`];
+    const x = ELITE_PROGRESSION.classAtCap[s.classId] ?? {};
+    if (x.spreadMul) parts.push(`-${pct((1 - x.spreadMul) * t)} spread`);
+    if (x.healMul) parts.push(`+${pct((x.healMul - 1) * t)} healing`);
+    if (x.aimTimeMul) parts.push(`-${pct((1 - x.aimTimeMul) * t)} aim time`);
+    return `Elite level bonus: <b>${parts.join(' · ')}</b>`;
   }
 
   /** "ELITE PROMOTION AVAILABLE": cost, both specializations of the class, permanent-choice notice. */
@@ -1178,11 +1206,15 @@ export class Menus {
       let prog = '<span class="dim">—</span>';
       if (x) {
         const rs = g.roster.get(x.id);
-        const lv = x.elite && rs ? `<b class="el-title">${levelTag(rs)}</b>` : x.levelsGained > 0 ? `<b class="up">LV ${x.before.level} → LV ${x.after.level}</b>` : `LV ${x.after.level}`;
-        prog = x.eligible ? `${lv} · <b>+${x.xp} XP</b>${x.elite ? ' <span class="dim">(banked)</span>' : x.capped ? ' <span class="dim">(MAX)</span>' : ''}` : `${lv} · <span class="dim">no XP</span>`;
+        const ea = x.eliteAfter, eb = x.eliteBefore;
+        const lv = x.elite && ea && eb ? (ea.level > eb.level ? `<b class="el-title up">ELITE ${eb.level} → ${ea.level}</b>` : `<b class="el-title">ELITE ${ea.level}</b>`)
+          : x.elite && rs ? `<b class="el-title">${levelTag(rs)}</b>` : x.levelsGained > 0 ? `<b class="up">LV ${x.before.level} → LV ${x.after.level}</b>` : `LV ${x.after.level}`;
+        const ep = x.elite && ea ? eliteProgress(ea.xp) : null;
+        const eTail = ep ? (ep.max ? ' <span class="dim">(MAX)</span>' : ` <span class="dim">${cr(ep.into)}/${cr(ep.need)}</span>`) : '';
+        prog = x.eligible ? `${lv} · <b>+${x.xp} XP</b>${x.elite ? eTail : x.capped ? ' <span class="dim">(MAX)</span>' : ''}` : `${lv} · <span class="dim">no XP</span>`;
       }
       return `
-      <tr class="st-${r.status.toLowerCase()} ${x && x.levelsGained > 0 ? 'lvup' : ''}">
+      <tr class="st-${r.status.toLowerCase()} ${x && (x.levelsGained > 0 || (x.eliteLevelsGained ?? 0) > 0) ? 'lvup' : ''}">
         <td class="r-name"><b>${esc(r.name)}</b><span>${(() => { const sp = specOf(g.roster.get(r.id)); return sp ? `<b class="el-title">★ ${esc(sp.title)}</b>` : CLASSES[r.classId].short; })()}${r.traitId ? ` · ${TRAITS[r.traitId].name}` : ''}</span></td>
         <td>${r.kills}</td><td>${Math.round(r.damage)}</td><td>${Math.round(r.healing)}</td><td>${r.revives}</td>
         <td class="r-status">${r.status}</td>
@@ -1190,7 +1222,11 @@ export class Menus {
       </tr>`;
     }).join('');
     const levelUps = rw?.soldiers.filter((x) => x.levelsGained > 0).map((x) =>
-      `<div class="r-lvl">▲ ${esc(x.name.toUpperCase())} — LV ${x.before.level} → LV ${x.after.level} — +${x.xp} XP${x.after.level >= PROMOTION_LEVEL ? ' — <b class="el-title">★ ELITE PROMOTION AVAILABLE</b> (Barracks profile)' : ''}</div>`).join('') ?? '';
+      `<div class="r-lvl">▲ ${esc(x.name.toUpperCase())} — LV ${x.before.level} → LV ${x.after.level} — +${x.xp} XP${x.after.level >= PROMOTION_LEVEL ? ' — <b class="el-title">★ ELITE PROMOTION AVAILABLE</b> (Barracks profile)' : ''}</div>`)
+      .concat(rw.soldiers.filter((x) => (x.eliteLevelsGained ?? 0) > 0).map((x) => {
+        const n = x.eliteLevelsGained!, to = x.eliteAfter!.level;
+        return `<div class="r-lvl elite">★ ELITE LEVEL UP! ${esc(x.name.toUpperCase())} — ELITE ${to}${n > 1 ? ` (+${n} levels)` : ''}${to >= ELITE_LEVEL_CAP ? ' — MAX LEVEL' : ''} — +${x.xp} XP</div>`;
+      })).join('') ?? '';
     const unlocks = rw ? [
       ...rw.unlockedRecruits.map((k) => { const s = g.roster.get(k) ?? defaultRoster().find((d) => d.id === k); return s ? `<div class="r-unl soldier">★ NEW RECRUIT AVAILABLE: <b>${esc(s.name.toUpperCase())}</b> (${CLASSES[s.classId].label}) · Recruitment Office</div>` : ''; }),
       ...(rw.unlockedClasses ?? []).map((c) => `<div class="r-unl soldier">★ NEW CLASS UNLOCKED: <b>${esc(CLASSES[c as SoldierClassId]?.label.toUpperCase() ?? c)}</b> · Recruitment Office</div>`),

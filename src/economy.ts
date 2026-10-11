@@ -23,7 +23,7 @@ import {
 } from './recruitment';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL, PHOENIX_RECRUITS, costFor, decisionBlock, pendingCasualties, phoenixEligible } from './casualties';
 import { SQUAD_SLOTS } from './roster';
-import { CLASS_BRANCHES, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, isElite, isSpecFor, type EliteSpecDef } from './elite';
+import { CLASS_BRANCHES, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, eliteLevelForXp, isElite, isSpecFor, type EliteSpecDef } from './elite';
 
 export type PersistFn = () => 'ok' | 'nostorage' | 'error';
 
@@ -75,9 +75,11 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
     const xp = eligible ? calc.xpEach : 0;
     const res = addXp(p.xp, xp);
     p.xp = res.xp; p.level = res.level;
-    // v0.7A: an Elite's Recruit XP is complete (level 25); mission XP is banked for the v0.7B Elite curve
+    // v0.7A: an Elite's Recruit XP is complete (level 25); v0.7B: mission XP goes to the Elite curve
+    // (cumulative eliteXp, level derived here once per mission: several levels at once work, the cap holds)
     const elite = isElite(s);
-    if (elite && xp > 0) p.eliteXp = Math.min(1e9, (p.eliteXp | 0) + xp);
+    const eliteBefore = elite ? { level: Math.max(1, p.eliteLevel), xp: p.eliteXp } : null;
+    if (elite && xp > 0) { p.eliteXp = Math.min(1e9, (p.eliteXp | 0) + xp); p.eliteLevel = Math.max(p.eliteLevel, eliteLevelForXp(p.eliteXp)); }
     s.service.missions++;
     if (o.won) s.service.victories++;
     s.service.kills += kills[d.id] ?? 0;
@@ -88,7 +90,8 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
       s.service.deaths++;
       fallen.push({ id: s.id, cause: d.cause ?? 'bleedout' });
     }
-    soldiers.push({ id: s.id, name: s.name, status: d.status, eligible, xp, gained: res.gained, before, after: { level: p.level, xp: p.xp }, levelsGained: p.level - before.level, capped: !elite && res.gained < xp, ...(elite ? { elite: true, banked: xp } : {}) });
+    soldiers.push({ id: s.id, name: s.name, status: d.status, eligible, xp, gained: res.gained, before, after: { level: p.level, xp: p.xp }, levelsGained: p.level - before.level, capped: !elite && res.gained < xp,
+      ...(eliteBefore ? { elite: true, banked: xp, eliteBefore, eliteAfter: { level: p.eliteLevel, xp: p.eliteXp }, eliteLevelsGained: p.eliteLevel - eliteBefore.level } : {}) });
   }
   account.credits += calc.credits;
   const unlockedSoldiers: string[] = [], unlockedMissions: string[] = [], unlockedRecruits: string[] = [], unlockedClasses: string[] = [];

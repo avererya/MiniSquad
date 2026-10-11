@@ -78,8 +78,9 @@ export function classStats(id: SoldierClassId): SoldierStats { return CFG[id]; }
  * `level` is derived from it (stored for convenience, re-validated on load).
  * v0.7A Elite promotion (elite.ts, economy.promote): tier 'elite' + elitePath (stable spec id,
  * mirrored in `specialization`) + eliteLevel 1. The Recruit XP / level 25 are kept untouched (the
- * stat pipeline keeps reading `level`), so a promotion can never lower a stat. `eliteXp` banks the
- * mission XP an Elite earns after the promotion for the v0.7B Elite curve (nothing levels from it yet).
+ * stat pipeline keeps reading `level`), so a promotion can never lower a stat. v0.7B: `eliteXp` is the
+ * cumulative mission XP earned since the promotion (source of truth) and `eliteLevel` is derived
+ * from it (elite.ts eliteLevelForXp), updated at mission settlement and re-validated on load.
  */
 export interface ProgressionRecord {
   level: number; // Recruit level 1..25 (an Elite stays 25)
@@ -88,8 +89,8 @@ export interface ProgressionRecord {
   specialization: string | null; // v0.7A: = elitePath for an Elite, null for a Recruit
   tier: 'recruit' | 'elite';
   elitePath: string | null; // v0.7A: EliteSpecId (one of the two branches of the soldier's class)
-  eliteLevel: number; // Elite L1..30 (0 = Recruit); always 1 in v0.7A
-  eliteXp: number; // v0.7A: XP earned since the promotion (banked for v0.7B; 0 for Recruits)
+  eliteLevel: number; // Elite L1..30 (0 = Recruit), derived from eliteXp (v0.7B)
+  eliteXp: number; // cumulative Elite XP since the promotion (0 for Recruits)
 }
 export const newProgression = (): ProgressionRecord => ({ level: 1, xp: 0, upgrades: [], specialization: null, tier: 'recruit', elitePath: null, eliteLevel: 0, eliteXp: 0 });
 
@@ -147,7 +148,7 @@ export function progressionInputs(id: Pick<SoldierIdentity, 'progression' | 'tra
 export function effectiveStats(id: Pick<SoldierIdentity, 'classId' | 'traitId' | 'mods' | 'progression' | 'training'>, inputs?: ProgressionInputs): EffectiveStats {
   const base = classStats(id.classId);
   const trait = id.traitId ? TRAITS[id.traitId].mods : null;
-  const m = combineModifiers(trait, id.mods, eliteModifiers(id)); // v0.7A: Combat Surgeon revive speed
+  const m = combineModifiers(trait, id.mods, eliteModifiers(id)); // v0.7A Combat Surgeon revive speed, v0.7B Elite-level bonus
   const out = applyModifiers(grownStats(base, inputs ?? progressionInputs(id)), m);
   // spread floor: upgrades can't push the standing cone below the floor (nor below what the
   // class + trait alone give, if a tuned base is already under the floor)

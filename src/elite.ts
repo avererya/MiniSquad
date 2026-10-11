@@ -11,8 +11,11 @@
 //  - Promotion keeps everything (id, name, class, trait, training, Recruit XP / level 25, career,
 //    resurrections) and adds tier 'elite', elitePath (stable spec id), eliteLevel 1, eliteXp 0.
 //    The stat pipeline keeps reading the Recruit level (25), so Elite Level 1 is never weaker than
-//    Recruit Level 25. Elite levels 2-30 and their XP curve are v0.7B: mission XP earned after the
-//    promotion is only banked (eliteXp), it does not level anything yet.
+//    Recruit Level 25.
+//  - v0.7B Elite levels 2-30: mission XP earned after the promotion accumulates in eliteXp
+//    (cumulative, the source of truth); eliteLevel is derived from it with the ELITE_PROGRESSION
+//    curve at mission settlement (never per frame). Each Elite level above 1 adds a small, linear
+//    share of the Level-30 bonuses (see ELITE LEVEL BONUSES below).
 //
 // PASSIVES (numbers in CFG.elite, live-tunable). Each is automatic and has no button. Counters and
 // charges live on the mission Unit (EliteState), so they reset at every mission start and Retry.
@@ -105,8 +108,72 @@ export const isSpecFor = (id: unknown, classId: SoldierClassId) => !!eliteSpec(i
 export const PROMOTION_COST = 3000;
 /** Recruit level that opens the promotion (the Recruit level cap). */
 export const PROMOTION_LEVEL = 25;
-/** Data-model ceiling for Elite levels (v0.7B fills in 2-30). */
+/** Elite level cap (permanent). */
 export const ELITE_LEVEL_CAP = 30;
+
+// ---------------- v0.7B Elite levels ----------------
+// ELITE XP CURVE: XP to advance from Elite Level L to L+1 = base + step x (L - 1), i.e. 600, 645,
+// 690 ... 1,860 (L29 -> L30). Total from Elite 1 to Elite 30: 35,670 XP. eliteXp is cumulative
+// since the promotion; XP earned at the cap is still recorded but grants nothing.
+//
+// ELITE LEVEL BONUSES: measured against the soldier's OWN Elite Level 1 stats (= their Recruit
+// Level 25 stats with training, squad training and trait), growing linearly from +0 at Elite 1 to
+// the `atCap` values at Elite 30. They enter the stat pipeline as ONE multiplier per stat (the
+// eliteModifiers set, next to the trait), so they never compound per level and Elite Level 1 is
+// exactly the v0.7A soldier. Fire rate and move speed are deliberately not touched. Per-shot
+// passive multipliers (Rally / Deadeye / Perfect Aim, cap x2) and incoming damage reduction (cap
+// 40%) are separate layers and keep their caps unchanged.
+export const ELITE_PROGRESSION = {
+  xp: { base: 600, step: 45 },
+  /** Elite 30 vs Elite 1, every class. */
+  atCap: { hp: 0.25, damage: 0.15 },
+  /** Class-appropriate extra at Elite 30 (multiplier reached at the cap; linear in between). */
+  classAtCap: {
+    infantry: { spreadMul: 0.9 }, // -10% weapon spread
+    heavy: { spreadMul: 0.9 }, // -10% weapon spread (tighter bursts)
+    medic: { healMul: 1.1 }, // +10% Field Treatment healing
+    sniper: { aimTimeMul: 0.9 }, // -10% held-aim time before each shot
+  } as Record<SoldierClassId, StatModifiers>,
+};
+
+/** XP needed to go from Elite `level` to `level + 1` (0 at the cap). */
+export function eliteXpToNext(level: number): number {
+  const X = ELITE_PROGRESSION.xp;
+  return level >= ELITE_LEVEL_CAP ? 0 : X.base + X.step * (Math.max(1, level) - 1);
+}
+/** Cumulative Elite XP needed to REACH Elite `level` (Elite 1 = 0). */
+export function eliteXpForLevel(level: number): number {
+  let t = 0;
+  for (let l = 1; l < Math.min(level, ELITE_LEVEL_CAP); l++) t += eliteXpToNext(l);
+  return t;
+}
+export const ELITE_MAX_XP = (): number => eliteXpForLevel(ELITE_LEVEL_CAP);
+/** Elite level for a cumulative Elite XP amount (1..cap; anything invalid counts as 0 XP). */
+export function eliteLevelForXp(xp: number): number {
+  const x = Number.isFinite(xp) ? xp : 0;
+  let l = 1;
+  while (l < ELITE_LEVEL_CAP && x >= eliteXpForLevel(l + 1)) l++;
+  return l;
+}
+/** Progress inside the current Elite level, for the XP bar. */
+export function eliteProgress(xp: number) {
+  const level = eliteLevelForXp(xp);
+  if (level >= ELITE_LEVEL_CAP) return { level, into: 0, need: 0, frac: 1, max: true };
+  const into = xp - eliteXpForLevel(level), need = eliteXpToNext(level);
+  return { level, into, need, frac: into / need, max: false };
+}
+/** Share of the Level-30 bonuses an Elite level gives: 0 at Elite 1, 1 at Elite 30. */
+export const eliteBonusFrac = (level: number) => Math.max(0, Math.min(ELITE_LEVEL_CAP, Math.floor(level)) - 1) / (ELITE_LEVEL_CAP - 1);
+/** The Elite-level bonus as stat multipliers (null at Elite 1: exactly the v0.7A soldier). */
+export function eliteLevelModifiers(classId: SoldierClassId, level: number): StatModifiers | null {
+  const t = eliteBonusFrac(level);
+  if (t <= 0) return null;
+  const A = ELITE_PROGRESSION.atCap;
+  const out: StatModifiers = { hpMul: 1 + A.hp * t, damageMul: 1 + A.damage * t };
+  const extra = ELITE_PROGRESSION.classAtCap[classId] ?? {};
+  for (const [k, v] of Object.entries(extra) as [keyof StatModifiers, number][]) out[k] = 1 + (v - 1) * t;
+  return out;
+}
 
 type Promotable = Pick<SoldierIdentity, 'progression' | 'status' | 'classId'>;
 export const isElite = (s: Pick<SoldierIdentity, 'progression'> | null | undefined) => s?.progression?.tier === 'elite' && !!eliteSpec(s.progression.elitePath);
@@ -114,18 +181,24 @@ export const specOf = (s: Pick<SoldierIdentity, 'progression'> | null | undefine
 /** Recruit at the promotion level (ignores Credits and other blocks: the profile shows the offer). */
 export const promotionReady = (s: Promotable) => !!s.progression && s.progression.tier !== 'elite' && s.progression.level >= PROMOTION_LEVEL && s.status === 'active';
 
-/** Level shown to the player: "ELITE 1" / "LV 12". Never "LV 1" for a promoted soldier. */
+/** Level shown to the player: "ELITE 12" / "LV 12". Never "LV n" for a promoted soldier. */
 export function levelTag(s: Pick<SoldierIdentity, 'progression'>): string {
   const p = s.progression;
   if (isElite(s)) return `ELITE ${Math.max(1, p!.eliteLevel)}`;
   return `LV ${p?.level ?? 1}`;
 }
 
-/** Static stat modifiers a specialization adds to the effective-stat pipeline (classes.ts). */
-export function eliteModifiers(s: Pick<SoldierIdentity, 'progression'>): StatModifiers | null {
+/**
+ * Static stat modifiers an Elite adds to the effective-stat pipeline (classes.ts): the
+ * specialization's (Combat Surgeon revive speed) and, v0.7B, the Elite-level bonus. Both are plain
+ * multipliers combined once with the trait; null for Recruits.
+ */
+export function eliteModifiers(s: Pick<SoldierIdentity, 'progression' | 'classId'>): StatModifiers | null {
   const sp = specOf(s);
-  if (sp?.id === 'med-surgeon') return { reviveTimeMul: 1 / CFG.elite.miracleReviveSpeed };
-  return null;
+  if (!sp) return null;
+  const lv = eliteLevelModifiers(sp.classId, s.progression!.eliteLevel);
+  if (sp.id === 'med-surgeon') return { ...lv, reviveTimeMul: 1 / CFG.elite.miracleReviveSpeed };
+  return lv;
 }
 
 // ---------------- combat passives (runtime) ----------------

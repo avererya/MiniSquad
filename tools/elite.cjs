@@ -2,6 +2,7 @@
 //
 //   npx vite preview --port 4173 &  node tools/elite.cjs        (OUT=dir saves screenshots)
 //
+// (v0.7B: save expectations moved to v9; Elite levels 2-30 are covered by tools/elite-progression.cjs.)
 //  A. Data: eight specializations, two per class, stable ids, cost 3,000 CR at Recruit Level 25
 //  B. Promotion rules (economy): level 24 / 25, Credits, wrong branch, atomic, no double promotion,
 //     no respec, failed save rolls everything back, blocked while KIA / in a mission / a decision is
@@ -166,7 +167,7 @@ function installHelpers() {
   const sv1 = await ev(() => { const s = T.store(); return { v: s.version, tier: s.roster.find((x) => x.id === 'ace').progression.tier, led: s.account.promotions.length, cr: s.account.credits }; });
   await page.reload(); await page.waitForFunction(() => !!window.game);
   const sv2 = await ev(() => ({ st: window.__loadStatus.status, notes: window.__loadStatus.notes, cr: T.a.credits, p: T.R.get('ace').progression, led: T.a.promotions.length, tag: T.EL.levelTag(T.R.get('ace')) }));
-  check('C1 promotion saved at once (v8): reload keeps the Elite, the ledger, and the Credits spent', sv1.v === 8 && sv1.tier === 'elite' && sv2.st === 'loaded' && sv2.notes.length === 0 && sv2.p.tier === 'elite' && sv2.p.elitePath === 'inf-trooper' && sv2.p.eliteLevel === 1 && sv2.led === 1 && sv2.cr === sv1.cr && sv2.tag === 'ELITE 1', JSON.stringify({ sv1, st: sv2.st, cr: sv2.cr }));
+  check('C1 promotion saved at once (v9 since v0.7B): reload keeps the Elite, the ledger, and the Credits spent', sv1.v === 9 && sv1.tier === 'elite' && sv2.st === 'loaded' && sv2.notes.length === 0 && sv2.p.tier === 'elite' && sv2.p.elitePath === 'inf-trooper' && sv2.p.eliteLevel === 1 && sv2.led === 1 && sv2.cr === sv1.cr && sv2.tag === 'ELITE 1', JSON.stringify({ sv1, st: sv2.st, cr: sv2.cr }));
   const tamper = await ev(() => {
     const base = localStorage.getItem('minisquad.save'), parse = window.__parseSave, out = {};
     const mod = (f) => { const d = JSON.parse(base); f(d); return parse(JSON.stringify(d)); };
@@ -198,7 +199,7 @@ function installHelpers() {
   });
   check('C2 ledger restores a stripped Elite rank (repaired, not lost)', tamper.restored.st === 'repaired' && tamper.restored.tier === 'elite' && tamper.restored.path === 'inf-trooper' && tamper.restored.el === 1, JSON.stringify(tamper.restored));
   check('C3 specialization edited in the save: the paid one is restored (no respec via save)', tamper.respec.path === 'inf-trooper', JSON.stringify(tamper.respec));
-  check('C4 Elite level outside 1..30 reset to 1 (a valid 7 kept, for v0.7B); Elite below Recruit LV 25 raised to 25', tamper.clamp.el === 1 && tamper.clamp.valid === 7 && tamper.clamp.validSt === 'loaded' && tamper.clamp.lv === 25 && tamper.clamp.st === 'repaired', JSON.stringify(tamper.clamp));
+  check('C4 Elite level outside 1..30 reset to 1 (v0.7B: a valid 7 kept, Elite XP raised to it); Elite below Recruit LV 25 raised to 25', tamper.clamp.el === 1 && tamper.clamp.valid === 7 && tamper.clamp.validSt === 'repaired' && tamper.clamp.lv === 25 && tamper.clamp.st === 'repaired', JSON.stringify(tamper.clamp));
   check('C5 stray Elite data on a Recruit cleared', tamper.stray.tier === 'recruit' && tamper.stray.path === null && tamper.stray.el === 0, JSON.stringify(tamper.stray));
   check('C6 Elite with a specialization from another class and no ledger: back to Recruit', tamper.invalid.tier === 'recruit' && tamper.invalid.path === null, JSON.stringify(tamper.invalid));
   check('C7 pre-v0.7A save with Elite data: cleared (no free promotion)', tamper.v7.from === 7 && tamper.v7.tier === 'recruit', JSON.stringify(tamper.v7));
@@ -210,8 +211,8 @@ function installHelpers() {
     const m = await ev(() => { const s = T.store(); return { st: window.__loadStatus.status, from: window.__loadStatus.fromVersion, notes: window.__loadStatus.notes, v: s.version, bk: localStorage.getItem('minisquad.save.pre-v0.7'), elites: s.roster.filter((x) => x.progression.tier === 'elite').length, led: s.account.promotions.length }; });
     const src = JSON.parse(fx7);
     const same = await ev((src) => src.roster.every((s) => { const n = T.R.get(s.id); const { eliteXp, ...np } = n.progression; return n && n.name === s.name && JSON.stringify(np) === JSON.stringify(s.progression) && eliteXp === 0 && JSON.stringify(n.training) === JSON.stringify(s.training); }) && T.a.credits === src.account.credits, src);
-    check('C9 genuine v0.6.4 (v7) save -> v8: migrated, no notes, backup pre-v0.7 = original, nobody Elite', m.st === 'migrated' && m.from === 7 && m.notes.length === 0 && m.v === 8 && m.bk === fx7 && m.elites === 0 && m.led === 0, JSON.stringify({ ...m, bk: !!m.bk }));
-    check('C10 v7 -> v8: soldiers, XP, training and Credits identical', same);
+    check('C9 genuine v0.6.4 (v7) save -> v9: migrated, no notes, backup pre-v0.7 = original, nobody Elite', m.st === 'migrated' && m.from === 7 && m.notes.length === 0 && m.v === 9 && m.bk === fx7 && m.elites === 0 && m.led === 0, JSON.stringify({ ...m, bk: !!m.bk }));
+    check('C10 v7 -> v9: soldiers, XP, training and Credits identical', same);
   } else check('C9 v0.6.4 fixture present (tools/fixtures/v0.6.4-save.json)', false);
 
   // ================= D. PASSIVES (real simulation) =================
@@ -484,7 +485,7 @@ function installHelpers() {
   check('E2 Elite resurrection costs twice a Recruit\'s', pd.cost === pd.recCost * 2, `${pd.cost} vs ${pd.recCost}`);
   check('E3 resurrected Elite keeps the specialization and Elite Level 1', pd.res && pd.cr === 0 && pd.after.st === 'active' && pd.after.tier === 'elite' && pd.after.path === 'inf-trooper' && pd.after.tag === 'ELITE 1', JSON.stringify(pd.after));
   check('E4 Memorial keeps the Elite identity (specialization, ELITE 1)', pd.mem && pd.mem.tier === 'elite' && pd.mem.path === 'inf-trooper' && pd.memTag === 'ELITE 1', JSON.stringify(pd.mem));
-  check('E5 mission XP after promotion: banked as Elite XP, Recruit XP / level unchanged, Elite level stays 1', pd.won === 'won' && pd.xp.recruit === 0 && pd.xp.elite > 0 && pd.xp.lv === 25 && pd.xp.el === 1, JSON.stringify(pd.xp));
+  check('E5 mission XP after promotion: goes to Elite XP, Recruit XP / level unchanged (one mission < 600 XP: still Elite 1)', pd.won === 'won' && pd.xp.recruit === 0 && pd.xp.elite > 0 && pd.xp.lv === 25 && pd.xp.el === 1, JSON.stringify(pd.xp));
 
   // ================= F. FULL ELITE SQUADS, 30 / 60 FPS =================
   {

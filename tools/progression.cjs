@@ -295,7 +295,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const notice = await page.textContent('.m-notice').catch(() => '');
     await page.click('[data-a="to-barracks"]');
     const m = await page.evaluate(() => ({ status: window.__loadStatus.status, slots: window.game.roster.slots.join(), saved: JSON.parse(localStorage.getItem('minisquad.save')), notice: document.querySelector('.m-notice').textContent, cards: document.querySelectorAll('.s-card').length }));
-    check('UI: v0.2.2 save migrated in place on load (squad kept, v8 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 8 && m.saved.account.named.claimed.length === 4 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
+    check('UI: v0.2.2 save migrated in place on load (squad kept, v9 written, notice on Campaign)', onCampaign && m.status === 'migrated' && m.slots === 'patch,havoc,ranger,,,' && m.saved.version === 9 && m.saved.account.named.claimed.length === 4 && m.saved.squad.filter(Boolean).join() === 'patch,havoc,ranger' && m.saved.unlockedSoldiers.length === 6 && m.cards === 6 && /kept/.test(notice), `${m.status} ${m.slots} "${notice}"`);
     const backup = await page.evaluate(() => localStorage.getItem('minisquad.save.pre-v0.4'));
     check('UI: the original v0.2.2 save text is kept once as a pre-v0.4 backup', backup === V022raw, `backup ${backup ? backup.length : 0} chars`);
     check('B: no page errors', errors.length === 0, errors.join(' | '));

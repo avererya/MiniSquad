@@ -839,3 +839,13 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 @media (orientation: portrait) {
   .pr-opts { grid-template-columns: 1fr; }
 }
+
+/* ---------- v0.7B Elite Progression ---------- */
+.el-lvl { color: #cfe0f5; font-size: max(10px, 0.92em); }
+.el-lvl b { color: #9fd0ff; }
+.el-max { color: #ffd25a; letter-spacing: 0.04em; }
+.r-lvl.elite { background: rgba(61,140,255,0.16); border-color: #3d8cff; color: #9fd0ff; }
+.r-xp b.el-title.up { color: #9fd0ff; text-shadow: 0 0 0.5em rgba(61,140,255,0.6); }
+.xp.elite.max i { background: linear-gradient(90deg, #3d8cff, #ffd25a); }
+/* squad slot "★30 RCN": one line on the smallest phones */
+.b-slots .slot-lv.elite { white-space: nowrap; font-size: max(10px, 0.64em); letter-spacing: -0.01em; max-width: 100%; overflow: hidden; }

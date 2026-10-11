@@ -337,10 +337,14 @@ export interface SoldierReward {
   after: { level: number; xp: number };
   levelsGained: number;
   capped: boolean;
-  /** v0.7A: an Elite (XP is banked as eliteXp for v0.7B instead of Recruit levels). */
+  /** v0.7A: an Elite (mission XP goes to eliteXp instead of Recruit levels). */
   elite?: boolean;
-  /** v0.7A: Elite XP banked by this mission (= xp for an eligible Elite). */
+  /** Elite XP added by this mission (= xp for an eligible Elite). */
   banked?: number;
+  /** v0.7B: Elite level / cumulative Elite XP before and after this mission. */
+  eliteBefore?: { level: number; xp: number };
+  eliteAfter?: { level: number; xp: number };
+  eliteLevelsGained?: number;
 }
 export interface MissionReward {
   runId: string;

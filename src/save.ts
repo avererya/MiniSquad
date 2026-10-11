@@ -62,6 +62,15 @@
 // The ledger is the receipt: a soldier with a ledger entry is an Elite of THAT specialization (a lost
 // or altered tier / path is restored from it, so a reload can't switch or re-sell a promotion); an
 // Elite without a readable specialization and no ledger entry goes back to Recruit (promotable again).
+//
+// v9 (v0.7B, Elite Progression) gives eliteLevel its range 1..30, derived from the cumulative eliteXp
+// (elite.ts ELITE_PROGRESSION). No new field. MIGRATION from v8: every point of banked eliteXp is
+// kept and converts to the Elite level it now buys (a v8 eliteLevel was always 1, so it is simply
+// re-derived; nothing is reset or clamped). Validation (v9): eliteLevel = the level eliteXp gives;
+// a stored level ABOVE that (a tampered save, or a later curve retune) keeps the level and raises
+// eliteXp to its threshold, so a load never takes an earned Elite level away. Promotion, ledger and
+// everything else are validated exactly as in v8. The raw pre-v9 save is copied once to
+// SAVE_PRE_V07B_KEY.
 // Formats are never reset just because they are old. Each field is repaired on its own (bad
 // XP -> derived from level, bad ranks -> clamped, negative credits -> 0, unknown mission ids
 // in the campaign lists dropped) instead of throwing a soldier away.
@@ -77,7 +86,7 @@ import { type CandidateRecord, type DismissalRecord, type RecruitmentState, ROST
 import { RECRUIT_ID, campaignFlags, generateCandidate, generateName, isTraitValidFor, nameKey, recruitClass, recruitableClasses, takenNames } from './recruitment';
 import { newClassUnlocks, newNamedRecruits, newPhoenix, type NamedRecruitState, type ActiveRun, type CasualtyDecision, type FallenEntry, type KiaCause, type MemorialRecord, type PhoenixState } from './progression';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL } from './casualties';
-import { ELITE_LEVEL_CAP, PROMOTION_LEVEL, isSpecFor } from './elite';
+import { ELITE_LEVEL_CAP, PROMOTION_LEVEL, eliteLevelForXp, eliteXpForLevel, isSpecFor } from './elite';
 import type { PromotionRecord } from './progression';
 
 export const SAVE_KEY = 'minisquad.save';
@@ -94,10 +103,12 @@ export const SAVE_PRE_V061_KEY = 'minisquad.save.pre-v0.6.1';
 export const SAVE_PRE_V062_KEY = 'minisquad.save.pre-v0.6.2';
 /** One-time copy of any pre-v8 save (v1-v7), taken before it is upgraded to v8 (v0.7A). */
 export const SAVE_PRE_V07_KEY = 'minisquad.save.pre-v0.7';
-export const SAVE_VERSION = 8;
+/** One-time copy of any pre-v9 save (v1-v8), taken before it is upgraded to v9 (v0.7B). */
+export const SAVE_PRE_V07B_KEY = 'minisquad.save.pre-v0.7b';
+export const SAVE_VERSION = 9;
 
 export interface SaveFileV7 {
-  version: 8;
+  version: 9;
   roster: SoldierIdentity[];
   squad: (string | null)[];
   /** Named soldiers the player has owned (bought, or awarded before v0.6.1; kept after a dismissal). */
@@ -152,6 +163,8 @@ function cleanProgression(v: unknown, notes: string[], who: string): Progression
 
 /** v0.7A: set by parseSave: the save predates Elite promotions (v1-v7): nobody can be Elite. */
 let preElite = false;
+/** v0.7B: set by parseSave: the save's eliteLevel is meaningful (v9+); older (v8) levels are re-derived from eliteXp. */
+let eliteLevelsStored = false;
 /** v0.7A: set by parseSave: the promotion ledger by soldier id (latest entry wins). */
 let ledger = new Map<string, PromotionRecord>();
 
@@ -184,6 +197,13 @@ function cleanElite(s: SoldierIdentity, notes: string[], quiet = false) {
   p.specialization = p.elitePath;
   if (p.level < PROMOTION_LEVEL) { note(`${who}: Elite below Recruit Level ${PROMOTION_LEVEL}: XP raised to it.`); p.xp = xpForLevel(PROMOTION_LEVEL); p.level = levelForXp(p.xp); }
   if (p.eliteLevel < 1 || p.eliteLevel > ELITE_LEVEL_CAP) { if (p.eliteLevel !== 0) note(`${who}: Elite level ${p.eliteLevel} corrected.`); p.eliteLevel = Math.max(1, Math.min(ELITE_LEVEL_CAP, p.eliteLevel)); }
+  // v0.7B: the level follows the cumulative Elite XP (see the v9 notes above)
+  const derived = eliteLevelForXp(p.eliteXp);
+  if (eliteLevelsStored && p.eliteLevel > derived) { note(`${who}: Elite XP below Elite level ${p.eliteLevel}, raised to its threshold.`); p.eliteXp = eliteXpForLevel(p.eliteLevel); }
+  else {
+    if (eliteLevelsStored && p.eliteLevel !== derived) note(`${who}: Elite level ${p.eliteLevel} corrected to ${derived} (from Elite XP).`);
+    p.eliteLevel = derived;
+  }
 }
 
 function cleanPromotions(v: unknown, notes: string[]): PromotionRecord[] {
@@ -480,15 +500,16 @@ export function parseSave(raw: string | null): LoadResult {
   }
   const version = typeof data.version === 'number' ? data.version : null;
   preSniper = version !== null && version < 7;
-  const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === 6 || version === 7 || version === 8;
+  const known = version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === 6 || version === 7 || version === 8 || version === 9;
   const legacy = version === 1 || version === 2;
-  const preRecruit = version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8; // v1-v3 (and unknown): no recruitment state yet
-  const v5 = version === 5 || version === 6 || version === 7 || version === 8; // permanent-death state (only a v5+ save can hold a fallen soldier)
-  const v6 = version === 6 || version === 7 || version === 8; // v0.6.1 named recruit offers: owned named soldiers are never re-derived from missions
-  const v7 = version === 7 || version === 8; // v0.6.2 class unlocks (Sniper)
-  const v8 = version === 8; // v0.7A Elite promotions
+  const preRecruit = version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9; // v1-v3 (and unknown): no recruitment state yet
+  const v5 = version === 5 || version === 6 || version === 7 || version === 8 || version === 9; // permanent-death state (only a v5+ save can hold a fallen soldier)
+  const v6 = version === 6 || version === 7 || version === 8 || version === 9; // v0.6.1 named recruit offers: owned named soldiers are never re-derived from missions
+  const v7 = version === 7 || version === 8 || version === 9; // v0.6.2 class unlocks (Sniper)
+  const v8 = version === 8 || version === 9; // v0.7A Elite promotions
   // v0.7A: older saves can't hold an Elite (no free promotion); a v8 ledger backs every promotion
   preElite = !v8;
+  eliteLevelsStored = version === 9; // v0.7B: v8 Elite levels (always 1) are re-derived from the banked XP
   const rawAccount0 = version === 1 ? undefined : data.account;
   const promotions = v8 && isObj(rawAccount0) ? cleanPromotions(rawAccount0.promotions, notes) : [];
   if (v8 && isObj(rawAccount0) && rawAccount0.promotions === undefined) notes.push('Promotion records missing: starts empty (Elite soldiers keep their rank).');
@@ -700,7 +721,7 @@ export function loadSave(): LoadResult {
   try { raw = ls ? ls.getItem(SAVE_KEY) : null; } catch { raw = null; }
   const res = parseSave(raw);
   const v = res.fromVersion;
-  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6 && v !== 7 && v !== SAVE_VERSION)
+  const backup = res.status === 'reset' || (v !== null && v !== 1 && v !== 2 && v !== 3 && v !== 4 && v !== 5 && v !== 6 && v !== 7 && v !== 8 && v !== SAVE_VERSION)
     || (res.status === 'repaired' && v === null);
   if (backup && ls && raw !== null) { try { ls.setItem(SAVE_BACKUP_KEY, raw); } catch { /* full */ } }
   // never lose a legacy roster: keep the original v1/v2 text once, before the upgrade
@@ -715,6 +736,8 @@ export function loadSave(): LoadResult {
   if (v !== null && v >= 1 && v <= 6 && Number.isInteger(v) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V062_KEY) === null) ls.setItem(SAVE_PRE_V062_KEY, raw); } catch { /* full */ } }
   // v0.7A: keep the pre-v8 text once (v1-v7), before the v8 write
   if (v !== null && v >= 1 && v <= 7 && Number.isInteger(v) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V07_KEY) === null) ls.setItem(SAVE_PRE_V07_KEY, raw); } catch { /* full */ } }
+  // v0.7B: keep the pre-v9 text once (v1-v8), before the v9 write
+  if (v !== null && v >= 1 && v <= 8 && Number.isInteger(v) && ls && raw !== null) { try { if (ls.getItem(SAVE_PRE_V07B_KEY) === null) ls.setItem(SAVE_PRE_V07B_KEY, raw); } catch { /* full */ } }
   if (res.notes.length) console.warn('[MiniSquad save]', res.notes.join(' '));
   writeSave(res.roster, res.account);
   return res;

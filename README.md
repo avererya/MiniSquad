@@ -6,7 +6,9 @@ This repository holds **Combat Prototype v0.1**, a disposable web feel prototype
 
 ## Status
 
-`v0.7A` (Elite Promotions & Specializations, on top of v0.6.4's 30 FPS phone default and v0.6.2 Chapter 2: Behind Enemy Lines; the original build is tagged `prototype-v0.1`). The visible label reads "MiniSquad v0.7A · <commit>" (package version 0.7.0, label from `versionLabel` in `package.json`).
+`v0.7B` (Elite Progression, Elite Levels 2-30, on top of v0.7A Elite Promotions & Specializations, v0.6.4's 30 FPS phone default and v0.6.2 Chapter 2: Behind Enemy Lines; the original build is tagged `prototype-v0.1`). The visible label reads "MiniSquad v0.7B · <commit>" (package version 0.7.1, label from `versionLabel` in `package.json`).
+
+- v0.7B: **Elite Progression.** Elite soldiers now level from **ELITE 1 to ELITE 30** with the mission XP they earn (35,670 XP in total; XP banked in v0.7A counts). Each Elite level adds a small share of the Elite 30 bonus: **+25% max HP, +15% weapon damage** and a modest class extra (Infantry / Heavy -10% spread, Medic +10% Field Treatment healing, Sniper -10% aim time), on top of the soldier's own Elite 1 stats. Results announce **★ ELITE LEVEL UP!**; profiles show Elite XP, the next-level requirement (or MAX LEVEL) and the current bonus; squad slots show ★level. Save v9 (backup `minisquad.save.pre-v0.7b`). See [Elite Progression](#elite-progression-v07b).
 
 - v0.7A: **Elite Promotions.** A living soldier at Recruit Level 25 can be promoted in their Barracks profile for **3,000 CR** into one of two specializations of their class, each with an automatic combat passive. Promotion is permanent (one per soldier, no respec, never automatic), keeps everything the soldier had, and makes them **Elite Level 1** with a black-and-blue uniform. Save v8 (backup `minisquad.save.pre-v0.7`). See [Elite Promotions](#elite-promotions-v07a).
 
@@ -190,7 +192,7 @@ Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps
 - CHOOSE opens a confirmation (name, class, trait, specialization, passive, cost, Credits after, a permanent warning). CONFIRM arms after 0.7 s; CANCEL changes nothing. Confirming is one atomic transaction: Credits deducted, tier `elite`, `elitePath` = the stable spec id, Elite Level 1, a ledger entry in `account.promotions`, saved at once. A failed save write rolls everything back. A double tap, a stale button or a reload can't promote twice; nothing can change the specialization afterwards.
 - A ceremony (portrait in the new uniform, name, title, specialization, passive) follows; it doesn't block anything else and closes with CONTINUE / tap outside / Esc.
 - The soldier keeps id, name, class, trait, training, career, resurrections and Recruit XP (level 25). **Stats are those of Recruit Level 25 plus the passive**, so Elite Level 1 is never weaker. Everywhere a level is shown it reads **ELITE 1** (never "LV 1").
-- Mission XP earned after the promotion is **banked** as Elite XP (`progression.eliteXp`, shown on Results as "+150 XP (banked)"). Elite levels 2-30 exist in the data model (`eliteLevel` 1..30) but have no XP curve yet: that is v0.7B.
+- Mission XP earned after the promotion goes to Elite XP (`progression.eliteXp`) and Elite levels (v0.7B, below).
 - Permadeath unchanged: an Elite can be downed, revived, KIA, resurrected (**2x the Recruit price**, keeps the specialization) or honored in the Memorial (keeps the Elite identity). Dismissal refunds as before, with an extra warning.
 
 **Specializations** (numbers in `CFG.elite`, tunable in ⚙ → "Elite passives (v0.7A)"):
@@ -215,6 +217,23 @@ Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps
 **Save v8**: adds `progression.eliteXp` and `account.promotions` (the ledger). Loading repairs, with notes: the ledger restores a stripped rank or an edited specialization (no respec through the save); stray Elite fields on a Recruit are cleared; an Elite with a specialization that doesn't fit the class and no ledger entry goes back to Recruit (and can be promoted again); Elite level outside 1..30 becomes 1; an Elite below Recruit Level 25 is raised to it. A pre-v0.7A save never carries Elite data in (no free promotion) and is backed up once under `minisquad.save.pre-v0.7`.
 
 **Debug**: ⚙ → Debug → "Promotion test: Recruits to LV 25 + 25,000 CR (modifies save)…" (tap twice); console `__debugPromotionReady()`, `__elite`.
+
+## Elite Progression (v0.7B)
+
+**XP curve** (`src/elite.ts` → `ELITE_PROGRESSION`, one place to tune): Elite soldiers earn the normal mission XP (same rules as Recruits: survivors of a victory, replays 75%). `progression.eliteXp` is the **cumulative** Elite XP since the promotion and the source of truth; `eliteLevel` is derived from it once, at mission settlement (never per frame). XP to advance from Elite Level L = **600 + 45 × (L − 1)**: 600 for ELITE 1 → 2, 1,860 for ELITE 29 → 30, **35,670 XP** in total. One big award can give several levels; ELITE 30 is the permanent cap (XP earned there is still recorded, but grants nothing). A mission pays about 110-200 XP (replay / first clear with bonuses), so ELITE 30 is a long-term goal: roughly 180-320 missions per soldier (ELITE 2 after 3-6).
+
+| Elite level | 1 | 2 | 5 | 10 | 15 | 20 | 25 | 30 |
+|---|---|---|---|---|---|---|---|---|
+| Cumulative Elite XP | 0 | 600 | 2,670 | 7,020 | 12,495 | 19,095 | 26,820 | 35,670 |
+| Max HP / damage vs Elite 1 | +0 / +0 | +0.9% / +0.5% | +3.4% / +2.1% | +7.8% / +4.7% | +12.1% / +7.2% | +16.4% / +9.8% | +20.7% / +12.4% | **+25% / +15%** |
+
+**Stats**: Elite 1 is exactly the v0.7A soldier (Recruit Level 25 stats with training, squad training, trait, plus the passive). Each Elite level above 1 adds 1/29 of the Elite 30 bonus, linearly: **+25% max HP, +15% weapon damage**, and one class extra: Infantry and Heavy Gunner **-10% weapon spread** (standing and moving; the 1° spread floor still applies), Medic **+10% Field Treatment healing**, Sniper **-10% held-aim time**. The bonus is one multiplier per stat on the soldier's own Elite 1 value (it sits next to the trait in the modifier set), so it never compounds per level and every soldier gets exactly +25% / +15% at the cap whatever their training. **No fire-rate, move-speed, range or revive-time growth.** The eight passives are unchanged; damage-reduction (40%) and per-shot multiplier (x2) caps apply as before, and the level bonus is not a per-shot multiplier (it raises the base damage the multipliers act on, like training does). Examples (no training): Tank (Juggernaut, Tough) 204.6 → 255.75 HP and 15° → 13.5° spread; Ace (Recon, Sharpshooter) 124 → 155 HP and 11.8 → 13.57 damage per shot; Doc (Surgeon) Field Treatment 25% → 27.5% of max HP.
+
+**Feedback**: Results show each Elite's level (ELITE 7, or ELITE 3 → 7 on a level-up), the XP earned and progress to the next level (MAX at the cap), plus a **★ ELITE LEVEL UP! NAME — ELITE 7 (+4 levels)** line. No ceremony: the promotion ceremony stays reserved for promotions. The profile shows the specialization, ELITE n, "Elite XP x / y to ELITE n+1" (or **MAX LEVEL**), a progress bar, the current bonus ("Elite level bonus: +12.1% max HP · +7.2% damage · -4.8% spread"), the passive, and the stats table (with ELITE n as a source tag; Snipers also get an "Aim time" row). Barracks cards show the ELITE n badge with an Elite XP bar; squad slots show ★n + the spec tag (★12 JUG). Elites never show "LV n".
+
+**Save v9**: no new field. A v8 (v0.7A) save keeps every point of banked Elite XP and converts it to the level it buys (status "migrated", no notes); everything else is unchanged. On a v9 load, `eliteLevel` must match `eliteXp`: a lower level is corrected up from the XP; a higher one (hand edit, or a later curve retune) keeps the level and raises the XP to its threshold, so a load never takes a level away. Invalid / missing XP counts as 0; v8 levels (always 1) give no free XP. KIA, resurrection and the Memorial keep the Elite level and XP. The pre-v9 text is backed up once under `minisquad.save.pre-v0.7b`. Settlement is still once per run id, so a reload can't grant XP twice.
+
+**Tests**: `tools/elite-progression.cjs` (curve, stats vs the v0.7A build with `BASE=`, settlement, passives at Elite 1 / 15 / 30, caps, save v9 / v8 migration with the genuine v0.7A fixture `tools/fixtures/v0.7A-save.json`, KIA / resurrection / Memorial, Results / profile / Barracks on three phones, Elite 30 squads in Missions 1-10, 30 / 60 FPS parity).
 
 ## Performance (v0.6.3)
 

@@ -605,7 +605,7 @@ function installHelpers() {
   check('Sniper KIA -> Resurrect; KIA again -> Memorial (saved)', sl.kia === 'kia' && sl.resurrected && sl.memorial && sl.saved, JSON.stringify(sl));
   await reload();
   const sv = await ev(() => ({ status: window.__loadStatus.status, notes: window.__loadStatus.notes, v: T.store().version, mem: T.a.memorial.filter((m) => m.soldier.classId === 'sniper').length, cu: T.a.classUnlocks.unlocked.join() }));
-  check('save round trip (v8): Sniper Memorial entry + class unlock kept, loaded cleanly', sv.v === 8 && sv.status === 'loaded' && sv.mem === 1 && sv.cu === 'sniper', JSON.stringify(sv));
+  check('save round trip (v9): Sniper Memorial entry + class unlock kept, loaded cleanly', sv.v === 9 && sv.status === 'loaded' && sv.mem === 1 && sv.cu === 'sniper', JSON.stringify(sv));
 
   // ================= H. IRON WARDEN =================
   await fresh();
@@ -771,7 +771,7 @@ function installHelpers() {
     };
   });
   const fxo = JSON.parse(fx);
-  check('v0.6.1 save -> v8: migrated (not repaired), no notes, raw save backed up under pre-v0.6.2', mig.status === 'migrated' && mig.from === 6 && mig.notes.length === 0 && mig.v === 8 && mig.backup === fx, `${mig.status} ${mig.from} ${mig.notes.join(';')}`);
+  check('v0.6.1 save -> v9: migrated (not repaired), no notes, raw save backed up under pre-v0.6.2', mig.status === 'migrated' && mig.from === 6 && mig.notes.length === 0 && mig.v === 9 && mig.backup === fx, `${mig.status} ${mig.from} ${mig.notes.join(';')}`);
   check('migration keeps credits, records, owned soldiers (incl. renamed recruit), XP, training, named claims', mig.credits === fxo.account.credits && mig.missions === Object.keys(fxo.account.missions).join() && /rc-1:Sparrow/.test(mig.owned) && mig.xpTank === fxo.roster.find((s) => s.id === 'tank').progression.xp && mig.named === JSON.stringify(fxo.account.named.claimed), JSON.stringify(mig).slice(0, 200));
   check('pending casualty decision kept (Ranger), shown first; Mission 6 unlocked by the M5 clear', mig.pending === 'ranger' && /decisions/.test(mig.menu) && /bridgehead/.test(mig.unlocked) && !/prison-break/.test(mig.unlocked), `${mig.pending} ${mig.menu} ${mig.unlocked}`);
   check('no Sniper granted or unlocked by the migration; no Sniper offers', mig.cu === '' && !mig.sniperOwned && !/sniper/.test(mig.offers), JSON.stringify({ cu: mig.cu, offers: mig.offers }));
