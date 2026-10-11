@@ -5,6 +5,7 @@ import type { Team, Unit } from './unit';
 import { DEG, dist, rand, segCircle, turnToward, angleDiff, type Vec } from './util';
 import { sfx } from './audio';
 import { sniperShouldSwitch } from './targeting';
+import { onFire, onHit, penetrate } from './elite';
 
 export interface Projectile {
   pos: Vec;
@@ -19,6 +20,10 @@ export interface Projectile {
   hot?: boolean; // fired under Suppressive Fire (drawn hotter)
   /** v0.6.2: precision round (squad / enemy Sniper): long bright tracer. */
   precise?: boolean;
+  /** v0.7A: fire-time Elite multiplier already in `damage` (Rally, Perfect Aim); 1 / absent otherwise. */
+  mul?: number;
+  /** v0.7A: a Perfect Aim charged shot (drawn brighter). */
+  charged?: boolean;
 }
 
 export interface Particle { pos: Vec; vel: Vec; life: number; maxLife: number; color: string; size: number; z?: number; vz?: number }
@@ -117,11 +122,14 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   const dx = Math.cos(a), dy = Math.sin(a);
   const speed = st.projectileSpeed;
   const vis = u.classDef?.visual;
+  // v0.7A Elite passives decided when the round leaves the barrel (Rally, Perfect Aim charge)
+  const el = u.team === 'squad' && (u.elite || u.rallied) ? onFire(u) : null;
   game.projectiles.push({
     pos: { x: u.pos.x + dx * 6, y: u.pos.y + dy * 6 },
     vel: { x: dx * speed, y: dy * speed },
     team: u.team,
-    damage: st.damage,
+    damage: el ? st.damage * el.mul : st.damage,
+    ...(el ? { mul: el.mul, charged: el.charged } : {}),
     life: (st.range * 1.25) / speed,
     trail: { x: u.pos.x, y: u.pos.y },
     owner: u,
@@ -203,7 +211,12 @@ export function updateProjectiles(game: Game, dt: number) {
     const hx = x1 + (x2 - x1) * bestT, hy = y1 + (y2 - y1) * bestT;
     if (hitUnit) {
       if (p.owner) p.owner.hits++;
-      game.damage(hitUnit, p.damage, p.owner, { dir: p.vel, precise: p.precise, at: { x: hx, y: hy } });
+      // v0.7A Deadeye / Phantom Shot: decided per successful hit (misses never count)
+      const eh = p.owner?.elite && p.team === 'squad' ? onHit(p.owner, p.mul ?? 1) : null;
+      const dmg = eh && eh.mul !== 1 ? p.damage * eh.mul : p.damage;
+      if (eh && eh.mul !== 1 && p.owner?.elite) p.owner.elite.effect += dmg - p.damage;
+      game.damage(hitUnit, dmg, p.owner, { dir: p.vel, precise: p.precise, at: { x: hx, y: hy }, ...(eh && eh.pen ? { pen: eh.pen } : {}) });
+      if (eh && (eh.mul !== 1 || eh.pen)) game.fx.burst({ x: hx, y: hy }, 6, eh.pen ? '#bfe8ff' : '#9fd0ff', 170, 0.25, 3);
       game.fx.burst({ x: hx, y: hy }, 4, hitUnit.team === 'squad' ? '#ffd1a0' : '#ffe08a', 120, 0.2, 2.5);
       continue;
     }
@@ -244,6 +257,8 @@ export interface DamageOpts {
   precise?: boolean;
   /** Impact point (effects). */
   at?: Vec;
+  /** v0.7A Phantom Shot: share of the target's armor this round ignores (0..1). */
+  pen?: number;
 }
 
 /**
@@ -265,7 +280,7 @@ export function modifyDamage(game: Game, u: Unit, amount: number, source: Unit |
     if (off <= A.frontArc) {
       game.fx.burst(at, 5, '#dfe6ee', 160, 0.18, 2.5); // sparks off the plate
       if (Math.random() < 0.3) sfx('clank');
-      return amount * A.frontMul;
+      return amount * penetrate(A.frontMul, o.pen ?? 0);
     }
     if (off >= 180 - (180 - A.frontArc) / 2) return amount * A.rearMul;
     return amount;
@@ -279,11 +294,22 @@ export function modifyDamage(game: Game, u: Unit, amount: number, source: Unit |
       game.fx.burst(at, 14, '#e8f6ff', 260, 0.35, 3.5);
       game.fx.burst(at, 6, '#7fd0ff', 140, 0.5, 4);
       game.fx.ring(at, 26, 'rgba(200,240,255,0.95)', 0.3, 3);
-      return amount * B.modSniper;
+      return amount * pierceBoss(B.modSniper, o.pen);
     }
     if (Math.random() < 0.5) game.fx.burst(at, 3, '#ffe9a0', 110, 0.14, 2); // ordinary rounds spark off the armour
-    return amount * (cls === 'heavy' ? B.modHeavy : cls === 'medic' ? B.modMedic : B.modInfantry);
+    return amount * pierceBoss(cls === 'heavy' ? B.modHeavy : cls === 'medic' ? B.modMedic : B.modInfantry, o.pen);
   }
   if (u.vehicle && o.grenade) return amount * CFG.truck.grenadeMul;
   return amount;
+}
+
+/**
+ * v0.7A Phantom Shot vs the Iron Warden: each class modifier = weakness x (1 - plating). A
+ * precision round keeps only (1 - pen) of the plating: mod x (1 - plating x (1 - pen)) / (1 - plating).
+ * Sniper (1.6, plating 0.35, pen 0.6): 1.6 -> 2.12 on that hit (+32%; about +8% averaged over every 4th hit). No pen: the modifier, unchanged.
+ */
+function pierceBoss(mod: number, pen: number | undefined): number {
+  const P = CFG.boss.plating;
+  if (!pen || P <= 0 || P >= 1) return mod;
+  return mod * (1 - P * (1 - pen)) / (1 - P);
 }

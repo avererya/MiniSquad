@@ -88,6 +88,24 @@ const SECTIONS: [string, S[]][] = [
     ['Final wave size', 'mission.finalWaveSize', 0, 20, 1],
     ['Medkit squad heal (× max HP)', 'pickups.medkitHealFrac', 0, 1, 0.05],
   ]],
+  ['Elite passives (v0.7A)', [
+    ['Adrenaline Rush: HP threshold', 'elite.adrenalineThreshold', 0.1, 0.8, 0.05],
+    ['Adrenaline Rush: damage cut', 'elite.adrenalineReduction', 0, 0.6, 0.05],
+    ['Deadeye: every Nth hit', 'elite.deadeyeEvery', 2, 10, 1],
+    ['Deadeye: bonus damage', 'elite.deadeyeBonus', 0, 1.5, 0.05],
+    ['Ironclad: damage cut', 'elite.ironcladReduction', 0, 0.6, 0.05],
+    ['Overdrive: max fire-rate bonus', 'elite.overdriveMax', 0, 1, 0.05],
+    ['Overdrive: build-up (s)', 'elite.overdriveBuild', 0.5, 15, 0.5],
+    ['Miracle Worker: revive speed ×', 'elite.miracleReviveSpeed', 1, 3, 0.05],
+    ['Miracle Worker: revive HP', 'elite.miracleHpFrac', 0.1, 1, 0.05],
+    ['Rally: radius (px)', 'elite.rallyRadius', 40, 400, 5],
+    ['Rally: damage bonus', 'elite.rallyDamage', 0, 0.5, 0.01],
+    ['Rally: speed bonus', 'elite.rallySpeed', 0, 0.5, 0.01],
+    ['Phantom Shot: every Nth hit', 'elite.phantomEvery', 2, 10, 1],
+    ['Phantom Shot: armor ignored', 'elite.phantomPen', 0, 1, 0.05],
+    ['Perfect Aim: charge (s)', 'elite.perfectAimCharge', 0.5, 10, 0.25],
+    ['Perfect Aim: bonus damage', 'elite.perfectAimBonus', 0, 2, 0.05],
+  ]],
   ['Feel', [
     ['Camera smoothing', 'feel.cameraSmoothing', 1, 20, 0.5],
     ['Show accuracy cones', 'feel.showCones', 0, 1, 1],
@@ -136,6 +154,7 @@ export class Tuning {
         <button data-a="invuln">Invulnerable: off</button>
         <button data-a="resetSave" class="danger">Reset save (roster, credits, training)…</button>
         <button data-a="unlockAll" class="danger" title="Marks every playable mission and every soldier as unlocked IN YOUR SAVE (XP, credits, training untouched). Cannot be undone except by Reset save.">Unlock all missions + soldiers (modifies save)…</button>
+        <button data-a="promoReady" class="danger" title="Every owned Recruit jumps to Recruit Level 25 and Credits are topped up to 25,000, IN YOUR SAVE (for testing Elite promotions).">Promotion test: Recruits to LV 25 + 25,000 CR (modifies save)…</button>
         <label title="Dev: start any mission (locked missions pay no rewards and unlock nothing)">Mission <select data-k="mission">${CAMPAIGN.filter((m) => m.playable).map((m) => `<option value="${m.id}">${m.number}. ${m.name}</option>`).join('')}</select></label>
       </div>`;
     this.presetSel = dbg.querySelector('select')!;
@@ -175,6 +194,15 @@ export class Tuning {
           } else {
             b.dataset.armed = '1'; b.textContent = 'Tap again: unlock everything IN THE SAVE';
             window.setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Unlock all missions + soldiers (modifies save)…'; } }, 4000);
+          }
+          break;
+        case 'promoReady':
+          if (b.dataset.armed) {
+            delete b.dataset.armed; b.textContent = 'Promotion test: Recruits to LV 25 + 25,000 CR (modifies save)…';
+            if (g.phase === 'start') g.debugPromotionReady?.();
+          } else {
+            b.dataset.armed = '1'; b.textContent = 'Tap again: LV 25 + Credits IN THE SAVE';
+            window.setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Promotion test: Recruits to LV 25 + 25,000 CR (modifies save)…'; } }, 4000);
           }
           break;
         case 'spawnF': if (g.phase === 'playing') g.spawnSoldier(); break;

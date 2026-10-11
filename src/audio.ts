@@ -1,5 +1,5 @@
 // Tiny synthesized sound effects. Low priority: cheap, throttled, mutable.
-type Sfx = 'shot' | 'eshot' | 'hit' | 'boom' | 'down' | 'pickup' | 'throw' | 'deny' | 'heal' | 'suppress' | 'snipe' | 'lock' | 'clank' | 'alarm' | 'rocket';
+type Sfx = 'shot' | 'eshot' | 'hit' | 'boom' | 'down' | 'pickup' | 'throw' | 'deny' | 'heal' | 'suppress' | 'snipe' | 'lock' | 'clank' | 'alarm' | 'rocket' | 'levelup';
 
 let ctx: AudioContext | null = null;
 let noise: AudioBuffer | null = null;
@@ -55,7 +55,7 @@ function tone(f0: number, f1: number, type: OscillatorType, peak: number, dur: n
   o.start(t); o.stop(t + dur + 0.05);
 }
 
-const MIN_GAP: Record<Sfx, number> = { shot: 0.04, eshot: 0.06, hit: 0.05, boom: 0.05, down: 0.3, pickup: 0.1, throw: 0.1, deny: 0.25, heal: 0.2, suppress: 0.2, snipe: 0.08, lock: 0.15, clank: 0.08, alarm: 0.8, rocket: 0.3 };
+const MIN_GAP: Record<Sfx, number> = { shot: 0.04, eshot: 0.06, hit: 0.05, boom: 0.05, down: 0.3, pickup: 0.1, throw: 0.1, deny: 0.25, heal: 0.2, suppress: 0.2, snipe: 0.08, lock: 0.15, clank: 0.08, alarm: 0.8, rocket: 0.3, levelup: 1 };
 
 export function sfx(kind: Sfx) {
   if (muted || !ctx) return;
@@ -78,5 +78,6 @@ export function sfx(kind: Sfx) {
     case 'clank': tone(1800, 1200, 'square', 0.04, 0.06); break;
     case 'alarm': tone(700, 500, 'sawtooth', 0.06, 0.5); break;
     case 'rocket': tone(200, 900, 'sawtooth', 0.08, 0.6); break;
+    case 'levelup': tone(523, 523, 'triangle', 0.12, 0.16); tone(659, 1046, 'triangle', 0.12, 0.5); break; // v0.7A promotion fanfare
   }
 }

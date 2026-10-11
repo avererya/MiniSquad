@@ -14,6 +14,7 @@ import { CFG, type SoldierStats } from './config';
 import { FieldTreatmentAbility, FocusAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
 import { TRAITS, applyModifiers, combineModifiers, type EffectiveStats, type StatModifiers, type TraitId } from './traits';
 import { NO_PROGRESSION, PROGRESSION, clean, getAccount, grownStats, newTraining, type ProgressionInputs, type TrainingRanks } from './progression';
+import { CLASS_BRANCHES, eliteModifiers } from './elite';
 
 export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper';
 export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment' | 'focus';
@@ -34,12 +35,8 @@ export interface SoldierClassDef {
   short: string; // "HVY"
   abilityId: AbilityId;
   visual: ClassVisual;
-  /**
-   * Future Elite promotion branches (v0.7: two per class, the Sniper included). Data hook only:
-   * empty in v0.6.2, nothing reads it yet. ProgressionRecord.tier / elitePath / eliteLevel already
-   * exist in the save, so a promotion can be added without a class or save-format change.
-   */
-  eliteBranches: string[];
+  /** v0.7A Elite promotion branches: the two specialization ids of this class (elite.ts). */
+  eliteBranches: readonly string[];
 }
 
 export const ABILITY_FACTORIES: Record<AbilityId, () => Ability> = {
@@ -54,20 +51,20 @@ export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', su
 export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
   infantry: {
     id: 'infantry', label: 'Infantry', short: 'INF', abilityId: 'grenade',
-    visual: { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'standard', tracerWidth: 3.5, tracerLen: 20 }, eliteBranches: [],
+    visual: { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'standard', tracerWidth: 3.5, tracerLen: 20 }, eliteBranches: CLASS_BRANCHES.infantry,
   },
   heavy: {
     id: 'heavy', label: 'Heavy Gunner', short: 'HVY', abilityId: 'suppressive',
-    visual: { bodyW: 19, weapon: 'mg', pack: 'ammo', helmet: 'heavy', tracerWidth: 3, tracerLen: 16 }, eliteBranches: [],
+    visual: { bodyW: 19, weapon: 'mg', pack: 'ammo', helmet: 'heavy', tracerWidth: 3, tracerLen: 16 }, eliteBranches: CLASS_BRANCHES.heavy,
   },
   medic: {
     id: 'medic', label: 'Medic', short: 'MED', abilityId: 'fieldTreatment',
-    visual: { bodyW: 13, weapon: 'smg', pack: 'medical', helmet: 'medic', tracerWidth: 3, tracerLen: 16 }, eliteBranches: [],
+    visual: { bodyW: 13, weapon: 'smg', pack: 'medical', helmet: 'medic', tracerWidth: 3, tracerLen: 16 }, eliteBranches: CLASS_BRANCHES.medic,
   },
   // v0.6.2: unlocked by Mission 9 (Blackout), recruited in the Recruitment Office only
   sniper: {
     id: 'sniper', label: 'Sniper', short: 'SNP', abilityId: 'focus',
-    visual: { bodyW: 13, weapon: 'sniper', pack: 'none', helmet: 'boonie', tracerWidth: 2.5, tracerLen: 46 }, eliteBranches: [],
+    visual: { bodyW: 13, weapon: 'sniper', pack: 'none', helmet: 'boonie', tracerWidth: 2.5, tracerLen: 46 }, eliteBranches: CLASS_BRANCHES.sniper,
   },
 };
 
@@ -77,21 +74,24 @@ export const CLASS_IDS = Object.keys(CLASSES) as SoldierClassId[];
 export function classStats(id: SoldierClassId): SoldierStats { return CFG[id]; }
 
 /**
- * Per-soldier progression. XP is the TOTAL earned (capped at the level-cap threshold);
+ * Per-soldier progression. XP is the TOTAL Recruit XP earned (capped at the level-cap threshold);
  * `level` is derived from it (stored for convenience, re-validated on load).
- * Future fields (data model only, unused in v0.3): tier 'elite' + elitePath + eliteLevel for
- * Elite Promotion at the level cap (keeps trait, training, identity and service record).
+ * v0.7A Elite promotion (elite.ts, economy.promote): tier 'elite' + elitePath (stable spec id,
+ * mirrored in `specialization`) + eliteLevel 1. The Recruit XP / level 25 are kept untouched (the
+ * stat pipeline keeps reading `level`), so a promotion can never lower a stat. `eliteXp` banks the
+ * mission XP an Elite earns after the promotion for the v0.7B Elite curve (nothing levels from it yet).
  */
 export interface ProgressionRecord {
-  level: number; // 1..25
-  xp: number; // total XP, 0..xpForLevel(25)
+  level: number; // Recruit level 1..25 (an Elite stays 25)
+  xp: number; // total Recruit XP, 0..xpForLevel(25)
   upgrades: string[]; // legacy v0.2.2 field, unused (training ranks live in SoldierIdentity.training)
-  specialization: string | null; // none
-  tier: 'recruit' | 'elite'; // always 'recruit' in v0.3
-  elitePath: string | null; // future: one of two elite paths per class
-  eliteLevel: number; // future: Elite L1..30 (0 = not elite)
+  specialization: string | null; // v0.7A: = elitePath for an Elite, null for a Recruit
+  tier: 'recruit' | 'elite';
+  elitePath: string | null; // v0.7A: EliteSpecId (one of the two branches of the soldier's class)
+  eliteLevel: number; // Elite L1..30 (0 = Recruit); always 1 in v0.7A
+  eliteXp: number; // v0.7A: XP earned since the promotion (banked for v0.7B; 0 for Recruits)
 }
-export const newProgression = (): ProgressionRecord => ({ level: 1, xp: 0, upgrades: [], specialization: null, tier: 'recruit', elitePath: null, eliteLevel: 0 });
+export const newProgression = (): ProgressionRecord => ({ level: 1, xp: 0, upgrades: [], specialization: null, tier: 'recruit', elitePath: null, eliteLevel: 0, eliteXp: 0 });
 
 /**
  * Lifetime service / career record (roster deployments only), committed once per mission run at
@@ -147,7 +147,7 @@ export function progressionInputs(id: Pick<SoldierIdentity, 'progression' | 'tra
 export function effectiveStats(id: Pick<SoldierIdentity, 'classId' | 'traitId' | 'mods' | 'progression' | 'training'>, inputs?: ProgressionInputs): EffectiveStats {
   const base = classStats(id.classId);
   const trait = id.traitId ? TRAITS[id.traitId].mods : null;
-  const m = combineModifiers(trait, id.mods);
+  const m = combineModifiers(trait, id.mods, eliteModifiers(id)); // v0.7A: Combat Surgeon revive speed
   const out = applyModifiers(grownStats(base, inputs ?? progressionInputs(id)), m);
   // spread floor: upgrades can't push the standing cone below the floor (nor below what the
   // class + trait alone give, if a tuned base is already under the floor)

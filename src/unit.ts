@@ -7,6 +7,7 @@ import { CLASSES, effectiveStats, type SoldierClassDef, type SoldierIdentity } f
 import type { EffectiveStats } from './traits';
 import type { TargetingStrategy } from './targeting';
 import type { Vec } from './util';
+import { eliteStateFor, overdriveAdd, type EliteState } from './elite';
 
 export type Team = 'squad' | 'enemy';
 export type UnitState = 'active' | 'downed' | 'kia' | 'dead';
@@ -63,6 +64,10 @@ export class Unit {
   reviver: Unit | null = null; // who is reviving this soldier right now
   /** v0.6: how this soldier became KIA ('bleedout' / 'abandoned'), null while alive. */
   kiaCause: 'bleedout' | 'abandoned' | 'failed' | null = null;
+  /** v0.7A: Elite specialization passive state (null for Recruits, generics, enemies). New every mission. */
+  elite: EliteState | null = null;
+  /** v0.7A: inside a standing Field Commander's Rally aura this step (elite.eliteAuras). */
+  rallied = false;
   path: Vec[] | null = null;
   pathTimer = 0;
   wander = Math.random() * 100;
@@ -113,7 +118,7 @@ export class Unit {
   constructor(public team: Team, pos: Vec, public targeting: TargetingStrategy, identity: SoldierIdentity | null = null) {
     this.pos = { x: pos.x, y: pos.y };
     this.identity = identity;
-    if (identity) this.name = identity.name.toUpperCase();
+    if (identity) { this.name = identity.name.toUpperCase(); this.elite = eliteStateFor(identity); }
     this.hp = this.stats.hp;
   }
 
@@ -141,13 +146,19 @@ export class Unit {
   get maxSpeed() {
     if (this.npc) return CFG.escort.moveSpeed * this.catchUp;
     if (this.structure || this.fixed) return 0;
-    return this.team === 'squad' ? this.stats.moveSpeed * this.speedMul * this.catchUp : this.stats.moveSpeed * this.speedRand;
+    return this.team === 'squad' ? this.stats.moveSpeed * this.speedMul * this.rallyMul * this.catchUp : this.stats.moveSpeed * this.speedRand;
   }
-  /** Rapid Fire pickup and Suppressive Fire do not stack: the larger multiplier applies. */
+  /** v0.7A Rally: move-speed multiplier while inside a Field Commander's aura (1 otherwise). */
+  get rallyMul() { return this.rallied ? 1 + CFG.elite.rallySpeed : 1;
+  }
+  /**
+   * Rapid Fire pickup and Suppressive Fire do not stack: the larger multiplier applies. v0.7A
+   * Overdrive (Weapons Specialist) ADDS up to +25% of base on top of that (never multiplies).
+   */
   get fireRate() {
     const pickup = this.rapidFire > 0 ? CFG.pickups.rapidFireMul : 1;
     const ability = this.ability?.fireRateMul?.() ?? 1;
-    return this.stats.fireRate * Math.max(pickup, ability);
+    return this.stats.fireRate * (Math.max(pickup, ability) + (this.elite ? overdriveAdd(this) : 0));
   }
   get suppressing() { return this.ability?.id === 'suppressive' && (this.ability.fireRateMul?.() ?? 1) > 1; }
   /** Sniper Focus running. */

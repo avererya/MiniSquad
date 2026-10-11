@@ -48,7 +48,7 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
   // --- anchor ---
   // Reference speed blends slowest soldier and squad average (class speeds, without
   // catch-up), so one slow Heavy Gunner doesn't drag the whole squad down to his pace.
-  const base = active.map((s) => s.stats.moveSpeed * s.speedMul);
+  const base = active.map((s) => s.stats.moveSpeed * s.speedMul * s.rallyMul); // v0.7A: Rally speeds up the squad it covers
   const slowest = Math.min(...base);
   const avg = base.reduce((a, b) => a + b, 0) / base.length;
   const anchorSpeed = lerp(slowest, avg, clamp(S.anchorSpeedBlend, 0, 1)) * S.anchorSpeedFactor;

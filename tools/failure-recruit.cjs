@@ -298,7 +298,7 @@ function installHelpers() {
     named: T.a.named, offers: T.offers().join(), menu: document.getElementById('menu').className,
   }));
   const src6 = JSON.parse(fx6);
-  check('[R22] genuine v0.6 save -> v7: migrated, no repair notes, raw save backed up under pre-v0.6.1', m6.st === 'migrated' && m6.from === 5 && m6.notes.length === 0 && m6.bk === fx6 && m6.v === 7, `${m6.st} ${m6.from} ${m6.notes.join(';')}`);
+  check('[R22] genuine v0.6 save -> v8: migrated, no repair notes, raw save backed up under pre-v0.6.1', m6.st === 'migrated' && m6.from === 5 && m6.notes.length === 0 && m6.bk === fx6 && m6.v === 8, `${m6.st} ${m6.from} ${m6.notes.join(';')}`);
   check('[R22] previously awarded soldiers kept as they were (renamed Tank "Bulldozer" KIA awaiting a decision, recruits), Credits unchanged (no charge)', m6.owned === 'ace:Ace:active,ranger:Ranger:active,tank:Bulldozer:kia,rc-1:Lt Biscuit:active,rc-3:Ghost:active' && m6.cr === src6.account.credits && m6.q === 'tank' && m6.mem === 'doc' && m6.menu === 'decisions', `${m6.owned} · ${m6.cr} CR`);
   check('[R23][R24] claimed: Tank (pending KIA, renamed), Doc (Memorial), Havoc (dismissed); Patch locked; no duplicate offers', m6.named.claimed.join() === 'tank,doc,havoc' && m6.named.unlocked.join() === 'tank,doc,havoc' && m6.offers === '' && !m6.named.claimed.includes('patch') && m6.named.history.every((h) => h.legacy && h.cost === 0), JSON.stringify(m6.named).slice(0, 220));
   const m6b = await ev(() => { T.a.credits = 0; T.resolve('memorial'); return { offers: T.offers().join(), claimed: T.a.named.claimed.join() }; });
@@ -309,7 +309,7 @@ function installHelpers() {
     await fresh(FX(f));
     const m = await ev(() => ({ owned: T.R.owned().map((s) => s.id).join(), claimed: T.a.named.claimed.join(), offers: T.offers().join(), v: T.store().version, notice: !!document.querySelector('.rn-notice'), healer: window.__recruitment.traitPool('medic', window.__recruitment.campaignFlags(T.a)).includes('healer'), patch: T.R.isUnlocked('patch') }));
     const okOwned = owned ? m.owned === owned && m.claimed === claimed : m.offers === '' && m.claimed.split(',').every((k) => m.owned.split(',').includes(k));
-    check(`[R23] ${f}: previously awarded named soldiers kept + claimed, no duplicate offers, no notice${m.patch ? ', Healer kept' : ''}`, okOwned && m.offers === '' && m.v === 7 && !m.notice && (!m.patch || m.healer), JSON.stringify(m));
+    check(`[R23] ${f}: previously awarded named soldiers kept + claimed, no duplicate offers, no notice${m.patch ? ', Healer kept' : ''}`, okOwned && m.offers === '' && m.v === 8 && !m.notice && (!m.patch || m.healer), JSON.stringify(m));
   }
   // ambiguous / damaged v6 data: milestone done, never acquired -> the offer exists (no free soldier)
   await fresh();
@@ -327,7 +327,7 @@ function installHelpers() {
   await ev(() => { T.a.credits = 0; T.resolve('memorial'); T.g.ui.showCampaign(); });
   await page.click('[data-a="reset-open"]'); await page.click('[data-a="reset-confirm"]'); await page.waitForTimeout(150);
   const r25 = await ev(() => ({ owned: T.R.owned().map((s) => s.id).join(), named: JSON.stringify(T.store().account.named), offers: T.offers().join(), v: T.store().version, bk: !!localStorage.getItem('minisquad.save.pre-reset') }));
-  check('[R25] New Campaign: Ace + Ranger only, all named offers locked / unclaimed, previous save backed up', r25.owned === 'ace,ranger' && r25.named === '{"unlocked":[],"claimed":[],"notified":[],"history":[]}' && r25.offers === '' && r25.v === 7 && r25.bk, JSON.stringify(r25));
+  check('[R25] New Campaign: Ace + Ranger only, all named offers locked / unclaimed, previous save backed up', r25.owned === 'ace,ranger' && r25.named === '{"unlocked":[],"claimed":[],"notified":[],"history":[]}' && r25.offers === '' && r25.v === 8 && r25.bk, JSON.stringify(r25));
 
   check('no page errors', errors.length === 0, errors.join(' | '));
   console.log(`\n${total - fails}/${total} passed${fails ? `, ${fails} FAILED` : ''}`);

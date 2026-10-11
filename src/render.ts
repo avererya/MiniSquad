@@ -10,6 +10,7 @@ import { VIEW_W, VIEW_H } from './view';
 import { DEG, clamp, dist, type Rect } from './util';
 import { aimTimeOf } from './combat';
 import { CLASSES, type ClassVisual, type SoldierClassId } from './classes';
+import { adrenalineActive, eliteSpec, type EliteSpecId } from './elite';
 
 const CHAR_SCALE = 1.3; // visual only; collision radius comes from config
 const COL = {
@@ -17,6 +18,8 @@ const COL = {
   enemyHelmet: '#e3412f', enemyBody: '#9c2b20',
   skin: '#f3c99f', gun: '#2a2a2a',
   squadBullet: '#fff7a8', enemyBullet: '#ff6a3a',
+  // v0.7A Elite: black tactical uniform with MiniSquad-blue accents (Recruits keep blue + black gear)
+  eliteHelmet: '#20242c', eliteBody: '#2a2f38', eliteAccent: '#3d8cff', eliteTrim: '#9fc6ff',
 };
 
 // Ground palettes per map theme (reused art, recoloured; no new assets).
@@ -351,8 +354,9 @@ function drawGrenade(ctx: CanvasRenderingContext2D, x: number, y: number, z: num
 
 function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   const sq = u.team === 'squad';
-  const helmet = sq ? COL.squadHelmet : COL.enemyHelmet;
-  const body = sq ? COL.squadBody : COL.enemyBody;
+  const el = sq ? u.elite : null;
+  const helmet = el ? COL.eliteHelmet : sq ? COL.squadHelmet : COL.enemyHelmet;
+  const body = el ? COL.eliteBody : sq ? COL.squadBody : COL.enemyBody;
   const { x, y } = u.pos;
 
   // shadow
@@ -380,6 +384,7 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
     return;
   }
 
+  if (el) drawEliteGround(ctx, u, game);
   if (u.suppressing) {
     // Suppressive Fire: pulsing orange ring on the ground
     const p = 0.5 + 0.5 * Math.sin(game.clock * 14);
@@ -391,9 +396,139 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   ctx.save();
   ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
   const vis = u.team === 'enemy' ? ENEMY_VIS[u.kind] : undefined;
-  drawStanding(ctx, u, x, y, armored ? '#7d8794' : helmet, body, vis);
+  drawStanding(ctx, u, x, y, armored ? '#7d8794' : helmet, body, vis, el?.id ?? null);
   if (armored) drawArmorPlate(ctx, u, x, y);
   ctx.restore();
+}
+
+/**
+ * v0.7A ground cues for Elite passives, all subtle: Rally aura (faint dashed blue circle around a
+ * standing Field Commander), Adrenaline Rush (red-orange pulse while it is active), Overdrive (an
+ * orange ellipse that grows with the spin-up), Perfect Aim (cyan ring filling with the charge).
+ */
+function drawEliteGround(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const e = u.elite!;
+  const { x, y } = u.pos;
+  if (e.id === 'med-commander') {
+    const R = CFG.elite.rallyRadius;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(110,170,255,0.32)'; ctx.lineWidth = 2; ctx.setLineDash([10, 12]);
+    ctx.lineDashOffset = -game.clock * 12;
+    ctx.beginPath(); ctx.ellipse(x, y, R, R * 0.92, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  } else if (e.id === 'inf-trooper' && adrenalineActive(u)) {
+    const p = 0.5 + 0.5 * Math.sin(game.clock * 10);
+    ctx.strokeStyle = `rgba(255,110,60,${0.45 + 0.4 * p})`; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(x, y, 19 + p * 3, 8.5 + p * 1.5, 0, 0, Math.PI * 2); ctx.stroke();
+  } else if (e.id === 'hvy-weapons' && e.overdrive > 0.05) {
+    ctx.strokeStyle = `rgba(255,140,40,${0.25 + 0.6 * e.overdrive})`; ctx.lineWidth = 2 + 2 * e.overdrive;
+    ctx.beginPath(); ctx.ellipse(x, y, 16 + 8 * e.overdrive, 7 + 3 * e.overdrive, 0, 0, Math.PI * 2); ctx.stroke();
+  } else if (e.id === 'snp-deadeye' && e.charge > 0) {
+    const f = Math.min(1, e.charge / CFG.elite.perfectAimCharge);
+    ctx.strokeStyle = e.ready ? 'rgba(140,240,255,0.95)' : 'rgba(140,220,255,0.55)'; ctx.lineWidth = e.ready ? 3 : 2;
+    ctx.beginPath(); ctx.ellipse(x, y, 18, 8, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f); ctx.stroke();
+  }
+}
+
+/**
+ * v0.7A Elite uniform details, drawn over the class body (`bw` torso width, `by` torso base).
+ * Every Elite: blue shoulder tabs and a small blue star on the chest. Each specialization adds a
+ * SHAPE (not just a colour) so they read at phone size: Elite Trooper shoulder plates, Recon
+ * Commando goggles + antenna, Juggernaut face visor + riveted chest plate, Weapons Specialist
+ * crossed ammo belts, Combat Surgeon head lamp, Field Commander radio mast + chevrons, Ghost hood,
+ * Deadeye bipod rifle (drawn with the gun).
+ */
+function drawEliteBody(ctx: CanvasRenderingContext2D, spec: EliteSpecId, x: number, by: number, bw: number, ax: number, ay: number, front: boolean) {
+  // shoulder tabs
+  ctx.fillStyle = COL.eliteAccent;
+  ctx.fillRect(x - bw / 2, by - 12, 4, 3); ctx.fillRect(x + bw / 2 - 4, by - 12, 4, 3);
+  if (front) eliteStar(ctx, x - bw / 2 + 4.5, by - 6.5, 2.3);
+  switch (spec) {
+    case 'inf-trooper': // rounded shoulder plates
+      ctx.fillStyle = '#3a404b'; ctx.strokeStyle = COL.eliteAccent; ctx.lineWidth = 1.2;
+      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(x + sx * (bw / 2 + 0.5), by - 10, 4.2, 3.2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+      break;
+    case 'hvy-juggernaut': // riveted chest plate
+      ctx.fillStyle = '#454c58'; roundRect(ctx, x - bw / 2 + 2.5, by - 11, bw - 5, 9, 2); ctx.fill();
+      ctx.strokeStyle = COL.eliteAccent; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = COL.eliteTrim;
+      for (const rx of [-0.32, 0, 0.32]) { ctx.beginPath(); ctx.arc(x + rx * bw, by - 6.5, 0.9, 0, Math.PI * 2); ctx.fill(); }
+      break;
+    case 'hvy-weapons': // second ammo belt crossing the first (X)
+      ctx.strokeStyle = '#e0b83c'; ctx.lineWidth = 2.5; ctx.setLineDash([2.5, 1.5]);
+      ctx.beginPath(); ctx.moveTo(x + bw / 2 - 1, by - 11); ctx.lineTo(x - bw / 2 + 1, by); ctx.stroke();
+      ctx.setLineDash([]);
+      break;
+    case 'med-commander': // gold chevrons on the chest
+      if (front) {
+        ctx.strokeStyle = '#ffd25a'; ctx.lineWidth = 1.6;
+        for (const dy of [0, 3]) { ctx.beginPath(); ctx.moveTo(x + 1, by - 8 + dy); ctx.lineTo(x + 3.5, by - 10 + dy); ctx.lineTo(x + 6, by - 8 + dy); ctx.stroke(); }
+      }
+      break;
+    default: break;
+  }
+  void ax; void ay;
+}
+
+/** Back-mounted Elite gear (behind the body when facing the camera). */
+function drawEliteBack(ctx: CanvasRenderingContext2D, spec: EliteSpecId, x: number, by: number, ax: number) {
+  if (spec === 'med-commander' || spec === 'inf-recon') {
+    // radio mast (Commander: tall with a blinking tip; Recon: short whip antenna)
+    const tall = spec === 'med-commander';
+    const bx = x - ax * 6 + (tall ? -5 : 5), top = by - (tall ? 40 : 30);
+    ctx.strokeStyle = '#15181d'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(bx, by - 8); ctx.lineTo(bx, top); ctx.stroke();
+    ctx.fillStyle = tall ? '#ffd25a' : COL.eliteAccent;
+    ctx.beginPath(); ctx.arc(bx, top, tall ? 1.8 : 1.4, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/** Elite headgear details over the helmet (`hx`, `hy` head centre). */
+function drawEliteHead(ctx: CanvasRenderingContext2D, spec: EliteSpecId, hx: number, hy: number, ax: number, ay: number, hs: string) {
+  const facing = ay > -0.6;
+  // blue helmet band (every Elite)
+  ctx.fillStyle = COL.eliteAccent;
+  if (hs === 'boonie') ctx.fillRect(hx - 9.5, hy - 6, 19, 2.5);
+  else if (hs === 'heavy') ctx.fillRect(hx - 12, hy - 5, 24, 2);
+  else ctx.fillRect(hx - 10.5, hy - 5.5, 21, 2);
+  switch (spec) {
+    case 'inf-recon': // goggles pushed up on the helmet
+      ctx.fillStyle = '#111'; ctx.fillRect(hx - 8, hy - 10, 16, 4.5);
+      if (facing) { ctx.fillStyle = '#7fc4ff'; ctx.beginPath(); ctx.arc(hx - 3.6 + ax * 2, hy - 7.8, 2.1, 0, Math.PI * 2); ctx.arc(hx + 3.6 + ax * 2, hy - 7.8, 2.1, 0, Math.PI * 2); ctx.fill(); }
+      break;
+    case 'hvy-juggernaut': // full face visor with a blue slit
+      if (facing) {
+        ctx.fillStyle = '#15181d'; roundRect(ctx, hx - 9 + ax * 2, hy - 2, 18, 9, 3); ctx.fill();
+        ctx.fillStyle = COL.eliteAccent; ctx.fillRect(hx - 7 + ax * 3, hy + 1, 14, 2);
+      }
+      break;
+    case 'med-surgeon': // head lamp
+      if (facing) {
+        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(hx + ax * 4, hy - 7, 3.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#eaffff'; ctx.beginPath(); ctx.arc(hx + ax * 4, hy - 7, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    case 'snp-ghost': { // hood with ragged ghillie edge over the boonie
+      ctx.fillStyle = '#2e3530';
+      ctx.beginPath(); ctx.arc(hx, hy - 2, 12.5, Math.PI * 0.95, Math.PI * 2.05); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#3c463d';
+      for (let i = 0; i < 6; i++) { const a = Math.PI * (1.02 + i * 0.19); ctx.beginPath(); ctx.moveTo(hx + Math.cos(a) * 11, hy - 2 + Math.sin(a) * 11); ctx.lineTo(hx + Math.cos(a) * 15.5, hy - 2 + Math.sin(a) * 15.5); ctx.lineTo(hx + Math.cos(a + 0.12) * 11, hy - 2 + Math.sin(a + 0.12) * 11); ctx.fill(); }
+      ctx.fillStyle = COL.eliteAccent; ctx.fillRect(hx - 8, hy - 4.5, 16, 1.6);
+      break;
+    }
+    default: break;
+  }
+}
+
+/** Five-point star (Elite insignia). */
+function eliteStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.fillStyle = COL.eliteTrim;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
+    ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fill();
 }
 
 /** Enemy kind looks (red uniforms; the rifleman keeps the v0.1 drawing). */
@@ -429,12 +564,12 @@ function medMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: numbe
   ctx.fillRect(cx - s * 0.75, cy - s * 0.28, s * 1.5, s * 0.56);
 }
 
-function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: number, helmet: string, body: string, visOverride?: ClassVisual) {
+function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: number, helmet: string, body: string, visOverride?: ClassVisual, spec: EliteSpecId | null = null) {
   const moving = u.moveFrac > 0.08;
   const bob = moving ? Math.sin(u.walkPhase) : 0;
   const lift = moving ? Math.abs(Math.cos(u.walkPhase)) * 1.5 : 0;
   // legs
-  ctx.fillStyle = '#2c2c2c';
+  ctx.fillStyle = spec ? '#16191e' : '#2c2c2c';
   ctx.fillRect(x - 6, y - 7 + bob * 2.5, 4, 7 - bob * 2);
   ctx.fillRect(x + 2, y - 7 - bob * 2.5, 4, 7 + bob * 2);
 
@@ -462,6 +597,12 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
       ctx.beginPath(); ctx.moveTo(gx - ax * 3, gy - ay * 2); ctx.lineTo(gx + ax * 13, gy + ay * 10); ctx.stroke();
       ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 3.5;
       ctx.beginPath(); ctx.moveTo(gx + ax * 13, gy + ay * 10); ctx.lineTo(gx + ax * 27, gy + ay * 21); ctx.stroke();
+      if (spec === 'hvy-weapons') {
+        // v0.7A Weapons Specialist: vented barrel shroud that glows with Overdrive
+        const od = u.elite?.overdrive ?? 0;
+        ctx.strokeStyle = od > 0.05 ? `rgb(${Math.round(70 + 185 * od)},${Math.round(70 + 60 * od)},40)` : '#2b2b2b'; ctx.lineWidth = 5.5;
+        ctx.beginPath(); ctx.moveTo(gx + ax * 15, gy + ay * 11.5); ctx.lineTo(gx + ax * 22, gy + ay * 17); ctx.stroke();
+      }
       ctx.fillStyle = '#4a5a32';
       ctx.fillRect(gx + ax * 6 - 4, gy + ay * 5 + 1, 8, 7);
       ctx.strokeStyle = '#d9b23a'; ctx.lineWidth = 2; // ammo belt feeding the gun
@@ -475,7 +616,19 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
       ctx.beginPath(); ctx.moveTo(gx + ax * 4, gy + ay * 3); ctx.lineTo(gx + ax * 30, gy + ay * 23); ctx.stroke();
       ctx.fillStyle = '#111';
       ctx.save(); ctx.translate(gx + ax * 9, gy + ay * 7 - 3); ctx.rotate(Math.atan2(ay * 0.77, ax)); ctx.fillRect(-5, -2.5, 10, 5); ctx.restore();
-      if (u.team === 'squad' || u.aimHeld > 0) { ctx.fillStyle = 'rgba(190,235,255,0.9)'; ctx.beginPath(); ctx.arc(gx + ax * 13, gy + ay * 10 - 3, 1.6, 0, Math.PI * 2); ctx.fill(); }
+      if (spec === 'snp-deadeye') {
+        // v0.7A Deadeye: folded bipod under the barrel, longer scope, scope lights up when Perfect Aim is ready
+        ctx.strokeStyle = '#1c1c1c'; ctx.lineWidth = 1.6;
+        const bx2 = gx + ax * 22, by2 = gy + ay * 17;
+        ctx.beginPath(); ctx.moveTo(bx2, by2); ctx.lineTo(bx2 - 3, by2 + 6); ctx.moveTo(bx2, by2); ctx.lineTo(bx2 + 3, by2 + 6); ctx.stroke();
+        ctx.fillStyle = '#111';
+        ctx.save(); ctx.translate(gx + ax * 11, gy + ay * 8.5 - 3); ctx.rotate(Math.atan2(ay * 0.77, ax)); ctx.fillRect(-7, -2.8, 14, 5.6); ctx.restore();
+      }
+      if (u.team === 'squad' || u.aimHeld > 0) {
+        const ready = !!u.elite?.ready;
+        ctx.fillStyle = ready ? 'rgba(150,255,255,1)' : 'rgba(190,235,255,0.9)';
+        ctx.beginPath(); ctx.arc(gx + ax * 13, gy + ay * 10 - 3, ready ? 2.6 : 1.6, 0, Math.PI * 2); ctx.fill();
+      }
       muzzle(33, 1.15);
     } else if (weapon === 'smg') {
       // compact SMG
@@ -506,6 +659,7 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
     }
   };
   const packInFront = ay < -0.2; // facing away: the backpack is the nearest thing to the camera
+  if (spec && !packInFront) drawEliteBack(ctx, spec, x, by, ax);
   if (!packInFront) drawPack();
   if (gunBehind) drawGun();
   // body
@@ -523,7 +677,9 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
     ctx.fillStyle = '#f4f4f4'; ctx.fillRect(x - bw / 2 - 1, by - 9, 3, 4);
     medMark(ctx, x + bw / 2 - 1, by - 2, 3.2);
   }
+  if (spec) drawEliteBody(ctx, spec, x, by, bw, ax, ay, !packInFront);
   if (packInFront) drawPack();
+  if (spec && packInFront) drawEliteBack(ctx, spec, x, by, ax);
   if (!gunBehind) drawGun();
   // head (oversized)
   const hx = x, hy = by - 20;
@@ -547,7 +703,7 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
   } else if (hs === 'heavy') {
     // heavier, wider helmet with a dark brim and side flaps
     ctx.beginPath(); ctx.arc(hx, hy - 1, 12, Math.PI * 1.0, Math.PI * 2.0); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#1a3a6e'; ctx.fillRect(hx - 14, hy - 2, 28, 4);
+    ctx.fillStyle = spec ? '#111418' : '#1a3a6e'; ctx.fillRect(hx - 14, hy - 2, 28, 4);
     ctx.fillRect(hx - 13, hy - 2, 3, 8); ctx.fillRect(hx + 10, hy - 2, 3, 8);
   } else {
     ctx.beginPath(); ctx.arc(hx, hy - 1, 11, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();
@@ -557,6 +713,7 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
       if (ay > -0.6) medMark(ctx, hx + ax * 3, hy - 7, 3.4);
     }
   }
+  if (spec) drawEliteHead(ctx, spec, hx, hy, ax, ay, hs);
   if (u.rapidFire > 0) {
     ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(hx, hy, 13, 0, Math.PI * 2); ctx.stroke();
@@ -583,7 +740,7 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game) {
       // precision round: long bright streak with a dark outline (readable on small screens)
       ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = (p.width ?? 3) + 2.5;
       ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
-      ctx.strokeStyle = sq ? '#e6f7ff' : '#ff3b2b'; ctx.lineWidth = p.width ?? 3;
+      ctx.strokeStyle = p.charged ? '#8ff4ff' : sq ? '#e6f7ff' : '#ff3b2b'; ctx.lineWidth = (p.width ?? 3) + (p.charged ? 1.5 : 0); // v0.7A Perfect Aim: thicker cyan
       ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
       continue;
     }
@@ -658,8 +815,10 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
         ctx.strokeStyle = '#9dff9a'; ctx.lineWidth = 2; ctx.strokeRect(bx - 2.5, byy - 2.5, w + 5, 10);
         ctx.globalAlpha = 1;
       }
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(s.name, s.pos.x + 1, s.pos.y - 70 + 1);
-      ctx.fillStyle = '#cfe6ff'; ctx.fillText(s.name, s.pos.x, s.pos.y - 70);
+      const tag = s.elite ? `★ ${s.name}` : s.name; // v0.7A: Elite star on the name tag
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(tag, s.pos.x + 1, s.pos.y - 70 + 1);
+      ctx.fillStyle = s.elite ? '#8fc0ff' : '#cfe6ff'; ctx.fillText(tag, s.pos.x, s.pos.y - 70);
+      if (s.rallied) { ctx.fillStyle = 'rgba(110,170,255,0.95)'; ctx.fillRect(bx + w + 3, byy, 3, 5); } // Rally pip
     } else if (s.state === 'downed') {
       drawDownedMarker(ctx, s, game);
     } else if (s.state === 'kia') {
@@ -813,7 +972,8 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
  * Barracks portrait: the same in-game class drawing (helmet, weapon, pack), standing still,
  * drawn into a small canvas. Pure presentation; no Unit or game state involved.
  */
-export function drawClassPortrait(canvas: HTMLCanvasElement, classId: SoldierClassId, aim = 0.55) {
+export function drawClassPortrait(canvas: HTMLCanvasElement, classId: SoldierClassId, aim = 0.55, spec: string | null = null) {
+  const sp = eliteSpec(spec);
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const w = canvas.clientWidth || canvas.width, h = canvas.clientHeight || canvas.height;
   canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
@@ -827,7 +987,8 @@ export function drawClassPortrait(canvas: HTMLCanvasElement, classId: SoldierCla
   ctx.beginPath(); ctx.ellipse(x, y + 1, 12 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
   ctx.save();
   ctx.translate(x, y); ctx.scale(s, s); ctx.translate(-x, -y);
-  drawStanding(ctx, fake, x, y, COL.squadHelmet, COL.squadBody);
+  if (sp) drawStanding(ctx, fake, x, y, COL.eliteHelmet, COL.eliteBody, undefined, sp.id);
+  else drawStanding(ctx, fake, x, y, COL.squadHelmet, COL.squadBody);
   ctx.restore();
 }
 

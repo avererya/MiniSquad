@@ -16,7 +16,7 @@ import { CFG } from './config';
 import { TRAITS } from './traits';
 import { SQUAD_SLOTS, defaultRoster } from './roster';
 import { drawClassPortrait } from './render';
-import { unlockAudio } from './audio';
+import { sfx, unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
 import { CAMPAIGN, CAPACITY_TABLE, CHAPTERS, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
@@ -29,6 +29,8 @@ import {
 } from './economy';
 import { MEMORIAL_ARM_MS, PHOENIX_RECRUITS, casualtyPosition, costFor, decisionBlock, pendingCasualties } from './casualties';
 import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignFlags, campaignProgress, priceOf, startingLevelFor } from './recruitment';
+import { CLASS_BRANCHES, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, eliteSpec, isElite, levelTag, promotionReady, specOf, type EliteSpecDef } from './elite';
+import { promote, promotionBlock } from './economy';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -40,6 +42,12 @@ type Screen = 'none' | 'campaign' | 'barracks' | 'results' | 'decisions' | 'memo
 const CAUSE_TEXT = { bleedout: 'Bled out', abandoned: 'Left behind at extraction', interrupted: 'Fell in an abandoned mission', failed: 'Downed when the mission failed' } as const;
 /** v0.6: taps are ignored this long after a resurrection / Memorial / Phoenix enlistment (the next card can't be hit by a double tap). */
 const DECISION_LOCK_MS = 600;
+/** v0.7A: portrait attribute for an Elite's uniform (empty for Recruits). */
+const specAttr = (s: Pick<SoldierIdentity, 'progression'>) => { const sp = specOf(s); return sp ? ` data-spec="${sp.id}"` : ''; };
+/** v0.7A: level badge: "ELITE 1" (Elite styling) or "LV n". */
+const lvBadge = (s: Pick<SoldierIdentity, 'progression'>) => `<span class="s-lv${isElite(s) ? ' elite' : ''}">${levelTag(s)}</span>`;
+/** v0.7A: the promotion confirm button arms this long after the confirmation opens (no tap-through). */
+const PROMO_ARM_MS = 700;
 const stars = (n: number, of = 3) => `<span class="stars" title="${n}/${of} stars">${'★'.repeat(n)}<i>${'★'.repeat(Math.max(0, of - n))}</i></span>`;
 export type BarracksTab = 'roster' | 'training' | 'squad' | 'recruit';
 const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING'], ['recruit', 'RECRUIT']];
@@ -91,6 +99,14 @@ export class Menus {
   phoenixPicks: string[] = [];
   /** Where the Memorial screen returns to. */
   private memorialBack: 'campaign' | 'barracks' = 'barracks';
+  /** v0.7A promotion: confirmation open for this soldier + chosen specialization (null = closed). */
+  promoteId: string | null = null;
+  promoteSpec: string | null = null;
+  private promoteAt = 0;
+  private promoteTimer = 0;
+  /** v0.7A: promotion ceremony shown for this soldier (null = none; never persisted: the promotion already is). */
+  ceremonyId: string | null = null;
+  private ceremonyAt = 0;
 
   constructor(private root: HTMLElement, private game: Game, private openSettings: () => void) {
     root.addEventListener('click', (e) => this.onClick(e));
@@ -112,7 +128,7 @@ export class Menus {
   get visible() { return this.screen !== 'none'; }
 
   hide() {
-    this.screen = 'none'; this.detailsId = null; this.targetSlot = null; this.dismissId = null; this.renameId = null;
+    this.screen = 'none'; this.detailsId = null; this.targetSlot = null; this.dismissId = null; this.renameId = null; this.promoteId = null; this.ceremonyId = null;
     this.root.className = 'hidden';
     this.root.innerHTML = '';
   }
@@ -221,7 +237,7 @@ export class Menus {
         <div class="d-card x-card rn-notice" role="dialog" aria-label="New recruit available">
           <div class="rn-kicker">★ NEW RECRUIT AVAILABLE! ★</div>
           <div class="d-head">
-            <canvas class="d-port" data-cls="${s.classId}"></canvas>
+            <canvas class="d-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
             <div class="d-id">
               <div class="d-name">${esc(s.name)} <span class="rn-cls">— ${CLASSES[s.classId].label}</span></div>
               <div class="d-cls">${t ? `${t.name} · ` : ''}${cr(n.price)} CR</div>
@@ -367,6 +383,7 @@ export class Menus {
   }
 
     private xpBar(s: SoldierIdentity, cls = 'xp') {
+    if (isElite(s)) return `<span class="${cls} elite" title="Elite: XP is banked for Elite levels (coming soon)"><i style="width:100%"></i></span>`;
     const lp = levelProgress(s.progression?.xp ?? 0);
     const title = lp.max ? 'Max level' : `XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`;
     return `<span class="${cls}" title="${title}"><i style="width:${Math.round(lp.frac * 100)}%"></i></span>`;
@@ -380,9 +397,9 @@ export class Menus {
     const lv = s.progression?.level ?? 1;
     if (!r.isUnlocked(s.id)) {
       return `
-      <div class="s-card locked" data-a="details" data-id="${s.id}" data-cls="${s.classId}">
+      <div class="s-card locked" data-a="details" data-id="${s.id}" data-cls="${s.classId}"${specAttr(s)}>
         <div class="s-top">
-          <canvas class="s-port" data-cls="${s.classId}"></canvas>
+          <canvas class="s-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
           <div class="s-id">
             <div class="s-name">${esc(s.name)}</div>
             <div class="s-cls">${CLASSES[s.classId].label}</div>
@@ -402,14 +419,16 @@ export class Menus {
     else btn = `<button class="pick full" data-a="select" data-id="${s.id}">SQUAD FULL</button>`;
     const trained = TRAINING_IDS.reduce((a, k) => a + s.training[k], 0);
     const isNew = this.newSoldiers.has(s.id);
+    const sp = specOf(s), promo = !sp && promotionReady(s);
+    void lv;
     return `
-      <div class="s-card ${slot >= 0 ? 'sel' : ''} ${isNew ? 'new' : ''}" data-a="details" data-id="${s.id}" data-cls="${s.classId}">${isNew ? '<span class="s-new">NEW</span>' : ''}
+      <div class="s-card ${slot >= 0 ? 'sel' : ''} ${isNew ? 'new' : ''} ${sp ? 'elite' : ''} ${promo ? 'promo' : ''}" data-a="details" data-id="${s.id}" data-cls="${s.classId}"${specAttr(s)}>${isNew ? '<span class="s-new">NEW</span>' : promo ? '<span class="s-new s-promo" title="Elite promotion available: open the profile">★ PROMOTE</span>' : ''}
         <div class="s-top">
-          <canvas class="s-port" data-cls="${s.classId}"></canvas>
+          <canvas class="s-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
           <div class="s-id">
-            <div class="s-name">${esc(s.name)}</div>
-            <div class="s-cls">${CLASSES[s.classId].label}</div>
-            <div class="s-lvrow"><span class="s-lv">LV ${lv}</span>${this.xpBar(s)}</div>
+            <div class="s-name">${sp ? '<i class="el-star">★</i>' : ''}${esc(s.name)}</div>
+            <div class="s-cls">${sp ? `<b class="el-title">${sp.title}</b> · ${CLASSES[s.classId].short}` : CLASSES[s.classId].label}</div>
+            <div class="s-lvrow">${lvBadge(s)}${this.xpBar(s)}</div>
           </div>
           ${slot >= 0 ? `<div class="s-slot">${slot + 1}</div>` : ''}
         </div>
@@ -435,8 +454,8 @@ export class Menus {
     if (!s) return `<div class="slot empty ${tgt}" data-slot="${i}" title="Empty slot: tap a soldier card to add">${num}<span class="slot-plus">+</span><span class="slot-empty">EMPTY</span></div>`;
     const over = i >= cap;
     return `<button class="slot ${tgt} ${over ? 'over' : ''}" data-a="clear" data-slot="${i}" title="${esc(s.name)}: tap to remove${over ? ' (over this mission\'s limit)' : ''}">${num}<span class="slot-x" aria-hidden="true">✕</span>
-      <canvas class="slot-port" data-cls="${s.classId}"></canvas>
-      <span class="slot-name">${esc(s.name)}</span><span class="slot-lv">${over ? 'OVER' : `LV ${s.progression?.level ?? 1}`}</span></button>`;
+      <canvas class="slot-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
+      <span class="slot-name">${esc(s.name)}</span><span class="slot-lv${isElite(s) ? ' elite' : ''}">${over ? 'OVER' : isElite(s) ? `★ ${specOf(s)!.short}` : `LV ${s.progression?.level ?? 1}`}</span></button>`;
   }
 
   /** Which pipeline layers change a stat for this soldier (details table tag). */
@@ -451,11 +470,13 @@ export class Menus {
     const tm = t?.mods as Record<string, number> | undefined;
     const mk = key === 'spread' ? 'spreadMul' : key === 'healMul' ? 'healMul' : `${key}Mul`;
     if (tm && tm[mk] !== undefined) out.push(t!.name);
+    if (key === 'reviveTime' && specOf(s)?.id === 'med-surgeon') out.push('Miracle Worker');
     return out.join(' + ');
   }
 
   private detailsHtml(s: SoldierIdentity) {
     const base = classStats(s.classId), eff = effectiveStats(s);
+    const sp = specOf(s);
     const t = s.traitId ? TRAITS[s.traitId] : null;
     const ability = ABILITY_NAMES[CLASSES[s.classId].abilityId];
     type Row = [string, number, number, string, Parameters<Menus['sources']>[1]];
@@ -490,15 +511,16 @@ export class Menus {
       <div class="m-modal" data-a="close-bg">
         <div class="d-card" data-id="${s.id}">
           <div class="d-head">
-            <canvas class="d-port" data-cls="${s.classId}"></canvas>
+            <canvas class="d-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
             <div class="d-id">
-              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${p?.level ?? 1}</span>${locked ? '' : ` <button class="d-rename" data-a="rename" data-id="${s.id}" title="Rename">✎ RENAME</button>`}</div>
-              <div class="d-cls">${CLASSES[s.classId].label} · Ability: ${ability}</div>
+              <div class="d-name">${sp ? '<i class="el-star">★</i>' : ''}${esc(s.name)} ${lvBadge(s)}${locked ? '' : ` <button class="d-rename" data-a="rename" data-id="${s.id}" title="Rename">✎ RENAME</button>`}</div>
+              <div class="d-cls">${sp ? `<b class="el-title">${sp.title.toUpperCase()}</b> · ` : ''}${CLASSES[s.classId].label} · Ability: ${ability}</div>
               <div class="d-trait"><b>${t ? t.name : 'No trait'}</b> ${t ? `— ${t.desc}` : ''}</div>
             </div>
             <button class="m-icon" data-a="close" title="Close (Esc)">✕</button>
           </div>
-          <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${lp.max ? `LV ${lp.level} · MAX LEVEL` : `LV ${lp.level} · XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
+          ${sp ? this.eliteBoxHtml(s, sp) : !locked && promotionReady(s) ? this.promoHtml(s) : ''}
+          <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${sp ? `ELITE ${Math.max(1, p!.eliteLevel)} · Recruit LV ${lp.level} complete · Elite XP banked ${cr(p!.eliteXp)} (Elite levels coming soon)` : lp.max ? `LV ${lp.level} · MAX LEVEL` : `LV ${lp.level} · XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
           <table class="d-stats"><thead><tr><th>Stat</th><th>Class base</th><th>Effective</th></tr></thead><tbody>${tr}</tbody></table>
           ${!locked && !sel && full && this.targetSlot === null ? '<div class="d-full">Squad full for this mission: remove someone, or tap a squad slot first to replace its soldier.</div>' : ''}
           <div class="d-prog">Training: ${ranks}</div>
@@ -518,6 +540,104 @@ export class Menus {
       </div>`;
   }
 
+  // ----- v0.7A Elite promotion -----
+  /** Profile of a promoted soldier: permanent specialization + passive. */
+  private eliteBoxHtml(s: SoldierIdentity, sp: EliteSpecDef) {
+    return `
+          <div class="el-box">
+            <canvas class="el-port" data-cls="${s.classId}" data-spec="${sp.id}"></canvas>
+            <div class="el-txt">
+              <div class="el-head"><b>ELITE · ${esc(sp.title.toUpperCase())}</b> <span class="el-perm">PERMANENT SPECIALIZATION</span></div>
+              <div class="el-role">${esc(sp.role)} · Passive: <b>${esc(sp.passive)}</b></div>
+              <div class="el-desc">${esc(sp.desc)}</div>
+            </div>
+          </div>`;
+  }
+
+  /** "ELITE PROMOTION AVAILABLE": cost, both specializations of the class, permanent-choice notice. */
+  private promoHtml(s: SoldierIdentity) {
+    const a = getAccount();
+    const block = promotionBlock(this.game.roster, a, s.id, this.game.phase !== 'start');
+    const short = Math.max(0, PROMOTION_COST - a.credits);
+    const cards = CLASS_BRANCHES[s.classId].map((id) => {
+      const sp = ELITE_SPECS[id];
+      return `
+            <div class="pr-opt" data-spec="${sp.id}">
+              <canvas class="pr-port" data-cls="${s.classId}" data-spec="${sp.id}"></canvas>
+              <div class="pr-otxt">
+                <b class="pr-title">${esc(sp.title.toUpperCase())}</b>
+                <span class="pr-role">${esc(sp.role)}</span>
+                <span class="pr-pass">Passive: <b>${esc(sp.passive)}</b></span>
+                <span class="pr-desc">${esc(sp.desc)}</span>
+              </div>
+              <button class="pick in pr-pick" data-a="promo-pick" data-id="${s.id}" data-spec="${sp.id}" ${block ? 'disabled' : ''} title="${esc(block ?? `Choose ${sp.title}`)}">CHOOSE ${esc(sp.title.toUpperCase())}</button>
+            </div>`;
+    }).join('');
+    return `
+          <div class="pr-box">
+            <div class="pr-head"><b>★ ELITE PROMOTION AVAILABLE</b><span class="pr-cost">Cost <b>${cr(PROMOTION_COST)} CR</b> · You have <b class="${short ? 'warn' : ''}">${cr(a.credits)} CR</b></span></div>
+            <div class="pr-note">${esc(s.name)} reached Recruit Level ${PROMOTION_LEVEL}. Choose one specialization: <b>the choice is permanent</b> (no respec). ${esc(s.name)} keeps their name, class, trait, training and career.${short ? ` <b class="warn">${cr(short)} CR short.</b>` : ''}</div>
+            <div class="pr-opts">${cards}</div>
+            ${block && !short ? `<div class="d-note">${esc(block)}</div>` : ''}
+          </div>`;
+  }
+
+  /** Confirmation before any Credits move. */
+  private promoConfirmHtml(s: SoldierIdentity, sp: EliteSpecDef) {
+    const a = getAccount();
+    const block = promotionBlock(this.game.roster, a, s.id, this.game.phase !== 'start');
+    const left = this.promoteAt + PROMO_ARM_MS - performance.now();
+    const t = s.traitId ? TRAITS[s.traitId] : null;
+    return `
+      <div class="m-modal" data-a="promo-cancel-bg">
+        <div class="d-card x-card pr-confirm" role="dialog" aria-label="Confirm Elite promotion">
+          <div class="x-title">CONFIRM ELITE PROMOTION</div>
+          <div class="d-head">
+            <canvas class="d-port" data-cls="${s.classId}" data-spec="${sp.id}"></canvas>
+            <div class="d-id">
+              <div class="d-name">${esc(s.name)} ${lvBadge(s)}</div>
+              <div class="d-cls">${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
+              <div class="pr-to">→ <b>${esc(sp.title.toUpperCase())}</b> · ${esc(sp.role)}</div>
+            </div>
+          </div>
+          <div class="pr-cpass">Passive: <b>${esc(sp.passive)}</b> — ${esc(sp.desc)}</div>
+          <div class="pr-cline">Promotion cost <b>${cr(PROMOTION_COST)} CR</b> · Credits after <b>${cr(Math.max(0, a.credits - PROMOTION_COST))} CR</b></div>
+          <div class="x-warn">⚠ This choice is permanent. ${esc(s.name)} can never switch to ${esc(ELITE_SPECS[CLASS_BRANCHES[s.classId].find((b) => b !== sp.id)!].title)} or go back to Recruit, and Credits are not refunded.</div>
+          ${block ? `<div class="d-full">${esc(block)}</div>` : ''}
+          <div class="d-btns">
+            <button class="m-big alt" data-a="promo-cancel">CANCEL</button>
+            <button class="m-big gold" data-a="promo-confirm" data-id="${s.id}" data-spec="${sp.id}" ${block || left > 0 ? 'disabled' : ''}>CONFIRM · ${cr(PROMOTION_COST)} CR</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /** The ceremony: name, new Elite title, specialization, the new uniform, a short flourish. */
+  private ceremonyHtml(s: SoldierIdentity, sp: EliteSpecDef) {
+    return `
+      <div class="m-modal cer-bg" data-a="ceremony-close-bg">
+        <div class="cer-card" role="dialog" aria-label="Promotion ceremony">
+          <div class="cer-rays"></div>
+          <div class="cer-kicker">PROMOTED</div>
+          <canvas class="cer-port" data-cls="${s.classId}" data-spec="${sp.id}"></canvas>
+          <div class="cer-name">${esc(s.name.toUpperCase())}</div>
+          <div class="cer-title">★ ${esc(sp.title.toUpperCase())} ★</div>
+          <div class="cer-spec">${esc(sp.role)} · ${CLASSES[s.classId].label} · ELITE 1</div>
+          <div class="cer-pass">Passive: <b>${esc(sp.passive)}</b> — ${esc(sp.desc)}</div>
+          <button class="m-big gold cer-ok" data-a="ceremony-close">CONTINUE</button>
+        </div>
+      </div>`;
+  }
+
+  private doPromote(id: string, spec: string) {
+    const g = this.game;
+    const res = promote(g.roster, getAccount(), id, spec, g.persist, { inMission: g.phase !== 'start' });
+    this.promoteId = null; this.promoteSpec = null;
+    if (res.ok) { this.ceremonyId = id; this.ceremonyAt = performance.now(); sfx('levelup'); }
+    this.renderBarracks();
+    this.notice(res.ok ? `${res.soldier.name} promoted to ${res.spec.title} (−${cr(res.cost)} CR).${res.saved ? '' : ' · not saved (no storage)'}` : res.reason);
+  }
+
   // ----- Individual Training tab -----
   private trainingHtml() {
     const r = this.game.roster, acc = getAccount();
@@ -525,7 +645,7 @@ export class Menus {
     const s = owned.find((x) => x.id === this.trainId) ?? owned[0] ?? r.soldiers[0];
     const list = owned.map((x) => `
       <button class="t-pick ${x.id === s.id ? 'on' : ''}" data-a="tsel" data-id="${x.id}">
-        <b>${esc(x.name)}</b><span>${CLASSES[x.classId].short} · LV ${x.progression?.level ?? 1}</span>${this.xpBar(x)}
+        <b>${isElite(x) ? '★ ' : ''}${esc(x.name)}</b><span>${CLASSES[x.classId].short} · ${levelTag(x)}</span>${this.xpBar(x)}
       </button>`).join('');
     const t = s.traitId ? TRAITS[s.traitId] : null;
     const lp = levelProgress(s.progression?.xp ?? 0);
@@ -549,11 +669,11 @@ export class Menus {
         <div class="t-list">${list}</div>
         <section class="t-panel t-scroll">
           <div class="t-head">
-            <canvas class="d-port" data-cls="${s.classId}"></canvas>
+            <canvas class="d-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
             <div class="d-id">
-              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${lp.level}</span></div>
-              <div class="d-cls">${CLASSES[s.classId].label} · ${t ? t.name : 'No trait'}</div>
-              <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${lp.max ? 'MAX LEVEL' : `XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
+              <div class="d-name">${esc(s.name)} ${lvBadge(s)}</div>
+              <div class="d-cls">${specOf(s) ? `${specOf(s)!.title} · ` : ''}${CLASSES[s.classId].label} · ${t ? t.name : 'No trait'}</div>
+              <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${specOf(s) ? 'ELITE · training continues as usual' : lp.max ? 'MAX LEVEL' : `XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
             </div>
           </div>
           <div class="t-rows">${rows}</div>
@@ -666,8 +786,8 @@ export class Menus {
       const btn = block ? `<button class="rc-buy full" disabled title="${esc(block)}">${/full/i.test(block) ? 'ROSTER FULL' : 'BLOCKED'}</button>`
         : `<button class="rc-buy ${afford ? '' : 'poor'}" data-a="recruit-named" data-id="${def.key}" ${afford ? '' : 'disabled'} title="${afford ? `Recruit ${esc(s.name)}` : 'Not enough Credits'}">${afford ? 'RECRUIT · ' : ''}${cr(def.price)} CR</button>`;
       return `
-        <div class="nr-row" data-id="${def.key}" data-cls="${s.classId}">
-          <canvas class="s-port" data-cls="${s.classId}"></canvas>
+        <div class="nr-row" data-id="${def.key}" data-cls="${s.classId}"${specAttr(s)}>
+          <canvas class="s-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
           <div class="nr-id">
             <div class="nr-name"><b>${esc(s.name)}</b> — ${CLASSES[s.classId].label} <span class="s-lv">LV ${level}</span></div>
             <div class="nr-trait"><b>${t ? t.name : 'No trait'}</b> ${t ? `<span>${t.desc}</span>` : ''}</div>
@@ -688,6 +808,8 @@ export class Menus {
 
   private modalHtml() {
     const r = this.game.roster;
+    if (this.ceremonyId && r.get(this.ceremonyId) && specOf(r.get(this.ceremonyId)!)) return this.ceremonyHtml(r.get(this.ceremonyId)!, specOf(r.get(this.ceremonyId)!)!);
+    if (this.promoteId && r.get(this.promoteId) && eliteSpec(this.promoteSpec)) return this.promoConfirmHtml(r.get(this.promoteId)!, eliteSpec(this.promoteSpec)!);
     if (this.dismissId && r.get(this.dismissId)) return this.dismissHtml(r.get(this.dismissId)!);
     if (this.renameId && r.get(this.renameId)) return this.renameHtml(r.get(this.renameId)!);
     if (this.detailsId && this.tab === 'roster' && r.get(this.detailsId)) return this.detailsHtml(r.get(this.detailsId)!);
@@ -702,14 +824,14 @@ export class Menus {
         <div class="d-card x-card" role="dialog" aria-label="Dismiss soldier">
           <div class="x-title">DISMISS SOLDIER?</div>
           <div class="d-head">
-            <canvas class="d-port" data-cls="${s.classId}"></canvas>
+            <canvas class="d-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
             <div class="d-id">
-              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${s.progression?.level ?? 1}</span></div>
-              <div class="d-cls">${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
+              <div class="d-name">${esc(s.name)} ${lvBadge(s)}</div>
+              <div class="d-cls">${specOf(s) ? `${specOf(s)!.title} · ` : ''}${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
               <div class="x-refund">Refund <b>+${cr(dismissRefund(s))} CR</b>${s.origin === 'phoenix' ? ' <small>(Operation Phoenix recruit: no refund)</small>' : ''}</div>
             </div>
           </div>
-          <div class="x-warn">⚠ ${esc(s.name)} leaves for good. Levels, XP and every training rank bought for them are permanently lost (training is not refunded). Dismissed soldiers are not honored in the Memorial. This cannot be undone.</div>
+          <div class="x-warn">⚠ ${esc(s.name)} leaves for good. ${isElite(s) ? `Their Elite rank and ${esc(specOf(s)!.title)} specialization (the ${cr(PROMOTION_COST)} CR promotion is not refunded), ` : ''}Levels, XP and every training rank bought for them are permanently lost (training is not refunded). Dismissed soldiers are not honored in the Memorial. This cannot be undone.</div>
           ${block ? `<div class="d-full">${esc(block)}</div>` : ''}
           <div class="d-btns">
             <button class="m-big alt" data-a="dismiss-cancel">CANCEL</button>
@@ -800,7 +922,7 @@ export class Menus {
   private drawPortraits() {
     if (!this.visible) return;
     this.root.querySelectorAll<HTMLCanvasElement>('canvas[data-cls]').forEach((c) => {
-      drawClassPortrait(c, c.dataset.cls as SoldierIdentity['classId'], c.classList.contains('slot-port') ? 0.3 : 0.55);
+      drawClassPortrait(c, c.dataset.cls as SoldierIdentity['classId'], c.classList.contains('slot-port') ? 0.3 : 0.55, c.dataset.spec ?? null);
     });
   }
 
@@ -891,10 +1013,10 @@ export class Menus {
       <div class="k-main">
         <section class="k-card">
           <div class="k-who">
-            <canvas class="d-port gray" data-cls="${s.classId}"></canvas>
+            <canvas class="d-port gray" data-cls="${s.classId}"${specAttr(s)}></canvas>
             <div class="d-id">
-              <div class="d-name">${esc(s.name)} <span class="s-lv">LV ${s.progression?.level ?? 1}</span> <span class="k-kia">KIA</span></div>
-              <div class="d-cls">${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
+              <div class="d-name">${esc(s.name)} ${lvBadge(s)} <span class="k-kia">KIA</span></div>
+              <div class="d-cls">${specOf(s) ? `${specOf(s)!.title} · ` : ''}${CLASSES[s.classId].label}${t ? ` · ${t.name}` : ''}</div>
               <div class="k-cause">${CAUSE_TEXT[cause] ?? 'Fell in action'}</div>
             </div>
           </div>
@@ -904,7 +1026,7 @@ export class Menus {
             <span><i>Your Credits</i><b>${cr(a.credits)} CR</b></span>
             <span class="${short ? 'short' : 'ok'}"><i>${short ? 'Shortfall' : 'Affordable'}</i><b>${short ? `${cr(short)} CR` : '✓'}</b></span>
           </div>
-          <div class="k-note">Resurrection restores ${esc(s.name)} exactly as they were: level, XP, training and career record. ${short ? 'Not enough Credits: dismiss reserve soldiers in Manage Roster, or honor them in the Memorial.' : ''}</div>
+          <div class="k-note">Resurrection restores ${esc(s.name)} exactly as they were: ${isElite(s) ? 'Elite rank and specialization, ' : ''}level, XP, training and career record.${isElite(s) ? ' Elite soldiers cost twice as much to resurrect.' : ''} ${short ? 'Not enough Credits: dismiss reserve soldiers in Manage Roster, or honor them in the Memorial.' : ''}</div>
         </section>
         <div class="k-btns">
           <button class="m-big" data-a="resurrect" data-id="${s.id}" ${short ? 'disabled' : ''} title="${short ? `Need ${cr(short)} more Credits` : `Resurrect for ${cr(cost)} CR`}">RESURRECT NOW · ${cr(cost)} CR</button>
@@ -922,8 +1044,8 @@ export class Menus {
       <div class="k-main">
         <section class="k-card k-confirm">
           <div class="x-title">HONOR ${esc(s.name.toUpperCase())} IN THE MEMORIAL?</div>
-          <div class="k-who"><canvas class="d-port gray" data-cls="${s.classId}"></canvas>
-            <div class="d-id"><div class="d-name">${esc(s.name)} <span class="s-lv">LV ${s.progression?.level ?? 1}</span></div><div class="d-cls">${CLASSES[s.classId].label} · ${s.service.kills} kills · resurrected ${s.resurrections}×</div></div></div>
+          <div class="k-who"><canvas class="d-port gray" data-cls="${s.classId}"${specAttr(s)}></canvas>
+            <div class="d-id"><div class="d-name">${esc(s.name)} ${lvBadge(s)}</div><div class="d-cls">${specOf(s) ? `${specOf(s)!.title} · ` : ''}${CLASSES[s.classId].label} · ${s.service.kills} kills · resurrected ${s.resurrections}×</div></div></div>
           <div class="x-warn">⚠ This decision is permanent. This soldier cannot be resurrected later.</div>
           <div class="rn-help">${esc(s.name)} leaves the roster for good. Their final record is kept in the Memorial. No Credits are paid.</div>
         </section>
@@ -939,9 +1061,9 @@ export class Menus {
     const a = getAccount(), r = this.game.roster, cost = costFor(fallen), short = Math.max(0, cost - a.credits);
     const rows = r.owned().map((s) => {
       const t = s.traitId ? TRAITS[s.traitId].name : '';
-      if (s.status === 'kia') return `<div class="k-row fallen"><canvas class="slot-port gray" data-cls="${s.classId}"></canvas><span class="k-rid"><b>${esc(s.name)} <small>LV ${s.progression?.level ?? 1}</small></b><span>${CLASSES[s.classId].short} · ${t}</span></span><span class="k-tag">FALLEN</span></div>`;
+      if (s.status === 'kia') return `<div class="k-row fallen"><canvas class="slot-port gray" data-cls="${s.classId}"${specAttr(s)}></canvas><span class="k-rid"><b>${esc(s.name)} <small>${levelTag(s)}</small></b><span>${CLASSES[s.classId].short} · ${t}</span></span><span class="k-tag">FALLEN</span></div>`;
       const block = dismissBlock(r, s.id);
-      return `<div class="k-row"><canvas class="slot-port" data-cls="${s.classId}"></canvas><span class="k-rid"><b>${esc(s.name)} <small>LV ${s.progression?.level ?? 1}</small></b><span>${CLASSES[s.classId].short} · ${t}</span></span>
+      return `<div class="k-row"><canvas class="slot-port" data-cls="${s.classId}"${specAttr(s)}></canvas><span class="k-rid"><b>${esc(s.name)} <small>${levelTag(s)}</small></b><span>${CLASSES[s.classId].short} · ${t}</span></span>
         <button class="pick out" data-a="dismiss" data-id="${s.id}" ${block ? 'disabled' : ''} title="${esc(block ?? 'Dismiss for good')}">${block ? 'KEEP' : `DISMISS · +${cr(dismissRefund(s))}`}</button></div>`;
     }).join('');
     const living = r.living().length;
@@ -1022,9 +1144,9 @@ export class Menus {
     const cards = list.map((m) => {
       const s = m.soldier;
       return `<div class="mm-card" data-id="${esc(s.id)}" title="${esc(CAUSE_TEXT[m.cause] ?? '')}">
-          <canvas class="s-port gray" data-cls="${s.classId}"></canvas>
+          <canvas class="s-port gray" data-cls="${s.classId}"${specAttr(s)}></canvas>
           <b class="mm-name">${esc(s.name)}</b>
-          <span class="mm-lv">LV ${s.progression?.level ?? 1} · ${CLASSES[s.classId].short}</span>
+          <span class="mm-lv">${levelTag(s)} · ${specOf(s) ? specOf(s)!.title : CLASSES[s.classId].short}</span>
           <span class="mm-st">${s.service.kills} kills · ${s.resurrections} res.</span>
         </div>`;
     }).join('');
@@ -1055,19 +1177,20 @@ export class Menus {
       const x = xpOf.get(r.id);
       let prog = '<span class="dim">—</span>';
       if (x) {
-        const lv = x.levelsGained > 0 ? `<b class="up">LV ${x.before.level} → LV ${x.after.level}</b>` : `LV ${x.after.level}`;
-        prog = x.eligible ? `${lv} · <b>+${x.xp} XP</b>${x.capped ? ' <span class="dim">(MAX)</span>' : ''}` : `${lv} · <span class="dim">no XP</span>`;
+        const rs = g.roster.get(x.id);
+        const lv = x.elite && rs ? `<b class="el-title">${levelTag(rs)}</b>` : x.levelsGained > 0 ? `<b class="up">LV ${x.before.level} → LV ${x.after.level}</b>` : `LV ${x.after.level}`;
+        prog = x.eligible ? `${lv} · <b>+${x.xp} XP</b>${x.elite ? ' <span class="dim">(banked)</span>' : x.capped ? ' <span class="dim">(MAX)</span>' : ''}` : `${lv} · <span class="dim">no XP</span>`;
       }
       return `
       <tr class="st-${r.status.toLowerCase()} ${x && x.levelsGained > 0 ? 'lvup' : ''}">
-        <td class="r-name"><b>${esc(r.name)}</b><span>${CLASSES[r.classId].short}${r.traitId ? ` · ${TRAITS[r.traitId].name}` : ''}</span></td>
+        <td class="r-name"><b>${esc(r.name)}</b><span>${(() => { const sp = specOf(g.roster.get(r.id)); return sp ? `<b class="el-title">★ ${esc(sp.title)}</b>` : CLASSES[r.classId].short; })()}${r.traitId ? ` · ${TRAITS[r.traitId].name}` : ''}</span></td>
         <td>${r.kills}</td><td>${Math.round(r.damage)}</td><td>${Math.round(r.healing)}</td><td>${r.revives}</td>
         <td class="r-status">${r.status}</td>
         <td class="r-xp">${prog}</td>
       </tr>`;
     }).join('');
     const levelUps = rw?.soldiers.filter((x) => x.levelsGained > 0).map((x) =>
-      `<div class="r-lvl">▲ ${esc(x.name.toUpperCase())} — LV ${x.before.level} → LV ${x.after.level} — +${x.xp} XP</div>`).join('') ?? '';
+      `<div class="r-lvl">▲ ${esc(x.name.toUpperCase())} — LV ${x.before.level} → LV ${x.after.level} — +${x.xp} XP${x.after.level >= PROMOTION_LEVEL ? ' — <b class="el-title">★ ELITE PROMOTION AVAILABLE</b> (Barracks profile)' : ''}</div>`).join('') ?? '';
     const unlocks = rw ? [
       ...rw.unlockedRecruits.map((k) => { const s = g.roster.get(k) ?? defaultRoster().find((d) => d.id === k); return s ? `<div class="r-unl soldier">★ NEW RECRUIT AVAILABLE: <b>${esc(s.name.toUpperCase())}</b> (${CLASSES[s.classId].label}) · Recruitment Office</div>` : ''; }),
       ...(rw.unlockedClasses ?? []).map((c) => `<div class="r-unl soldier">★ NEW CLASS UNLOCKED: <b>${esc(CLASSES[c as SoldierClassId]?.label.toUpperCase() ?? c)}</b> · Recruitment Office</div>`),
@@ -1219,6 +1342,34 @@ export class Menus {
       case 'rename-save': e.stopPropagation(); this.submitRename(); return;
       case 'rename-cancel': this.renameId = null; break;
       case 'rename-cancel-bg': if (e.target === el) this.renameId = null; else return; break;
+      // ----- v0.7A Elite promotion -----
+      case 'promo-pick': {
+        e.stopPropagation();
+        this.promoteId = id!; this.promoteSpec = el.dataset.spec ?? null; this.promoteAt = performance.now();
+        // a second CHOOSE tap can't land on CONFIRM: it only arms after PROMO_ARM_MS (Cancel works at once)
+        clearTimeout(this.promoteTimer);
+        this.promoteTimer = window.setTimeout(() => { if (this.promoteId && this.screen === 'barracks') this.renderBarracks(); }, PROMO_ARM_MS + 30);
+        this.renderBarracks();
+        return;
+      }
+      case 'promo-cancel': e.stopPropagation(); this.promoteId = null; this.promoteSpec = null; this.renderBarracks(); return;
+      case 'promo-cancel-bg': if (e.target !== el) return; e.stopPropagation(); this.promoteId = null; this.promoteSpec = null; this.renderBarracks(); return;
+      case 'promo-confirm': {
+        e.stopPropagation();
+        const now = performance.now(), key = `${a}:${id ?? ''}`;
+        if (now < this.promoteAt + PROMO_ARM_MS) return;
+        if (key === this.lastBuy.key && now - this.lastBuy.t < PROGRESSION.purchaseLockMs) return;
+        this.lastBuy = { key, t: now };
+        this.txLockUntil = now + RECRUIT_LOCK_MS;
+        this.doPromote(id!, el.dataset.spec ?? '');
+        return;
+      }
+      case 'ceremony-close': case 'ceremony-close-bg': {
+        e.stopPropagation();
+        if (performance.now() < this.ceremonyAt + 400) return; // the confirming tap can't close it at once
+        this.ceremonyId = null; this.renderBarracks();
+        return;
+      }
       case 'settings': this.openSettings(); return;
       case 'deploy': this.deploy(); return;
       case 'retry': g.reset(); return;
@@ -1325,13 +1476,15 @@ export class Menus {
     if (this.screen === 'memorial') { if (e.code === 'Escape') { if (this.memorialBack === 'campaign') this.showCampaign(); else this.showBarracks(); } return; }
     if (this.screen === 'barracks') {
       if (e.code === 'Escape') {
-        if (this.dismissId) this.dismissId = null;
+        if (this.ceremonyId) this.ceremonyId = null;
+        else if (this.promoteId) { this.promoteId = null; this.promoteSpec = null; }
+        else if (this.dismissId) this.dismissId = null;
         else if (this.renameId) this.renameId = null;
         else if (this.detailsId) this.detailsId = null;
         else if (this.targetSlot !== null) this.targetSlot = null;
         else { this.showCampaign(); return; }
         this.renderBarracks();
-      } else if (this.dismissId || this.renameId) { /* dialogs: buttons only (no Enter shortcut for a dismissal) */ }
+      } else if (this.dismissId || this.renameId || this.promoteId || this.ceremonyId) { /* dialogs: buttons only (no Enter shortcut for a dismissal or a promotion) */ }
       else if (e.code === 'KeyC' && !this.detailsId) this.showCampaign();
     } else if (this.screen === 'campaign') {
       if (e.code === 'Enter' && !this.resetOpen) { e.preventDefault(); this.deploy(); }

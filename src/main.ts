@@ -18,6 +18,7 @@ import * as recruitment from './recruitment';
 import * as casualties from './casualties';
 import { SimClock } from './clock';
 import { CAMPAIGN, namedRecruit } from './campaign';
+import * as elite from './elite';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -64,6 +65,22 @@ function debugUnlockAll() {
   useRoster(game.roster, 'DEBUG: all missions and soldiers unlocked (saved).');
 }
 game.debugUnlockAll = debugUnlockAll;
+/**
+ * Dev (v0.7A): get a promotion test ready: every owned, living Recruit jumps to Recruit Level 25
+ * and Credits are topped up to 25,000, then SAVED (tuning panel, two-step confirm). Elites untouched.
+ */
+function debugPromotionReady() {
+  const a = getAccount();
+  for (const s of game.roster.owned()) {
+    const p = s.progression;
+    if (!p || s.status === 'kia' || p.tier === 'elite') continue;
+    p.xp = Math.max(p.xp, progression.xpForLevel(elite.PROMOTION_LEVEL)); p.level = progression.levelForXp(p.xp);
+  }
+  a.credits = Math.max(a.credits, 25000);
+  persist();
+  useRoster(game.roster, 'DEBUG: every Recruit is now LV 25 and Credits are 25,000 (saved). Open a soldier in the Barracks to promote.');
+}
+game.debugPromotionReady = debugPromotionReady;
 
 // Fit the 1280x720 stage into the visible viewport, minus safe areas (notch, home bar).
 // Mobile browsers often report stale sizes right after a rotation and may leave the
@@ -125,7 +142,9 @@ if (preset) game.reset(preset.classes);
 else if (tempIds.length) game.deploy([...new Set(tempIds)].slice(0, 6), 'temp');
 else {
   const msg = loaded.status === 'reset' || loaded.status === 'repaired' ? 'Save data was invalid and has been repaired.'
-    : loaded.status === 'migrated' ? (loaded.fromVersion === 6
+    : loaded.status === 'migrated' ? (loaded.fromVersion === 7
+      ? 'Save updated for v0.7A: everything was kept. New: Elite Promotions — soldiers who reach Recruit Level 25 can be promoted to an Elite specialization in their Barracks profile.'
+      : loaded.fromVersion === 6
       ? 'Save updated for v0.6.2: everything was kept. New: Chapter 2 — Behind Enemy Lines (Missions 6-10) and, after Mission 9, the Sniper class.'
       : loaded.fromVersion === 5
       ? 'Save updated for v0.6.1: every soldier you have was kept (nothing charged). New: campaign milestones now unlock named recruits you choose to buy in the Recruitment Office.'
@@ -189,7 +208,7 @@ Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, _
 // roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
 Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded,
   __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll, __recruitment: recruitment, __Roster: Roster,
-  __casualties: casualties, __clock: clock, __SimClock: SimClock, __hud: hud,
+  __casualties: casualties, __clock: clock, __SimClock: SimClock, __hud: hud, __elite: elite, __debugPromotionReady: debugPromotionReady,
   // v0.6.3 perf tools (tools/perf.cjs, tools/fps-parity.cjs): one render + HUD pass, and the loop stats
   __render: () => { ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0); if (game.phase !== 'start') render(ctx, game); hud.update(); },
   __perf: { stats: pstats, settings: perfSettings } });

@@ -103,6 +103,7 @@ function makeDefaults() {
       callPause: 2, // s extra MG rest when he calls reinforcements (rest total = callPause + rest)
       // hidden damage modifiers by source (never shown in game text)
       modInfantry: 0.75, modHeavy: 0.65, modMedic: 0.75, modGrenade: 1.0, modSniper: 1.6,
+      plating: 0.35, // v0.7A: armor share of those modifiers that a Ghost's Phantom Shot can pierce (precision rounds only)
     },
     truck: {
       hp: 1000, damage: 0, accuracy: 0, movePenalty: 0, fireRate: 0, range: 0, moveSpeed: 52, projectileSpeed: 1,
@@ -180,6 +181,30 @@ function makeDefaults() {
       ringIdle: 54, // ... and when the squad is stopped
       freeTime: 3, // s standing next to the captive to cut them loose
       strayHitRadius: 5, // v0.6.2: an escorted captive keeps their head down: rounds aimed at a soldier only hit them inside this radius (aimed rounds use the full body)
+    },
+    // v0.7A Elite specialization passives (elite.ts). Percentages are fractions.
+    elite: {
+      adrenalineThreshold: 0.35, // Elite Trooper: Adrenaline Rush below this fraction of max HP...
+      adrenalineReduction: 0.25, // ...cuts incoming damage by this much
+      deadeyeEvery: 5, // Recon Commando: every Nth successful rifle hit...
+      deadeyeBonus: 0.5, // ...deals this much extra damage
+      ironcladReduction: 0.2, // Juggernaut: incoming damage cut, always on
+      overdriveMax: 0.25, // Weapons Specialist: max fire-rate bonus (fraction of base, added on top of abilities)
+      overdriveBuild: 4, // s of sustained fire from 0 to max
+      overdriveGrace: 0.75, // s without a shot before it starts cooling down
+      overdriveDecay: 2, // s from max back to 0 once cooling
+      miracleReviveSpeed: 1.3, // Combat Surgeon: revive speed x this (time / 1.3)
+      miracleHpFrac: 0.5, // revived soldiers get up with this fraction of max HP (normal: revive.hpFrac)
+      rallyRadius: 170, // Field Commander aura radius (px)
+      rallyDamage: 0.1, // rallied squadmates: weapon damage bonus
+      rallySpeed: 0.1, // rallied squadmates: move speed bonus
+      phantomEvery: 4, // Ghost: every Nth successful hit is a precision round...
+      phantomPen: 0.6, // ...that ignores this share of enemy armor
+      perfectAimCharge: 3, // Deadeye: s of stationary aim with a target to charge the next shot...
+      perfectAimBonus: 0.75, // ...which deals this much extra damage
+      perfectAimMoveTol: 0.15, // smoothed move fraction above which the soldier counts as moving (charge resets)
+      maxDamageReduction: 0.4, // cap on all incoming-damage reductions together
+      maxShotMul: 2, // cap on all per-shot damage multipliers together
     },
     pickups: {
       medkitHealFrac: 0.2, // each living, standing soldier heals this fraction of max HP

@@ -11,6 +11,7 @@ import { isMuted, setMuted, unlockAudio } from './audio';
 import { Tuning } from './tuning';
 import { Menus } from './menus';
 import { TRAITS } from './traits';
+import { adrenalineActive } from './elite';
 
 interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
 
@@ -125,14 +126,15 @@ export class Hud implements GameUI {
       const def = u.classDef!;
       const ab = u.ability!;
       root.className = 'panel';
-      root.title = `${u.name} · ${def.label}${u.identity?.traitId ? ' · ' + TRAITS[u.identity.traitId].name : ''}`;
+      root.title = `${u.name} · ${def.label}${u.elite ? ` · ${u.elite.spec.title} (${u.elite.spec.passive})` : ''}${u.identity?.traitId ? ' · ' + TRAITS[u.identity.traitId].name : ''}`;
       root.dataset.cls = def.id;
+      if (u.elite) root.dataset.spec = u.elite.id; // v0.7A: Elite portrait (black helmet, blue band)
       root.innerHTML = `
         <button class="ability cls-${def.id}" title="${ab.name} (${i + 1})" data-ability="${ab.id}">
           <div class="portrait"><div class="face"></div><div class="helmet"></div><div class="badge"></div></div>
           <div class="cd"></div><div class="act"></div><span class="key">${i + 1}</span><span class="icon">${ab.icon}</span>
         </button>
-        <div class="info"><div class="name">${u.name}</div><div class="cls">${def.label}</div><div class="hp"><div class="fill"></div><span class="hpnum"></span></div><div class="state"></div></div>`;
+        <div class="info"><div class="name">${u.elite ? '<i class="el-star">★</i>' : ''}${u.name}</div><div class="cls">${u.elite ? u.elite.spec.title : def.label}</div><div class="hp"><div class="fill"></div><span class="hpnum"></span></div><div class="state"></div></div>`;
       const btn = root.querySelector<HTMLElement>('.ability')!;
       btn.addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation(); unlockAudio();
@@ -186,7 +188,8 @@ export class Hud implements GameUI {
       const def = u.classDef!;
       setStyle(p.fill, 'width', `${Math.max(0, (u.hp / u.maxHp) * 100)}%`);
       setText(p.hpnum, `${Math.ceil(Math.max(0, u.hp))}/${Math.round(u.maxHp)}`);
-      setText(p.cls, u.rapidFire > 0 && u.active ? `${def.label} · RAPID ${Math.ceil(u.rapidFire)}s` : def.label);
+      const label = u.elite ? eliteLabel(u) : def.label;
+      setText(p.cls, u.rapidFire > 0 && u.active ? `${label} · RAPID ${Math.ceil(u.rapidFire)}s` : label);
       const abName = compact ? '' : `${SHORT_ABILITY[ab.id] ?? ab.name.toUpperCase()} `;
       let state: string, cls = 'ok';
       if (u.state === 'downed') {
@@ -199,7 +202,7 @@ export class Hud implements GameUI {
       else if (ab.cooldownLeft > 0) { cls = 'ok cooling'; state = `${abName}${Math.ceil(ab.cooldownLeft)}s`; }
       else state = `${abName}READY`;
       setText(p.state, state);
-      setClass(p.root, `panel ${cls}`);
+      setClass(p.root, `panel ${cls}${u.elite ? ' elite' : ''}`);
       const cdFrac = u.active ? ab.cooldownLeft / ab.cooldown() : 1;
       // while an effect runs, the button shows its remaining duration instead of the cooldown
       const running = u.active && ab.activeLeft > 0;
@@ -289,4 +292,14 @@ export class Hud implements GameUI {
   }
 
   get rootEl() { return this.root; }
+}
+
+/** v0.7A: an Elite's class line: title, plus the passive's live state when it matters (only changes a few times a second). */
+function eliteLabel(u: Unit): string {
+  const e = u.elite!;
+  if (!u.active) return e.spec.title;
+  if (e.id === 'snp-deadeye' && e.ready) return `${e.spec.title} · AIM READY`;
+  if (e.id === 'hvy-weapons' && e.overdrive >= 0.99) return `${e.spec.title} · OVERDRIVE`;
+  if (e.id === 'inf-trooper' && adrenalineActive(u)) return `${e.spec.title} · ADRENALINE`;
+  return e.spec.title;
 }

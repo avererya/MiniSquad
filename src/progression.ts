@@ -227,6 +227,13 @@ export const newNamedRecruits = (): NamedRecruitState => ({ unlocked: [], claime
 export interface ClassUnlockState { unlocked: string[]; notified: string[] }
 export const newClassUnlocks = (): ClassUnlockState => ({ unlocked: [], notified: [] });
 
+/**
+ * v0.7A Elite promotion ledger: one entry per promotion ever paid (oldest first). The soldier's own
+ * progression record holds the live Elite state; the ledger is the receipt: save repairs restore a
+ * lost / altered specialization from it, so a promotion can never be re-sold or switched.
+ */
+export interface PromotionRecord { eventId: string; soldierId: string; name: string; classId: SoldierClassId; spec: string; cost: number; at: number; recruitXp: number }
+
 export interface AccountData {
   credits: number;
   squadTraining: SquadTrainingRanks;
@@ -249,12 +256,14 @@ export interface AccountData {
   named: NamedRecruitState;
   /** v0.6.2: classes unlocked by campaign milestones (Sniper). */
   classUnlocks: ClassUnlockState;
+  /** v0.7A: Elite promotions paid (ledger). */
+  promotions: PromotionRecord[];
 }
 export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
 export const newAccount = (): AccountData => ({
   credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(),
   pendingDecision: null, memorial: [], phoenix: newPhoenix(), activeRun: null, named: newNamedRecruits(),
-  classUnlocks: newClassUnlocks(),
+  classUnlocks: newClassUnlocks(), promotions: [],
 });
 
 let account: AccountData = newAccount();
@@ -328,6 +337,10 @@ export interface SoldierReward {
   after: { level: number; xp: number };
   levelsGained: number;
   capped: boolean;
+  /** v0.7A: an Elite (XP is banked as eliteXp for v0.7B instead of Recruit levels). */
+  elite?: boolean;
+  /** v0.7A: Elite XP banked by this mission (= xp for an eligible Elite). */
+  banked?: number;
 }
 export interface MissionReward {
   runId: string;

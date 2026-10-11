@@ -24,6 +24,7 @@ import { sfx, setMuted, isMuted } from './audio';
 import { getAccount, type MissionReward } from './progression';
 import { journalKia, newRunId, recoverInterruptedRun, settleMission, type PersistFn } from './economy';
 import { decisionBlock } from './casualties';
+import { eliteAuras, eliteTick, incomingMul, reviveHpFrac } from './elite';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -115,6 +116,11 @@ export class Game implements InputHandler {
   escortRescues = 0;
   /** v0.6.2: HP removed from the Iron Warden per soldier id (balance tools: Sniper contribution). */
   bossDamage = new Map<string, number>();
+  /** v0.7A: Elite soldiers / Field Commanders deployed in this mission (passive upkeep is skipped when 0). */
+  eliteCount = 0;
+  eliteCommanders = 0;
+  /** Dev hook (set by main.ts): every owned Recruit to LV 25 + Credits for a promotion test (modifies save). */
+  debugPromotionReady: (() => void) | null = null;
   /** Short feedback line (e.g. why an ability can't be used). */
   notice: { text: string; life: number } | null = null;
   input: Input;
@@ -258,6 +264,7 @@ export class Game implements InputHandler {
     this.lastReward = null; this.lastStars = null; this.escortRescues = 0; this.bossDamage = new Map();
     this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.scorches = []; this.fx = new Effects(); this.banners = [];
+    this.eliteCount = 0; this.eliteCommanders = 0;
     const start = script.map.start;
     this.anchor = { ...start }; this.cam = { ...start }; this.spread = 1;
     this.time = 0; this.targeting = null; this.paused = false;
@@ -333,6 +340,7 @@ export class Game implements InputHandler {
     const s = new Unit('squad', pos, cls === 'sniper' ? SniperTargeting : NearestVisible, identity ?? createGeneric(r.name, cls));
     s.speedMul = r.speedMul; s.slot = r.offset;
     s.ability = ABILITY_FACTORIES[CLASSES[cls].abilityId]();
+    if (s.elite) { this.eliteCount++; if (s.elite.id === 'med-commander') this.eliteCommanders++; }
     this.soldiers.push(s);
     this.stats.register(s);
     this.ui?.rebuildPanels();
@@ -429,6 +437,8 @@ export class Game implements InputHandler {
       if (this.invuln) return;
     }
     amount = modifyDamage(this, u, amount, source, opts);
+    // v0.7A Adrenaline Rush / Ironclad (decided on the HP before this hit; capped, never immune)
+    if (u.elite) { const k = incomingMul(u); if (k !== 1) { u.elite.effect += amount * (1 - k); u.elite.procs++; amount *= k; } }
     const removed = Math.min(Math.max(0, amount), Math.max(0, u.hp));
     u.hp -= amount;
     if (source) {
@@ -612,6 +622,7 @@ export class Game implements InputHandler {
     if (this.phase !== 'playing' || this.paused) return;
     this.time += dt;
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
+    eliteAuras(this); // v0.7A Rally (no-op without a Field Commander)
 
     // movement intents
     updateSquad(this, this.input.move(), dt);
@@ -661,6 +672,7 @@ export class Game implements InputHandler {
 
     // weapons
     for (const s of this.soldiers) if (s.active) updateWeapon(s, this, dt, this.enemies);
+    eliteTick(this, dt); // v0.7A Overdrive / Perfect Aim (no-op without Elites)
     const victims = this.enemyVictims();
     for (const e of this.enemies) {
       if (!e.active || e.structure || e.vehicle || e.kind === 'boss' || e.routed) continue; // the boss fires from its controller (unitStep)
@@ -730,7 +742,8 @@ export class Game implements InputHandler {
         if (s.reviveProgress >= 1) {
           this.stats.revive(best); // whoever completes it gets the revive
           s.state = 'active';
-          s.hp = Math.max(1, s.maxHp * R.hpFrac);
+          s.hp = Math.max(1, s.maxHp * reviveHpFrac(best)); // v0.7A Combat Surgeon: 50%
+          if (best.elite?.id === 'med-surgeon') best.elite.procs++;
           s.reviveProgress = 0;
           s.reviving = false;
           s.reviver = null;

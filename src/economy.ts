@@ -23,6 +23,7 @@ import {
 } from './recruitment';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL, PHOENIX_RECRUITS, costFor, decisionBlock, pendingCasualties, phoenixEligible } from './casualties';
 import { SQUAD_SLOTS } from './roster';
+import { CLASS_BRANCHES, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, isElite, isSpecFor, type EliteSpecDef } from './elite';
 
 export type PersistFn = () => 'ok' | 'nostorage' | 'error';
 
@@ -74,6 +75,9 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
     const xp = eligible ? calc.xpEach : 0;
     const res = addXp(p.xp, xp);
     p.xp = res.xp; p.level = res.level;
+    // v0.7A: an Elite's Recruit XP is complete (level 25); mission XP is banked for the v0.7B Elite curve
+    const elite = isElite(s);
+    if (elite && xp > 0) p.eliteXp = Math.min(1e9, (p.eliteXp | 0) + xp);
     s.service.missions++;
     if (o.won) s.service.victories++;
     s.service.kills += kills[d.id] ?? 0;
@@ -84,7 +88,7 @@ export function settleMission(roster: Roster, account: AccountData, o: MissionOu
       s.service.deaths++;
       fallen.push({ id: s.id, cause: d.cause ?? 'bleedout' });
     }
-    soldiers.push({ id: s.id, name: s.name, status: d.status, eligible, xp, gained: res.gained, before, after: { level: p.level, xp: p.xp }, levelsGained: p.level - before.level, capped: res.gained < xp });
+    soldiers.push({ id: s.id, name: s.name, status: d.status, eligible, xp, gained: res.gained, before, after: { level: p.level, xp: p.xp }, levelsGained: p.level - before.level, capped: !elite && res.gained < xp, ...(elite ? { elite: true, banked: xp } : {}) });
   }
   account.credits += calc.credits;
   const unlockedSoldiers: string[] = [], unlockedMissions: string[] = [], unlockedRecruits: string[] = [], unlockedClasses: string[] = [];
@@ -244,13 +248,13 @@ function snapshot(roster: Roster, account: AccountData) {
   return {
     credits: account.credits, soldiers: structuredClone(roster.soldiers), slots: [...roster.slots], rec: structuredClone(account.recruitment),
     pending: structuredClone(account.pendingDecision), memorial: [...account.memorial], phoenix: structuredClone(account.phoenix),
-    named: structuredClone(account.named), unlocked: new Set(roster.unlocked),
+    named: structuredClone(account.named), unlocked: new Set(roster.unlocked), promotions: [...account.promotions],
   };
 }
 function restore(roster: Roster, account: AccountData, s: ReturnType<typeof snapshot>) {
   account.credits = s.credits; roster.soldiers = s.soldiers; roster.slots = s.slots; account.recruitment = s.rec;
   account.pendingDecision = s.pending; account.memorial = s.memorial; account.phoenix = s.phoenix;
-  account.named = s.named; roster.unlocked = s.unlocked;
+  account.named = s.named; roster.unlocked = s.unlocked; account.promotions = s.promotions;
 }
 function commit(roster: Roster, account: AccountData, snap: ReturnType<typeof snapshot>, persist: PersistFn | null, what: string): { ok: true; saved: boolean } | { ok: false; reason: string } {
   const w = persist ? persist() : 'ok';
@@ -563,4 +567,47 @@ export function enlistPhoenix(roster: Roster, account: AccountData, picks: strin
   account.phoenix.pending = null;
   const r = commit(roster, account, snap, persist, 'Operation Phoenix');
   return r.ok ? { ...r, soldiers } : r;
+}
+
+// ---------------- v0.7A: Elite promotion ----------------
+/**
+ * Why this soldier can't be promoted right now (null = they can). Checked in this order so the
+ * profile can show the most useful reason: unknown / not owned, fallen (KIA awaiting a decision),
+ * any pending casualty decision or Phoenix pick, already Elite, below Recruit Level 25, Credits.
+ */
+export function promotionBlock(roster: Roster, account: AccountData, id: string, inMission = false): string | null {
+  const s = roster.get(id);
+  if (!s || !s.progression || !roster.isUnlocked(id)) return 'Unknown soldier';
+  if (inMission) return 'Not during a mission';
+  if (s.status === 'kia') return `${s.name} has fallen: resolve them first.`;
+  const blocked = decisionBlock(account);
+  if (blocked) return blocked;
+  if (isElite(s) || s.progression.tier === 'elite') return `${s.name} is already an Elite soldier.`;
+  if (s.progression.level < PROMOTION_LEVEL) return `Reach Recruit Level ${PROMOTION_LEVEL} to unlock Elite promotion (now LV ${s.progression.level}).`;
+  if (account.credits < PROMOTION_COST) return `Not enough Credits (${PROMOTION_COST.toLocaleString('en-US')} needed, ${(PROMOTION_COST - account.credits).toLocaleString('en-US')} short).`;
+  return null;
+}
+
+/**
+ * PROMOTE (atomic): checks -> deduct PROMOTION_COST -> tier 'elite', the chosen specialization
+ * (stable id, one of the two branches of the soldier's class), Elite Level 1, banked Elite XP 0 ->
+ * ledger entry -> save. Everything else (name, class, trait, Recruit XP / level 25, training,
+ * career, resurrections, squad slot) is untouched. A failed save write rolls EVERYTHING back (the
+ * Credits included). Repeats are refused by state: a soldier who is already Elite can't be promoted
+ * again (double tap, stale button, reload) and there is no way to change the specialization.
+ */
+export function promote(roster: Roster, account: AccountData, id: string, specId: string, persist: PersistFn | null, opts: { inMission?: boolean; now?: number } = {}): TxResult<{ soldier: SoldierIdentity; spec: EliteSpecDef; cost: number }> {
+  const block = promotionBlock(roster, account, id, opts.inMission);
+  if (block) return { ok: false, reason: block };
+  const s = roster.get(id)!;
+  if (!isSpecFor(specId, s.classId)) return { ok: false, reason: `Choose one of the ${CLASS_BRANCHES[s.classId].map((b) => ELITE_SPECS[b].title).join(' / ')} specializations.` };
+  const spec = ELITE_SPECS[specId as keyof typeof ELITE_SPECS];
+  const snap = snapshot(roster, account);
+  const at = opts.now ?? Date.now();
+  const p = s.progression!;
+  account.credits -= PROMOTION_COST;
+  p.tier = 'elite'; p.elitePath = spec.id; p.specialization = spec.id; p.eliteLevel = 1; p.eliteXp = 0;
+  account.promotions.push({ eventId: `pr-${at.toString(36)}-${s.id}`, soldierId: s.id, name: s.name, classId: s.classId, spec: spec.id, cost: PROMOTION_COST, at, recruitXp: p.xp });
+  const r = commit(roster, account, snap, persist, 'promotion');
+  return r.ok ? { ...r, soldier: s, spec, cost: PROMOTION_COST } : r;
 }

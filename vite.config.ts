@@ -3,7 +3,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; versionLabel?: string };
 
 // Short hash of the commit being built: local git, else Cloudflare build env vars, else "dev".
 function commitHash(): string {
@@ -22,8 +22,8 @@ export default defineConfig(({ mode }) => ({
   build: { outDir: mode === 'single' ? 'dist-single' : 'dist' },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
-    // visible label version: 0.3.0 -> "0.3", 0.3.1 -> "0.3.1"
-    __APP_VERSION_SHORT__: JSON.stringify(pkg.version.replace(/^(\d+\.\d+)\.0$/, '$1')),
+    // visible label version: package "versionLabel" when set (0.7.0 -> "0.7A"), else 0.3.0 -> "0.3", 0.3.1 -> "0.3.1"
+    __APP_VERSION_SHORT__: JSON.stringify(pkg.versionLabel || pkg.version.replace(/^(\d+\.\d+)\.0$/, '$1')),
     __APP_COMMIT__: JSON.stringify(commitHash()),
   },
 }));

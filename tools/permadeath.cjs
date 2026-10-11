@@ -613,14 +613,16 @@ function installHelpers() {
   add(await run((fx) => {
     const out = [], check = (name, ok, detail) => out.push({ name, ok: !!ok, detail: String(detail) });
     const { g, a } = T, src = JSON.parse(fx), ls = window.__loadStatus;
-    check('v0.5 fixture: migrated from v4 to v7 (v0.6.2 save format)', ls.status === 'migrated' && ls.fromVersion === 4 && T.store().version === 7, `${ls.status} ${ls.fromVersion}`);
+    check('v0.5 fixture: migrated from v4 to v8 (v0.7A save format)', ls.status === 'migrated' && ls.fromVersion === 4 && T.store().version === 8, `${ls.status} ${ls.fromVersion}`);
     check('v0.5 fixture: exact pre-v0.6 backup written', localStorage.getItem('minisquad.save.pre-v0.6') === fx, '');
     const lost = [];
     for (const s of src.roster) {
       const n = g.roster.get(s.id);
       if (!n) { lost.push(s.id + ' missing'); continue; }
       for (const k of ['name', 'classId', 'traitId', 'resurrections']) if (JSON.stringify(n[k]) !== JSON.stringify(s[k])) lost.push(`${s.id}.${k}`);
-      if (JSON.stringify(n.progression) !== JSON.stringify(s.progression)) lost.push(s.id + '.progression');
+      // v0.7A added eliteXp (0 for every pre-v0.7A soldier); everything the fixture had must be identical
+      const { eliteXp, ...np } = n.progression;
+      if (JSON.stringify(np) !== JSON.stringify(s.progression) || eliteXp !== 0) lost.push(s.id + '.progression');
       if (JSON.stringify(n.training) !== JSON.stringify(s.training)) lost.push(s.id + '.training');
       for (const k of ['missions', 'victories', 'kills']) if (n.service[k] !== s.service[k]) lost.push(`${s.id}.service.${k}`);
       if (n.service.downs !== 0 || n.service.revives !== 0 || n.service.deaths !== 0 || n.status !== 'active') lost.push(s.id + ' new fields');
