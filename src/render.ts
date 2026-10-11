@@ -96,14 +96,21 @@ function buildGround(map: MapDef): HTMLCanvasElement {
   return c;
 }
 
+// v0.6.3: screen shake has its own random source, so drawing never consumes the gameplay
+// Math.random() sequence (the number of frames drawn must not change what happens in a mission)
+let shakeSeed = 1;
+const shakeRnd = () => ((shakeSeed = (shakeSeed * 16807) % 2147483647) / 2147483647);
+
 export function render(ctx: CanvasRenderingContext2D, game: Game) {
   const map = game.map;
   let ground = grounds.get(map.id);
-  if (!ground) { ground = buildGround(map); grounds.set(map.id, ground); }
+  // v0.6.3: keep only the current map's ground (each is a full-map bitmap, 10-30 MB): playing
+  // through the campaign used to retain one per map visited
+  if (!ground) { grounds.clear(); ground = buildGround(map); grounds.set(map.id, ground); }
   const OBSTACLES = map.obstacles;
   const shake = game.fx.shake;
-  const ox = Math.round(-game.cam.x + VIEW_W / 2 + (shake ? (Math.random() - 0.5) * shake : 0));
-  const oy = Math.round(-game.cam.y + VIEW_H / 2 + (shake ? (Math.random() - 0.5) * shake : 0));
+  const ox = Math.round(-game.cam.x + VIEW_W / 2 + (shake ? (shakeRnd() - 0.5) * shake : 0));
+  const oy = Math.round(-game.cam.y + VIEW_H / 2 + (shake ? (shakeRnd() - 0.5) * shake : 0));
 
   ctx.save();
   ctx.translate(ox, oy);

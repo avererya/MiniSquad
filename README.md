@@ -6,7 +6,9 @@ This repository holds **Combat Prototype v0.1**, a disposable web feel prototype
 
 ## Status
 
-`v0.6.2` (Chapter 2: Behind Enemy Lines, Missions 6-10, the Sniper class and the first boss, on top of v0.6.1; the original build is tagged `prototype-v0.1`).
+`v0.6.3` (mobile performance pass on top of v0.6.2 Chapter 2: Behind Enemy Lines; the original build is tagged `prototype-v0.1`).
+
+- v0.6.3: **Mobile performance.** The game draws at most 60 frames a second (it used to draw every display refresh, 90-120 a second on many phones), the enemy flow field is 5-8x cheaper to build, soldier stats are computed once per simulation step, the HUD only touches the page when a value changes, losing focus pauses a mission like backgrounding does, and audio is released while the page is hidden. Gameplay, balance, missions and the save are unchanged: the simulation produces bit-identical results to v0.6.2 and is identical at 30 and 60 FPS. Developer options in ⚙ → Performance: frame cap (60 / 30 for testing) and a performance overlay. See [Performance](#performance-v063).
 
 - v0.6.2: **Chapter 2 — Behind Enemy Lines.** Five new missions (6 Bridgehead, 7 Prison Break, 8 Convoy Crusher, 9 Blackout, 10 Operation Iron Fist), new enemies (enemy Sniper with a laser telegraph, Watchtower, Armored Trooper with a weak rear, convoy trucks and escorts), the recruitable **Sniper** class (unlocked by clearing Mission 9), Patch's recruit offer at Mission 7, and the **Iron Warden** boss. The Campaign screen has chapter tabs (CH 1 / CH 2 / CH 3 soon). Hostage escorts (Missions 5 and 7) use a protective ring formation. Save v7 (backup `minisquad.save.pre-v0.6.2`). See [Chapter 2](#chapter-2-behind-enemy-lines-v062).
 
@@ -177,6 +179,16 @@ Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps
 - A freshly recruited level 3 Sniper (75 HP) is the soldier most often downed on Mission 10 in the sims. A level-matched Sniper clearly helps (see the simulation results). Recommend humans test whether new Snipers need positioning help (for example, holding at the back of the formation) before any HP change.
 - `tools/logic.cjs`: the Ranger Quick Reflexes move-speed check is still intermittent. This is pre-existing and also fails on the v0.6.1 baseline.
 
+## Performance (v0.6.3)
+
+- **Frame loop** (`src/main.ts`, `src/perf.ts`): the simulation always runs fixed 1/60 s steps (SimClock). Drawing is capped at 60 FPS by a frame pacer; skipped display refreshes do no work, and the next drawn frame runs the steps for the elapsed time, so a 30 FPS cap is two steps per frame and plays identically. Paused / Results screens redraw at 15 FPS, menus poll at 10 FPS (they are plain DOM). Screen shake uses its own random source so the number of frames drawn can never change gameplay randomness (in v0.6.2 a 120 Hz display drew more frames than a 60 Hz one and so shifted the gameplay random sequence).
+- **Hidden / inactive**: hiding the page pauses the mission and the clock (v0.6), and now also suspends audio; losing focus without being hidden (system overlay, call banner, another window) pauses the mission too. Pausing never runs bleed-out, so it cannot be used to dodge KIA, and closing the app mid-mission still resolves through the v0.6 journal.
+- **Simulation** (`src/world.ts`, `src/unit.ts`): the multi-source flow field the enemies follow (rebuilt every 0.3 s over the whole map, 20,000-28,000 cells on Chapter 2 maps) was 50-65% of all simulation time and produced a 15-35 ms spike every 0.3 s on a desktop CPU. It now uses precomputed neighbour masks, a reusable typed heap, skips cells already expanded with the same value, and is not rebuilt when no soldier changed cell. Same algorithm and visiting order: the field is bit-identical (checked on 1,500 random fields across all 10 maps). Squad soldier stats were recomputed on every read (several times per unit per step); they are now cached for one step and still follow live tuning changes.
+- **HUD** (`src/hud.ts`): every per-frame DOM write is skipped when the value hasn't changed.
+- **Memory**: only the current map's ground bitmap is kept (each is 10-30 MB; v0.6.2 kept one per map visited).
+- **Developer options** (⚙ → Performance, or `?fps=30` / `?perf=1`; stored under `minisquad.dev.perf`, never in the save): frame cap 60 / 30 and an overlay with FPS, display rate, frame time, simulation and draw time per frame, busy ms per second, enemies, squad, bullets, grenades, effects, line-of-sight checks, A* searches and flow-field builds per second, and JS heap.
+- **Tools**: `tools/perf.cjs` (headless profile: per-step update and render cost, real frame loop on an emulated 60 / 120 Hz display with main-thread busy time, menus), `tools/fps-parity.cjs` (seeded runs of the real frame loop at 60 / 90 / 120 Hz with caps 60 / 30 must hash identically; with `BASE=` the simulation must match another build; focus-loss pause and idle-screen checks). These are automated headless-browser measurements, not phone measurements: no battery, temperature or real-device data. Results: `minisquad/v0.6.3-perf/` in the project files.
+
 ## Planned cleanup (playtest notes, not changed in v0.6 / v0.6.1)
 
 - Mission 4 (Red Canyon Ambush) is challenging but manageable in human play. In the v0.5 autopilot, L1-recruit squads won it 5 times in 11 attempts. With permanent death, **do not increase its difficulty**.
@@ -227,6 +239,7 @@ TypeScript + Vite + plain 2D canvas, no framework.
 - `src/economy.ts`: mission settlement (once per run id; v0.6 KIA, career, decision batch, KIA journal + interrupted-mission recovery), atomic training purchases, the v0.5 recruitment transactions (recruit, refresh, dismiss, rename) and the v0.6 resurrect / Memorial / Operation Phoenix transactions, all with rollback
 - `src/casualties.ts`: v0.6 permanent-death rules (resurrection prices, arm delays, decision blocks, Operation Phoenix eligibility)
 - `src/clock.ts`: v0.6 fixed-step simulation clock (frame clamp, nothing while hidden, no catch-up)
+- `src/perf.ts`, `src/perfoverlay.ts`: v0.6.3 render frame cap and pacer, performance counters and the developer performance overlay
 - `src/recruitment.ts`: v0.5 Recruitment Office tables and rules (classes, prices, refunds, trait pool, starting levels, names, rename rules, candidate generation, one-time class introductions)
 - `src/campaign.ts`: campaign data (missions, capacity table, star rules, unlocks)
 - `src/missions.ts`, `src/objectives.ts`: per-mission scripts and the reusable objective modules (eliminate, destroy, capture & hold, reach, survive, free captive, optional objectives)

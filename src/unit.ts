@@ -25,6 +25,10 @@ const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
 
 let nextId = 1;
 
+/** v0.6.3: bumped at the start of every simulation step (Game.update): soldier stat caches expire. */
+let statEpoch = 0;
+export function nextStatEpoch() { statEpoch++; }
+
 export class Unit {
   id = nextId++;
   pos: Vec;
@@ -116,9 +120,22 @@ export class Unit {
   /** Class definition (squad soldiers only). */
   get classDef(): SoldierClassDef | null { return this.identity ? CLASSES[this.identity.classId] : null; }
   /** Live stats: the soldier's EFFECTIVE stats (class + trait + individual mods), or CFG.enemy. */
-  get stats(): StatBlock { return this.identity ? effectiveStats(this.identity) : this.team === 'enemy' ? KIND_CFG[this.kind]() : CFG.enemy; }
-  /** Squad soldier's effective stats (throws for enemies). */
-  get soldierStats(): EffectiveStats { return effectiveStats(this.identity!); }
+  get stats(): StatBlock { return this.identity ? this.soldierStats : this.team === 'enemy' ? KIND_CFG[this.kind]() : CFG.enemy; }
+  /**
+   * Squad soldier's effective stats (throws for enemies). v0.6.3: computed once per simulation
+   * step (statEpoch) instead of on every read (radius / fireRate / cone are read many times a
+   * step); still live, so tuning-panel changes apply from the next step.
+   */
+  get soldierStats(): EffectiveStats {
+    if (this.statCache === null || this.statCacheEpoch !== statEpoch || this.statCacheId !== this.identity) {
+      this.statCache = effectiveStats(this.identity!);
+      this.statCacheEpoch = statEpoch; this.statCacheId = this.identity;
+    }
+    return this.statCache;
+  }
+  private statCache: EffectiveStats | null = null;
+  private statCacheEpoch = -1;
+  private statCacheId: SoldierIdentity | null = null;
   get maxHp() { return this.hpOverride ?? this.stats.hp; }
   get radius() { return this.stats.radius; }
   get maxSpeed() {

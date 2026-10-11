@@ -2,6 +2,7 @@
 // A* (for squad soldiers) and a multi-source flow field (for enemy riflemen).
 import { isLowObstacle, type Obstacle } from './map';
 import { pushOutOfRect, segRect, clamp, type Vec } from './util';
+import { counters } from './perf';
 
 const CELL = 16;
 const NAV_PAD = 14; // obstacles inflated by roughly a unit radius so paths keep clearance
@@ -10,15 +11,25 @@ const NB = [
   [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
   [1, 1, SQ2], [1, -1, SQ2], [-1, 1, SQ2], [-1, -1, SQ2],
 ];
+const NB_DC = NB.map((n) => n[0]), NB_DR = NB.map((n) => n[1]), NB_COST = NB.map((n) => n[2]);
 
+/**
+ * Binary min-heap of (cell id, key). v0.6.3: typed, preallocated storage and a reset() so the
+ * flow field reuses one heap instead of growing JS arrays every 0.3 s. Same sift order as
+ * before, so pop order (and the flow field) is bit-for-bit unchanged.
+ */
 class Heap {
-  ids: number[] = [];
-  keys: number[] = [];
-  get size() { return this.ids.length; }
+  ids = new Int32Array(1024);
+  keys = new Float64Array(1024);
+  size = 0;
+  reset() { this.size = 0; }
   push(id: number, key: number) {
+    if (this.size === this.ids.length) {
+      const ni = new Int32Array(this.size * 2); ni.set(this.ids); this.ids = ni;
+      const nk = new Float64Array(this.size * 2); nk.set(this.keys); this.keys = nk;
+    }
     const ids = this.ids, keys = this.keys;
-    let i = ids.length;
-    ids.push(id); keys.push(key);
+    let i = this.size++;
     while (i > 0) {
       const p = (i - 1) >> 1;
       if (keys[p] <= key) break;
@@ -30,8 +41,8 @@ class Heap {
   pop(): number {
     const ids = this.ids, keys = this.keys;
     const top = ids[0];
-    const lastId = ids.pop()!, lastKey = keys.pop()!;
-    const n = ids.length;
+    const n = --this.size;
+    const lastId = ids[n], lastKey = keys[n];
     if (n > 0) {
       let i = 0;
       while (true) {
@@ -58,6 +69,15 @@ export class World {
    * movement and navigation only: you can shoot across a river but not walk through it.
    */
   readonly solid: Obstacle[];
+  /**
+   * v0.6.3: which of the 8 NB moves canStep() allows from each cell (bit k = NB[k]). The grid
+   * never changes, so this is computed once; flow field / A* / flowTarget read it instead of
+   * re-testing bounds, blocked cells and corners for every neighbour of every cell.
+   */
+  private readonly steps: Uint8Array;
+  private readonly flowHeap = new Heap();
+  private flowCells: number[] | null = null;
+  private readonly flowDone: Float32Array;
 
   constructor(public obstacles: Obstacle[], readonly w: number, readonly h: number) {
     this.solid = obstacles.filter((o) => !isLowObstacle(o));
@@ -66,6 +86,7 @@ export class World {
     this.rows = Math.ceil(h / CELL);
     this.blocked = new Uint8Array(this.cols * this.rows);
     this.flow = new Float32Array(this.cols * this.rows).fill(Infinity);
+    this.flowDone = new Float32Array(this.cols * this.rows);
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const x = c * CELL + CELL / 2, y = r * CELL + CELL / 2;
@@ -78,11 +99,20 @@ export class World {
         this.blocked[r * this.cols + c] = b ? 1 : 0;
       }
     }
+    this.steps = new Uint8Array(this.cols * this.rows);
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        let m = 0;
+        for (let k = 0; k < 8; k++) if (this.canStep(c, r, NB[k][0], NB[k][1])) m |= 1 << k;
+        this.steps[r * this.cols + c] = m;
+      }
+    }
   }
 
   // ---------- geometry ----------
   /** Line of sight / bullets: true when nothing solid lies between a and b (water does not block). */
   clear(a: Vec, b: Vec, pad = 0): boolean {
+    counters.los++;
     for (const o of this.solid) if (segRect(a.x, a.y, b.x, b.y, o, pad) >= 0) return false;
     return true;
   }
@@ -160,6 +190,7 @@ export class World {
 
   /** A* from a to b, string-pulled. Returns waypoints (excluding start), or null. */
   findPath(a: Vec, b: Vec, radius: number): Vec[] | null {
+    counters.paths++;
     const start = this.nearestOpen(this.idx(a.x, a.y));
     const goal = this.nearestOpen(this.idx(b.x, b.y));
     if (start === goal) return [{ x: b.x, y: b.y }];
@@ -182,11 +213,11 @@ export class World {
       closed[cur] = 1;
       if (cur === goal) { found = true; break; }
       if (++expanded > 6000) break;
-      const c = cur % this.cols, r = Math.floor(cur / this.cols);
-      for (const [dc, dr, cost] of NB) {
-        if (!this.canStep(c, r, dc, dr)) continue;
-        const j = (r + dr) * this.cols + (c + dc);
-        const ng = g[cur] + cost;
+      const m = this.steps[cur];
+      for (let k = 0; k < 8; k++) {
+        if (!(m & (1 << k))) continue;
+        const j = cur + NB_DR[k] * this.cols + NB_DC[k];
+        const ng = g[cur] + NB_COST[k];
         if (ng < g[j]) { g[j] = ng; from[j] = cur; heap.push(j, ng + h(j)); }
       }
     }
@@ -213,22 +244,35 @@ export class World {
 
   /** Multi-source Dijkstra: flow[i] = distance to the nearest source. */
   computeFlow(sources: Vec[]) {
-    const f = this.flow;
+    // the field depends only on the (ordered) source cells: if none of them changed cell since
+    // the last build, the result would be identical, so keep it (common while the squad holds)
+    const cells = sources.map((s) => this.nearestOpen(this.idx(s.x, s.y)));
+    const last = this.flowCells;
+    if (last && last.length === cells.length && cells.every((c, k) => c === last[k])) return;
+    this.flowCells = cells;
+    counters.flows++;
+    const f = this.flow, steps = this.steps, cols = this.cols;
     f.fill(Infinity);
-    const heap = new Heap();
-    for (const s of sources) {
-      const i = this.nearestOpen(this.idx(s.x, s.y));
+    const heap = this.flowHeap;
+    heap.reset();
+    for (const i of cells) {
       f[i] = 0;
       heap.push(i, 0);
     }
+    // a cell popped again with the value it was already expanded with would only repeat the
+    // same relaxations (no flow value can change), so it is skipped
+    const done = this.flowDone;
+    done.fill(NaN);
     while (heap.size) {
       const cur = heap.pop();
       const d = f[cur];
-      const c = cur % this.cols, r = Math.floor(cur / this.cols);
-      for (const [dc, dr, cost] of NB) {
-        if (!this.canStep(c, r, dc, dr)) continue;
-        const j = (r + dr) * this.cols + (c + dc);
-        const nd = d + cost;
+      if (done[cur] === d) continue;
+      done[cur] = d;
+      const m = steps[cur];
+      for (let k = 0; k < 8; k++) {
+        if (!(m & (1 << k))) continue;
+        const j = cur + NB_DR[k] * cols + NB_DC[k];
+        const nd = d + NB_COST[k];
         if (nd < f[j]) { f[j] = nd; heap.push(j, nd); }
       }
     }
@@ -240,11 +284,11 @@ export class World {
     if (!isFinite(this.flow[i])) return null;
     const chain: number[] = [];
     for (let step = 0; step < 8; step++) {
-      const c = i % this.cols, r = Math.floor(i / this.cols);
+      const m = this.steps[i];
       let best = -1, bestV = this.flow[i];
-      for (const [dc, dr] of NB) {
-        if (!this.canStep(c, r, dc, dr)) continue;
-        const j = (r + dr) * this.cols + (c + dc);
+      for (let k = 0; k < 8; k++) {
+        if (!(m & (1 << k))) continue;
+        const j = i + NB_DR[k] * this.cols + NB_DC[k];
         if (this.flow[j] < bestV) { bestV = this.flow[j]; best = j; }
       }
       if (best < 0) break;

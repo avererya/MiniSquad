@@ -2,7 +2,7 @@
 import { CFG } from './config';
 import { World } from './world';
 import type { MapDef } from './map';
-import { Unit } from './unit';
+import { Unit, nextStatEpoch } from './unit';
 import { EscortTargeting, ExposedTargeting, NearestVisible, SniperTargeting } from './targeting';
 import type { EnemyKind } from './unit';
 import { Effects, modifyDamage, updateEnemySniper, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
@@ -603,6 +603,7 @@ export class Game implements InputHandler {
 
   // ---------------- update ----------------
   update(dt: number) {
+    nextStatEpoch();
     this.clock += dt;
     this.fx.update(dt);
     for (const b of this.banners) b.life -= dt;

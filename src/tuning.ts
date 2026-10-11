@@ -1,4 +1,5 @@
 // In-game tuning panel: live sliders on CFG, JSON export/import, reset, debug actions.
+import { perfSettings, setPerfSettings } from './perf';
 import { VERSION_LABEL } from './version';
 import { CFG, DEFAULTS, applyConfigJSON, getPath, resetConfig, setPath } from './config';
 import type { Game } from './game';
@@ -181,6 +182,22 @@ export class Tuning {
       this.refresh();
     }));
     r.appendChild(dbg);
+
+    // v0.6.3 performance (developer options, stored apart from the save)
+    const pf = document.createElement('div');
+    pf.className = 'tune-sec';
+    pf.innerHTML = `<div class="tune-title">Performance</div>
+      <div class="tune-btns">
+        <label title="Render frame-rate cap. The simulation always runs fixed 1/60 s steps, so gameplay is identical at 30 and 60.">Frame cap <select data-k="fps"><option value="60">60 FPS</option><option value="30">30 FPS (test)</option></select></label>
+        <label><input type="checkbox" data-k="perfov"> Performance overlay</label>
+      </div>`;
+    const fpsSel = pf.querySelector<HTMLSelectElement>('select[data-k="fps"]')!;
+    const ovBox = pf.querySelector<HTMLInputElement>('input[data-k="perfov"]')!;
+    fpsSel.value = String(perfSettings().fpsCap);
+    ovBox.checked = perfSettings().overlay;
+    fpsSel.addEventListener('change', () => setPerfSettings({ fpsCap: fpsSel.value === '30' ? 30 : 60 }));
+    ovBox.addEventListener('change', () => setPerfSettings({ overlay: ovBox.checked }));
+    r.appendChild(pf);
 
     // sliders
     for (const [title, sliders] of SECTIONS) {

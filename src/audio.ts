@@ -9,6 +9,10 @@ const lastPlayed: Record<string, number> = {};
 export function isMuted() { return muted; }
 export function setMuted(m: boolean) { muted = m; }
 
+/** v0.6.3: release the audio hardware while the page is hidden (battery); resumed when shown. */
+export function suspendAudio() { if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); }
+export function resumeAudio() { if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {}); }
+
 export function unlockAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   try {

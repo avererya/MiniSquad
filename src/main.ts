@@ -2,7 +2,9 @@ import { Game } from './game';
 import { Hud } from './hud';
 import { render } from './render';
 import { VIEW_W, VIEW_H } from './view';
-import { unlockAudio } from './audio';
+import { unlockAudio, suspendAudio, resumeAudio } from './audio';
+import { FramePacer, PerfStats, perfSettings, IDLE_FPS, MENU_FPS } from './perf';
+import { PerfOverlay } from './perfoverlay';
 import { findPreset, effectiveStats } from './classes';
 import { CFG, applyConfigJSON, resetConfig } from './config';
 import { loadSave, parseSave, resetSave, writeSave, SAVE_KEY } from './save';
@@ -137,26 +139,46 @@ else {
   else hud.showCampaign(why);
 }
 
-// Fixed-step simulation, render every frame. SimClock (clock.ts): 1/60 s steps, each frame's
-// real delta clamped to 0.1 s (a frame drop or slow device slows the game down, it never
-// fast-forwards it), and nothing advances while the page is hidden. v0.6: hiding the page
-// (app switch, lock screen, tab change) also PAUSES a running mission, so backgrounding can never
-// bleed a soldier out; on return the player resumes with ⏸ / P and the clock restarts cleanly.
+// Fixed-step simulation. SimClock (clock.ts): 1/60 s steps, each frame's real delta clamped to
+// 0.1 s (a frame drop or slow device slows the game down, it never fast-forwards it), and
+// nothing advances while the page is hidden. v0.6: hiding the page (app switch, lock screen, tab
+// change) also PAUSES a running mission, so backgrounding can never bleed a soldier out; on
+// return the player resumes with ⏸ / P and the clock restarts cleanly. v0.6.3: losing focus
+// without being hidden (a system overlay, a call banner, another window) pauses the same way.
+//
+// v0.6.3 render cap (perf.ts): the loop draws at most fpsCap frames a second (60, or 30 for
+// testing) instead of every display refresh (90-120 Hz on many phones). Skipped refreshes do no
+// work at all; the next drawn frame runs the simulation steps for the elapsed time, so gameplay
+// is the same at any cap. Paused / Results screens draw at IDLE_FPS, menus poll at MENU_FPS.
 const clock = new SimClock(1 / 60, 0.1);
+const pacer = new FramePacer();
+const pstats = new PerfStats();
+const overlay = new PerfOverlay(stage, game, pstats);
 function onHidden() {
   clock.suspend();
+  suspendAudio();
   if (game.phase === 'playing') game.paused = true;
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden) onHidden(); else clock.resume(performance.now()); });
+function onShown() { clock.resume(performance.now()); resumeAudio(); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) onHidden(); else onShown(); });
 window.addEventListener('pagehide', onHidden);
-window.addEventListener('pageshow', () => clock.resume(performance.now()));
+window.addEventListener('pageshow', onShown);
+window.addEventListener('blur', () => { if (game.phase === 'playing') game.paused = true; });
 function frame(now: number) {
+  requestAnimationFrame(frame);
+  pstats.raf(now);
+  const fps = game.phase === 'start' ? MENU_FPS : game.phase !== 'playing' || game.paused ? IDLE_FPS : perfSettings().fpsCap;
+  if (!pacer.due(now, fps)) return;
+  const t0 = performance.now();
   const steps = clock.advance(now, document.hidden);
   for (let i = 0; i < steps; i++) game.update(clock.step);
+  const t1 = performance.now();
   ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0);
   if (game.phase !== 'start') render(ctx, game); // the Barracks covers the whole screen
   hud.update();
-  requestAnimationFrame(frame);
+  const t2 = performance.now();
+  pstats.frame(now, t1 - t0, t2 - t1, steps);
+  overlay.update(now);
 }
 requestAnimationFrame(frame);
 
@@ -167,5 +189,8 @@ Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, _
 // roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
 Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded,
   __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll, __recruitment: recruitment, __Roster: Roster,
-  __casualties: casualties, __clock: clock, __SimClock: SimClock, __hud: hud });
+  __casualties: casualties, __clock: clock, __SimClock: SimClock, __hud: hud,
+  // v0.6.3 perf tools (tools/perf.cjs, tools/fps-parity.cjs): one render + HUD pass, and the loop stats
+  __render: () => { ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0); if (game.phase !== 'start') render(ctx, game); hud.update(); },
+  __perf: { stats: pstats, settings: perfSettings } });
 game.resetRosterSave = resetRosterSave;

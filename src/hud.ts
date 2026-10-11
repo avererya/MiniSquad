@@ -16,6 +16,21 @@ interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act:
 
 const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT', focus: 'FOCUS' };
 
+// Per-frame DOM writes are cached by last-written value (never read back from the DOM): on mobile an
+// unchanged write still invalidates style/layout, which costs battery. WeakMap keys survive rebuildPanels.
+const wc = new WeakMap<HTMLElement, Record<string, string | boolean>>();
+const changed = (el: HTMLElement, k: string, v: string | boolean) => {
+  let c = wc.get(el);
+  if (!c) wc.set(el, c = {});
+  if (c[k] === v) return false;
+  c[k] = v;
+  return true;
+};
+const setText = (el: HTMLElement, v: string) => { if (changed(el, 't', v)) el.textContent = v; };
+const setClass = (el: HTMLElement, v: string) => { if (changed(el, 'c', v)) el.className = v; };
+const setStyle = (el: HTMLElement, prop: 'display' | 'width' | 'height', v: string) => { if (changed(el, prop, v)) el.style[prop] = v; };
+const setFlag = (el: HTMLElement, name: string, on: boolean) => { if (changed(el, '.' + name, on)) el.classList.toggle(name, on); };
+
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
 export class Hud implements GameUI {
@@ -28,6 +43,11 @@ export class Hud implements GameUI {
   private objChips!: HTMLElement;
   private chipsKey = '';
   private objMeter!: HTMLElement;
+  private omL!: HTMLElement;
+  private omFill!: HTMLElement;
+  private omV!: HTMLElement;
+  private obFill!: HTMLElement;
+  private obState!: HTMLElement;
   private objBoss!: HTMLElement;
   private timer: HTMLElement;
   private hint: HTMLElement;
@@ -57,6 +77,11 @@ export class Hud implements GameUI {
     this.objChips = root.querySelector('.obj-chips')!;
     this.objMeter = root.querySelector('.obj-meter')!;
     this.objBoss = root.querySelector('.obj-boss')!;
+    this.omL = this.objMeter.querySelector('.om-l')!;
+    this.omFill = this.objMeter.querySelector('.om-bar div')!;
+    this.omV = this.objMeter.querySelector('.om-v')!;
+    this.obFill = this.objBoss.querySelector('.ob-fill')!;
+    this.obState = this.objBoss.querySelector('.ob-state')!;
     this.timer = root.querySelector('#timer')!;
     this.hint = root.querySelector('#hint')!;
     this.panelsEl = root.querySelector('#panels')!;
@@ -124,13 +149,13 @@ export class Hud implements GameUI {
   update() {
     const g = this.game;
     const o = g.objective;
-    this.objText.textContent = o.text;
-    this.objSub.textContent = o.sub ?? '';
-    this.objSub.style.display = o.sub ? '' : 'none';
-    this.objBar.style.display = o.progress !== undefined ? '' : 'none';
-    if (o.progress !== undefined) this.objBarFill.style.width = `${Math.min(100, o.progress * 100)}%`;
+    setText(this.objText, o.text);
+    setText(this.objSub, o.sub ?? '');
+    setStyle(this.objSub, 'display', o.sub ? '' : 'none');
+    setStyle(this.objBar, 'display', o.progress !== undefined ? '' : 'none');
+    if (o.progress !== undefined) setStyle(this.objBarFill, 'width', `${Math.min(100, o.progress * 100)}%`);
     this.updateWidgets();
-    this.timer.textContent = g.phase === 'start' ? '' : fmtTime(g.time) + (g.invuln ? '  [INVULN]' : '');
+    setText(this.timer, g.phase === 'start' ? '' : fmtTime(g.time) + (g.invuln ? '  [INVULN]' : ''));
     // optional objectives: one line each, re-rendered only when something changes
     const m = g.mission;
     const opt = g.phase === 'start' ? [] : m.optionals.map((o) => ({ s: o.state, t: `${o.state === 'complete' ? '✓' : o.state === 'failed' ? '✗' : '◇'} ${o.label}${o.status(m) && o.state === 'active' ? ` — ${o.status(m)}` : ''}` }));
@@ -142,14 +167,14 @@ export class Hud implements GameUI {
     }
 
     if (g.targeting) {
-      this.hint.textContent = `${g.targeting.name}: GRENADE — click/tap the ground · right-click / Esc / tap button to cancel`;
-      this.hint.className = '';
-      this.hint.style.display = '';
+      setText(this.hint, `${g.targeting.name}: GRENADE — click/tap the ground · right-click / Esc / tap button to cancel`);
+      setClass(this.hint, '');
+      setStyle(this.hint, 'display', '');
     } else if (g.notice) {
-      this.hint.textContent = g.notice.text;
-      this.hint.className = 'deny';
-      this.hint.style.display = '';
-    } else this.hint.style.display = 'none';
+      setText(this.hint, g.notice.text);
+      setClass(this.hint, 'deny');
+      setStyle(this.hint, 'display', '');
+    } else setStyle(this.hint, 'display', 'none');
 
     this.updateWarning();
 
@@ -159,9 +184,9 @@ export class Hud implements GameUI {
       const u = p.unit;
       const ab = u.ability!;
       const def = u.classDef!;
-      p.fill.style.width = `${Math.max(0, (u.hp / u.maxHp) * 100)}%`;
-      p.hpnum.textContent = `${Math.ceil(Math.max(0, u.hp))}/${Math.round(u.maxHp)}`;
-      p.cls.textContent = u.rapidFire > 0 && u.active ? `${def.label} · RAPID ${Math.ceil(u.rapidFire)}s` : def.label;
+      setStyle(p.fill, 'width', `${Math.max(0, (u.hp / u.maxHp) * 100)}%`);
+      setText(p.hpnum, `${Math.ceil(Math.max(0, u.hp))}/${Math.round(u.maxHp)}`);
+      setText(p.cls, u.rapidFire > 0 && u.active ? `${def.label} · RAPID ${Math.ceil(u.rapidFire)}s` : def.label);
       const abName = compact ? '' : `${SHORT_ABILITY[ab.id] ?? ab.name.toUpperCase()} `;
       let state: string, cls = 'ok';
       if (u.state === 'downed') {
@@ -173,18 +198,18 @@ export class Hud implements GameUI {
       else if (ab.activeLeft > 0) { cls = 'ok active'; state = `${abName}ON ${Math.ceil(ab.activeLeft)}s`; }
       else if (ab.cooldownLeft > 0) { cls = 'ok cooling'; state = `${abName}${Math.ceil(ab.cooldownLeft)}s`; }
       else state = `${abName}READY`;
-      p.state.textContent = state;
-      p.root.className = `panel ${cls}`;
+      setText(p.state, state);
+      setClass(p.root, `panel ${cls}`);
       const cdFrac = u.active ? ab.cooldownLeft / ab.cooldown() : 1;
       // while an effect runs, the button shows its remaining duration instead of the cooldown
       const running = u.active && ab.activeLeft > 0;
-      p.cd.style.height = running ? '0%' : `${Math.min(100, cdFrac * 100)}%`;
+      setStyle(p.cd, 'height', running ? '0%' : `${Math.min(100, cdFrac * 100)}%`);
       const dur = ab.id === 'focus' ? CFG.focus.duration : CFG.suppressive.duration;
-      p.act.style.width = running ? `${Math.min(100, (ab.activeLeft / dur) * 100)}%` : '0%';
-      p.btn.classList.toggle('disabled', !u.active);
-      p.btn.classList.toggle('ready', ab.ready(u));
-      p.btn.classList.toggle('running', running);
-      p.btn.classList.toggle('targeting', g.targeting === u);
+      setStyle(p.act, 'width', running ? `${Math.min(100, (ab.activeLeft / dur) * 100)}%` : '0%');
+      setFlag(p.btn, 'disabled', !u.active);
+      setFlag(p.btn, 'ready', ab.ready(u));
+      setFlag(p.btn, 'running', running);
+      setFlag(p.btn, 'targeting', g.targeting === u);
     }
   }
 
@@ -202,21 +227,20 @@ export class Hud implements GameUI {
       this.objChips.style.display = chips?.length ? '' : 'none';
     }
     const m = g.phase === 'start' ? undefined : o.meter;
-    this.objMeter.style.display = m ? '' : 'none';
+    setStyle(this.objMeter, 'display', m ? '' : 'none');
     if (m) {
-      this.objMeter.classList.toggle('hot', m.hot);
-      this.objMeter.querySelector<HTMLElement>('.om-l')!.textContent = m.label;
-      this.objMeter.querySelector<HTMLElement>('.om-bar div')!.style.width = `${Math.min(100, m.frac * 100)}%`;
-      this.objMeter.querySelector<HTMLElement>('.om-v')!.textContent = `${Math.floor(m.frac * 100)}%`;
+      setFlag(this.objMeter, 'hot', m.hot);
+      setText(this.omL, m.label);
+      setStyle(this.omFill, 'width', `${Math.min(100, m.frac * 100)}%`);
+      setText(this.omV, `${Math.floor(m.frac * 100)}%`);
     }
     const b = g.phase === 'playing' ? g.mission.boss : null;
     const show = !!b && b.unit.active;
-    this.objBoss.style.display = show ? '' : 'none';
+    setStyle(this.objBoss, 'display', show ? '' : 'none');
     if (show && b) {
-      this.objBoss.querySelector<HTMLElement>('.ob-fill')!.style.width = `${Math.max(0, (b.unit.hp / b.unit.maxHp) * 100)}%`;
+      setStyle(this.obFill, 'width', `${Math.max(0, (b.unit.hp / b.unit.maxHp) * 100)}%`);
       const st = b.rocket ? 'ROCKET!' : b.phase === 'windup' ? 'MG WINDING UP' : b.phase === 'burst' ? 'FIRING' : '';
-      const el = this.objBoss.querySelector<HTMLElement>('.ob-state')!;
-      if (el.textContent !== st) el.textContent = st;
+      setText(this.obState, st);
     }
   }
 

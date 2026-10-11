@@ -229,7 +229,9 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.reload(); await page.waitForTimeout(200); // reload while on Results
     sv = await save();
     check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
-    check('UI: Campaign header shows credits + version "MiniSquad v0.6.2 · <hash>"', (await page.textContent('.m-cr')) === '1,000' && /^MiniSquad v0\.6\.2 · [0-9a-f]{7,}$|^MiniSquad v0\.6\.2 · dev$/.test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
+    // version from package.json (0.6.3 -> "v0.6.3", 0.7.0 -> "v0.7")
+    const VER = require('../package.json').version.replace(/^(\d+\.\d+)\.0$/, '$1').replace(/\./g, '\\.');
+    check(`UI: Campaign header shows credits + version "MiniSquad v${VER.replace(/\\/g, '')} · <hash>"`, (await page.textContent('.m-cr')) === '1,000' && new RegExp(`^MiniSquad v${VER} · ([0-9a-f]{7,}|dev)$`).test((await page.textContent('.m-ver')).trim()), (await page.textContent('.m-ver')).trim());
     // v0.6.1: the one-time NEW RECRUIT AVAILABLE notice (Tank) is up after the first clear: dismiss it
     check('UI: one-time Tank recruit notice shown after the first clear', await page.isVisible('.rn-notice'), '');
     await page.click('[data-a="rn-later"]'); await page.waitForTimeout(500);
