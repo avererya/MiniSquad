@@ -25,6 +25,7 @@ import { getAccount, type MissionReward } from './progression';
 import { journalKia, newRunId, recoverInterruptedRun, settleMission, type PersistFn } from './economy';
 import { decisionBlock } from './casualties';
 import { eliteAuras, eliteTick, incomingMul, reviveHpFrac } from './elite';
+import { Support, supportRoom } from './support';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -121,6 +122,8 @@ export class Game implements InputHandler {
   eliteCommanders = 0;
   /** Dev hook (set by main.ts): every owned Recruit to LV 25 + Credits for a promotion test (modifies save). */
   debugPromotionReady: (() => void) | null = null;
+  /** v0.7C Tactical Support for this mission (eligibility fixed at mission start). */
+  support = new Support(0);
   /** Short feedback line (e.g. why an ability can't be used). */
   notice: { text: string; life: number } | null = null;
   input: Input;
@@ -275,6 +278,8 @@ export class Game implements InputHandler {
     this.notice = null;
     if (dep.kind === 'generic') for (const c of dep.classes) this.spawnSoldier(c);
     else for (const id of dep.identities) this.spawnSoldier(id.classId, cloneIdentity(id));
+    // v0.7C: support eligibility = Elites deployed now (never re-counted during the mission)
+    this.support = new Support(this.eliteCount);
     this.mission.start(this);
     this.world.computeFlow(this.soldiers.map((s) => s.pos));
     this.phase = 'playing';
@@ -286,6 +291,7 @@ export class Game implements InputHandler {
   fail() { if (this.phase !== 'playing') return; this.phase = 'failed'; this.end(false); }
   private end(won: boolean) {
     this.targeting = null;
+    this.support.cancelAirstrike(); this.support.cancelNuke(); // an open prompt closes; a launched nuke stays spent
     if (!won) this.downedFallOnFailure();
     this.mission.finalize(this, won);
     const rows = this.stats.rows(this.soldiers);
@@ -439,6 +445,8 @@ export class Game implements InputHandler {
     amount = modifyDamage(this, u, amount, source, opts);
     // v0.7A Adrenaline Rush / Ironclad (decided on the HP before this hit; capped, never immune)
     if (u.elite) { const k = incomingMul(u); if (k !== 1) { u.elite.effect += amount * (1 - k); u.elite.procs++; amount *= k; } }
+    // v0.7C tactical support: a boss keeps 10% of its max HP, a mission objective 1 HP (the squad finishes them)
+    if (opts.support) amount = Math.min(Math.max(0, amount), supportRoom(u));
     const removed = Math.min(Math.max(0, amount), Math.max(0, u.hp));
     u.hp -= amount;
     if (source) {
@@ -461,6 +469,7 @@ export class Game implements InputHandler {
       this.stats.kill(source);
       u.state = 'dead';
       this.mission.emit(this, { type: 'enemyKilled', unit: u });
+      if (opts.support && !this.isOnScreen(u.pos, 40)) return; // v0.7C: a nuke kills off screen without particles nobody sees
       this.fx.burst(u.pos, 14, '#e0453a', 200, 0.4, 4);
       this.fx.burst(u.pos, 8, '#ffffff', 140, 0.3, 3);
       this.fx.ring(u.pos, 28, 'rgba(255,255,255,0.8)', 0.25, 3);
@@ -558,6 +567,7 @@ export class Game implements InputHandler {
   isTargeting() { return this.phase === 'playing' && !!this.targeting; }
   beginTargeting(s: Unit): boolean {
     if (this.phase !== 'playing' || !s.ability) return false;
+    this.support.cancelAirstrike(); // v0.7C: one targeting mode at a time
     if (this.targeting === s) { this.targeting = null; return true; }
     if (s.ability.targetingMode !== 'ground') return this.useAbility(s);
     if (!s.ability.ready(s)) {
@@ -568,7 +578,21 @@ export class Game implements InputHandler {
     this.targeting = s;
     return true;
   }
-  onTargetCancel() { this.targeting = null; }
+  onTargetCancel() { this.targeting = null; this.support.cancelAirstrike(); }
+
+  // ---------------- v0.7C tactical support (support.ts) ----------------
+  /** AIRSTRIKE button / Q: start (or stop) aiming. */
+  useAirstrike() { return this.support.beginAirstrike(this); }
+  /** CONFIRM / Enter while aiming. */
+  confirmAirstrike() { return this.support.confirmAirstrike(this); }
+  cancelAirstrike() { this.support.cancelAirstrike(); }
+  /** NUKE button / N: open (or close) the launch confirmation. Nothing is spent here. */
+  useNuke() { return this.support.openNuke(this, getAccount().support.nukes); }
+  cancelNuke() { this.support.cancelNuke(); }
+  /** LAUNCH in the confirmation: one Nuclear Strike is deducted and saved, the countdown starts. */
+  launchNuke() { return this.support.launchNuke(this, getAccount(), this.persist); }
+  isSupportAiming() { return this.phase === 'playing' && this.support.aiming; }
+  onSupportAim(screen: Vec) { this.support.aimAirstrike(this, screen); }
   onTargetConfirm(screen: Vec) {
     const s = this.targeting;
     if (!s || !s.ability || !s.ability.ready(s)) { this.targeting = null; return; }
@@ -587,8 +611,12 @@ export class Game implements InputHandler {
       else if (code === 'KeyC') this.toCampaign();
       return;
     }
-    if (code === 'Escape') { this.targeting = null; return; }
+    if (code === 'Escape') { this.targeting = null; this.support.cancelAirstrike(); this.support.cancelNuke(); return; }
     if (code === 'KeyP') { this.paused = !this.paused; return; }
+    // v0.7C support: Q airstrike (Enter confirms the target), N nuke confirmation (LAUNCH is a button only)
+    if (code === 'KeyQ') { this.useAirstrike(); return; }
+    if (code === 'KeyN') { this.useNuke(); return; }
+    if ((code === 'Enter' || code === 'NumpadEnter') && this.support.aiming) { this.confirmAirstrike(); return; }
     const m = /^Digit([1-6])$/.exec(code);
     if (m) { const s = this.soldiers[+m[1] - 1]; if (s) this.useAbility(s); return; }
     // debug hotkeys
@@ -619,6 +647,7 @@ export class Game implements InputHandler {
     for (const b of this.banners) b.life -= dt;
     this.banners = this.banners.filter((b) => b.life > 0);
     if (this.notice && (this.notice.life -= dt) <= 0) this.notice = null;
+    this.support.tickFx(dt);
     if (this.phase !== 'playing' || this.paused) return;
     this.time += dt;
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
@@ -681,6 +710,7 @@ export class Game implements InputHandler {
     }
     updateProjectiles(this, dt);
     updateGrenades(this, dt);
+    this.support.update(this, dt); // v0.7C airstrike delay / nuke countdown (simulation time)
     updatePickups(this, dt);
 
     for (const u of [...this.soldiers, ...this.npcs, ...this.enemies]) {

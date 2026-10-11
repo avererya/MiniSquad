@@ -61,7 +61,7 @@ export class Convoy {
       if (tr.state === 'waiting' && this.t >= tr.launchAt) {
         const { p, a } = this.at(0);
         const u = game.spawnEnemy(p, 'truck');
-        u.aim = a; u.label = `TRUCK ${i + 1}`; u.tag = 'convoy';
+        u.aim = a; u.label = `TRUCK ${i + 1}`; u.tag = 'convoy'; u.objective = true;
         tr.unit = u; tr.state = 'moving';
         tr.escorts.forEach((k, j) => {
           const side = j % 2 ? 1 : -1, back = 70 + Math.floor(j / 2) * 60;

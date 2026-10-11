@@ -7,6 +7,9 @@ export interface InputHandler {
   /** Ground tap/click while targeting (screen coords, logical px). */
   onTargetConfirm(screen: Vec): void;
   onTargetCancel(): void;
+  /** v0.7C: airstrike aiming: every new touch / left click places (and a drag moves) the target; no joystick starts. */
+  isSupportAiming(): boolean;
+  onSupportAim(screen: Vec): void;
   onKey(code: string, e: KeyboardEvent): void;
   onAnyInput(): void;
 }
@@ -20,6 +23,8 @@ export class Input {
   pointerSeen = false;
   joy: { id: number; origin: Vec; cur: Vec } | null = null;
   private pendingTap: { id: number; start: Vec; left: boolean } | null = null;
+  /** v0.7C: the touch currently placing / dragging the airstrike target. */
+  private aimTouch: number | null = null;
 
   constructor(private stage: HTMLElement, canvas: HTMLCanvasElement, h: InputHandler) {
     window.addEventListener('keydown', (e) => {
@@ -39,13 +44,17 @@ export class Input {
       this.pointer = p; this.pointerSeen = true;
       if (e.pointerType === 'mouse') {
         if (e.button === 2) h.onTargetCancel();
+        else if (e.button === 0 && h.isSupportAiming()) h.onSupportAim(p);
         else if (e.button === 0 && h.isTargeting()) h.onTargetConfirm(p);
         return;
       }
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       const left = p.x < VIEW_W * 0.45;
-      if (h.isTargeting() && !this.pendingTap) {
+      if (h.isSupportAiming()) {
+        // an already-held joystick keeps working; any other touch aims (never moves the squad)
+        if (!this.joy || this.joy.id !== e.pointerId) { this.aimTouch = e.pointerId; h.onSupportAim(p); }
+      } else if (h.isTargeting() && !this.pendingTap) {
         this.pendingTap = { id: e.pointerId, start: p, left };
       } else if (left && !this.joy) {
         this.joy = { id: e.pointerId, origin: p, cur: p };
@@ -55,6 +64,7 @@ export class Input {
       const p = this.toLogical(e);
       if (e.pointerType === 'mouse') { this.pointer = p; this.pointerSeen = true; return; }
       if (this.joy && e.pointerId === this.joy.id) { this.joy.cur = p; return; }
+      if (this.aimTouch === e.pointerId) { if (h.isSupportAiming()) h.onSupportAim(p); return; }
       const t = this.pendingTap;
       if (t && e.pointerId === t.id) {
         if (t.left && !this.joy && Math.hypot(p.x - t.start.x, p.y - t.start.y) > 18) {
@@ -68,6 +78,7 @@ export class Input {
     });
     const end = (e: PointerEvent) => {
       if (this.joy && e.pointerId === this.joy.id) this.joy = null;
+      if (this.aimTouch === e.pointerId) { this.aimTouch = null; if (e.type === 'pointerup' && h.isSupportAiming()) h.onSupportAim(this.toLogical(e)); return; }
       const t = this.pendingTap;
       if (t && e.pointerId === t.id) {
         this.pendingTap = null;

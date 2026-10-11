@@ -30,7 +30,8 @@ import {
 import { MEMORIAL_ARM_MS, PHOENIX_RECRUITS, casualtyPosition, costFor, decisionBlock, pendingCasualties } from './casualties';
 import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COST, campaignFlags, campaignProgress, priceOf, startingLevelFor } from './recruitment';
 import { CLASS_BRANCHES, ELITE_LEVEL_CAP, ELITE_PROGRESSION, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, eliteBonusFrac, eliteProgress, eliteSpec, isElite, levelTag, promotionReady, specOf, type EliteSpecDef } from './elite';
-import { promote, promotionBlock } from './economy';
+import { promote, promotionBlock, buySupport } from './economy';
+import { AIRSTRIKE_ELITES, SUPPORT_ITEMS, supportItem } from './support';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -49,8 +50,8 @@ const lvBadge = (s: Pick<SoldierIdentity, 'progression'>) => `<span class="s-lv$
 /** v0.7A: the promotion confirm button arms this long after the confirmation opens (no tap-through). */
 const PROMO_ARM_MS = 700;
 const stars = (n: number, of = 3) => `<span class="stars" title="${n}/${of} stars">${'★'.repeat(n)}<i>${'★'.repeat(Math.max(0, of - n))}</i></span>`;
-export type BarracksTab = 'roster' | 'training' | 'squad' | 'recruit';
-const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING'], ['recruit', 'RECRUIT']];
+export type BarracksTab = 'roster' | 'training' | 'squad' | 'recruit' | 'support';
+const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING'], ['recruit', 'RECRUIT'], ['support', 'SUPPORT']];
 
 /** How a training row shows its stat. */
 type Eff = ReturnType<typeof effectiveStats>;
@@ -335,7 +336,7 @@ export class Menus {
     const scroll = this.root.querySelector('.t-scroll')?.scrollTop ?? 0;
     const acc = getAccount();
     const tabs = TABS.map(([id, label]) => `<button class="m-tab ${this.tab === id ? 'on' : ''}" data-a="tab" data-tab="${id}">${label}</button>`).join('');
-    const body = this.tab === 'training' ? this.trainingHtml() : this.tab === 'squad' ? this.squadTrainingHtml() : this.tab === 'recruit' ? this.recruitHtml() : this.rosterHtml();
+    const body = this.tab === 'training' ? this.trainingHtml() : this.tab === 'squad' ? this.squadTrainingHtml() : this.tab === 'recruit' ? this.recruitHtml() : this.tab === 'support' ? this.supportHtml() : this.rosterHtml();
     const wrapCls = `m-wrap${this.tab === 'roster' ? ' has-bar' : ''}`;
     this.root.innerHTML = `
       <div class="${wrapCls}">
@@ -745,6 +746,33 @@ export class Menus {
         <div class="q-note">Squad Training applies to <b>every soldier in the roster</b>, now and in the future (deployed or not). Each rank adds more than the last. It adds to individual training and levels as a percentage of the class base; it never stacks with itself.</div>
         <div class="t-rows">${rows}</div>
         <div class="t-foot">Class-base examples shown as INF / HVY / MED values. ${VERSION_LABEL}</div>
+      </section>`;
+  }
+
+  // ----- v0.7C: Support Shop -----
+  private supportHtml() {
+    const acc = getAccount(), inv = acc.support;
+    const elites = this.game.roster.owned().filter((x) => isElite(x) && x.status !== 'kia').length;
+    const rows = SUPPORT_ITEMS.map((it) => {
+      const stock = it.stock(inv), afford = acc.credits >= it.cost;
+      return `
+        <div class="t-row sp-row" data-item="${it.id}">
+          <div class="t-name"><b>☢ ${esc(it.name)}</b><span>${esc(it.desc)}</span><span class="sp-req">${esc(it.requirement)}</span></div>
+          <div class="sp-stock"><small>IN STOCK</small><b class="sp-n">${stock}</b></div>
+          <button class="t-buy ${afford ? '' : 'poor'}" data-a="supbuy" data-id="${it.id}" data-stock="${stock}" ${afford ? '' : 'disabled'} title="${afford ? 'Buy one' : 'Not enough Credits'}">${cr(it.cost)} CR</button>
+        </div>`;
+    }).join('');
+    return `
+      <section class="t-panel q-panel t-scroll sp-panel">
+        <div class="q-note"><b>Tactical support</b> is called in during a mission from the buttons under the timer. Only Elite soldiers <b>deployed</b> in the mission count (you have ${elites} Elite${elites === 1 ? '' : 's'}).</div>
+        <div class="t-rows">
+          <div class="t-row sp-row sp-free">
+            <div class="t-name"><b>✈ Tactical Airstrike</b><span>Free, once per mission. Tap a spot, check the blast circle, CONFIRM: about ${CFG.airstrike.delay} s later it hits everything inside. Never hurts your squad, never destroys objectives, can't finish a boss.</span><span class="sp-req">Unlocks automatically with ${AIRSTRIKE_ELITES} deployed Elite soldiers (any classes).</span></div>
+            <div class="sp-stock"><small>COST</small><b>FREE</b></div>
+          </div>
+          ${rows}
+        </div>
+        <div class="t-foot">Purchases are saved at once and kept until used. One Nuclear Strike per mission; a launched one is spent even if the mission fails. ${VERSION_LABEL}</div>
       </section>`;
   }
 
@@ -1457,6 +1485,19 @@ export class Menus {
       case 'buy': case 'sbuy': {
         e.stopPropagation();
         this.buy(el);
+        return;
+      }
+      case 'supbuy': {
+        e.stopPropagation();
+        const now = performance.now(), key = `${a}:${id ?? ''}:${el.dataset.stock}`;
+        if (key === this.lastBuy.key && now - this.lastBuy.t < PROGRESSION.purchaseLockMs) return;
+        this.lastBuy = { key, t: now };
+        const stock = Number(el.dataset.stock);
+        const res = buySupport(getAccount(), id!, Number.isInteger(stock) ? stock : null, g.persist, { inMission: g.phase === 'playing' });
+        this.renderBarracks();
+        if (!res.ok) { this.notice(res.reason); return; }
+        sfx('pickup');
+        this.notice(`${supportItem(id!)!.name} bought (−${cr(res.cost)} CR). In stock: ${res.stock}.${res.saved ? '' : ' · not saved (no storage)'}`);
         return;
       }
       case 'details': this.detailsId = id!; break;

@@ -23,6 +23,7 @@ import {
 } from './recruitment';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL, PHOENIX_RECRUITS, costFor, decisionBlock, pendingCasualties, phoenixEligible } from './casualties';
 import { SQUAD_SLOTS } from './roster';
+import { supportItem } from './support';
 import { CLASS_BRANCHES, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, eliteLevelForXp, isElite, isSpecFor, type EliteSpecDef } from './elite';
 
 export type PersistFn = () => 'ok' | 'nostorage' | 'error';
@@ -234,6 +235,26 @@ export function buySquadTraining(account: AccountData, stat: SquadTrainingStat, 
   if (account.credits < cost) return { ok: false, reason: `Not enough Credits (${cost} needed)` };
   const r = transact(account, cost, () => { account.squadTraining[stat] = rank + 1; }, () => { account.squadTraining[stat] = rank; }, persist);
   return r.ok ? { ok: true, cost, rank: rank + 1, saved: r.saved } : r;
+}
+
+// ---------------- v0.7C: Support Shop ----------------
+/**
+ * Buy one Support Shop item (v0.7C: the Nuclear Strike, 3,000 CR). Same pattern as training:
+ * check -> deduct -> add one to the stock (+ the lifetime purchase counter) -> save, everything rolled
+ * back if the save write fails. `expectedStock` is the stock the button was drawn for: a stale or
+ * repeated event is refused. Buying needs no Elites (stockpiling is allowed); never during a mission.
+ */
+export function buySupport(account: AccountData, itemId: string, expectedStock: number | null, persist: PersistFn | null, opts: { inMission?: boolean } = {}): { ok: true; cost: number; stock: number; saved: boolean } | { ok: false; reason: string } {
+  const item = supportItem(itemId);
+  if (!item) return { ok: false, reason: 'Unknown item' };
+  if (opts.inMission) return { ok: false, reason: 'Not during a mission' };
+  const blocked = decisionBlock(account);
+  if (blocked) return { ok: false, reason: blocked };
+  const inv = account.support, before = item.stock(inv);
+  if (expectedStock !== null && before !== expectedStock) return { ok: false, reason: 'Already bought' };
+  if (account.credits < item.cost) return { ok: false, reason: `Not enough Credits (${item.cost.toLocaleString('en-US')} needed, ${(item.cost - account.credits).toLocaleString('en-US')} short)` };
+  const r = transact(account, item.cost, () => { inv.nukes++; inv.purchased++; }, () => { inv.nukes--; inv.purchased--; }, persist);
+  return r.ok ? { ok: true, cost: item.cost, stock: item.stock(inv), saved: r.saved } : r;
 }
 
 // ---------------- v0.5: Recruitment Office ----------------

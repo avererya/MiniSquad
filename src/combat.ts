@@ -259,6 +259,8 @@ export interface DamageOpts {
   at?: Vec;
   /** v0.7A Phantom Shot: share of the target's armor this round ignores (0..1). */
   pen?: number;
+  /** v0.7C tactical support (support.ts): the amount is already final (explicit per target class); Game.damage applies the boss / objective floors. */
+  support?: 'airstrike' | 'nuke';
 }
 
 /**
@@ -271,7 +273,7 @@ export interface DamageOpts {
  * Returns the modified amount (effects are spawned here too).
  */
 export function modifyDamage(game: Game, u: Unit, amount: number, source: Unit | undefined, o: DamageOpts): number {
-  if (u.team !== 'enemy') return amount;
+  if (u.team !== 'enemy' || o.support) return amount;
   const at = o.at ?? u.pos;
   if (u.kind === 'armored' && o.dir && !o.grenade) {
     const A = CFG.armored;

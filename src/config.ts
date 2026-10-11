@@ -206,6 +206,34 @@ function makeDefaults() {
       maxDamageReduction: 0.4, // cap on all incoming-damage reductions together
       maxShotMul: 2, // cap on all per-shot damage multipliers together
     },
+    // v0.7C Tactical Support (support.ts). Damage is explicit per target class: no soldier weapon
+    // modifiers, criticals, training or Elite passives apply. Bosses take a share of their own max HP.
+    airstrike: {
+      radius: 120, // world px blast RADIUS: the targeting circle and the damage use this same value
+      delay: 2, // s from CONFIRM to impact (simulation time)
+      damage: 260, // at the centre vs normal infantry (rifleman 40 HP, sniper 45, watchtower 80)
+      edgeFrac: 0.5, // share of the damage at the rim (linear falloff; a unit centre outside the radius takes nothing)
+      armoredMul: 0.6, // Armored Trooper (140 HP): 156 at the centre (dead), 78 at the rim
+      vehicleMul: 0.5, // non-objective vehicles (none yet)
+      objectiveMul: 0.5, // mission objectives (depots, relays, installations, convoy trucks): 130 at the centre, never destroyed
+      bossFrac: 0.15, // boss: this share of its max HP at the centre (Iron Warden 2,400 -> 360)
+      shake: 16,
+    },
+    nuke: {
+      countdown: 30, // s of simulation time from launch to detonation
+      damage: 1000, // every normal enemy on the map (all current kinds die)
+      armoredMul: 1,
+      vehicleMul: 0.65,
+      objectiveMul: 0.5, // 500 to each objective (truck 1,000 / depot 600 / relay 900 / installation 700 HP), never destroyed
+      bossFrac: 0.4, // boss: 40% of its max HP (Iron Warden 960), never below the support floor
+      shake: 22,
+      warnAt: 10, // countdown beeps from here
+      finalAt: 5, // big on-screen warning from here
+    },
+    support: {
+      bossFloor: 0.1, // tactical support never takes a boss below this share of its max HP
+      objectiveFloor: 1, // ...nor a mission objective below this many HP
+    },
     pickups: {
       medkitHealFrac: 0.2, // each living, standing soldier heals this fraction of max HP
       rapidFireMul: 1.8,

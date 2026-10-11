@@ -286,6 +286,14 @@ export const newClassUnlocks = (): ClassUnlockState => ({ unlocked: [], notified
  */
 export interface PromotionRecord { eventId: string; soldierId: string; name: string; classId: SoldierClassId; spec: string; cost: number; at: number; recruitXp: number }
 
+/**
+ * v0.7C Support Shop inventory. `nukes` is the stock (Nuclear Strikes bought and not yet launched);
+ * `purchased` / `launched` are lifetime counters (the receipt): a lost or unreadable stock is
+ * restored as purchased - launched. A launch is deducted and saved the moment it is confirmed.
+ */
+export interface SupportInventory { nukes: number; purchased: number; launched: number }
+export const newSupportInventory = (): SupportInventory => ({ nukes: 0, purchased: 0, launched: 0 });
+
 export interface AccountData {
   credits: number;
   squadTraining: SquadTrainingRanks;
@@ -310,12 +318,14 @@ export interface AccountData {
   classUnlocks: ClassUnlockState;
   /** v0.7A: Elite promotions paid (ledger). */
   promotions: PromotionRecord[];
+  /** v0.7C: Support Shop inventory (Nuclear Strikes). Older saves: 0. */
+  support: SupportInventory;
 }
 export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
 export const newAccount = (): AccountData => ({
   credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(),
   pendingDecision: null, memorial: [], phoenix: newPhoenix(), activeRun: null, named: newNamedRecruits(),
-  classUnlocks: newClassUnlocks(), promotions: [],
+  classUnlocks: newClassUnlocks(), promotions: [], support: newSupportInventory(),
 });
 
 let account: AccountData = newAccount();

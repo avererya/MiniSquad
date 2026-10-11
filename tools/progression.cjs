@@ -329,9 +329,10 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       const clipped = [...m.querySelectorAll('.slot-id span, .s-cls, .t-pick span, .m-tab')].filter((e) => e.scrollWidth > e.clientWidth + 1).length;
       return { n: els.length, boxes, minFont, smallest, clipped, scroll: m.scrollHeight > m.clientHeight + 1, hOverflow: document.documentElement.scrollWidth > vw + 1 || m.scrollWidth > m.clientWidth + 1 };
     }, sel);
+    // five tabs (v0.7C adds SUPPORT) + Credits, then the tab's own controls
     const tabCheck = async (tab, sel, n) => {
       const L = await layout(`.m-tab, .m-credits, ${sel}`);
-      check(`${dev.name} ${tab}: tabs, credits and ${n} controls on screen + tappable`, L.n === 5 + n && L.boxes.every((b) => b.inside && b.aligned) && L.boxes.slice(5).every((b) => b.h >= 30) && !L.hOverflow && !L.scroll, `min font ${L.minFont}px, scroll ${L.scroll}, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}`);
+      check(`${dev.name} ${tab}: tabs, credits and ${n} controls on screen + tappable`, L.n === 6 + n && L.boxes.every((b) => b.inside && b.aligned) && L.boxes.slice(6).every((b) => b.h >= 30) && !L.hOverflow && !L.scroll, `min font ${L.minFont}px, scroll ${L.scroll}, out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}`);
       check(`${dev.name} ${tab}: no text under 11px, no clipped labels`, L.minFont >= 11 && L.clipped === 0, `min ${L.minFont}px ${L.smallest.join(' | ')}, clipped ${L.clipped}`);
     };
     // Mission 1 allows 2 soldiers: 2 slots shown

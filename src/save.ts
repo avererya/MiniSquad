@@ -71,6 +71,11 @@
 // eliteXp to its threshold, so a load never takes an earned Elite level away. Promotion, ledger and
 // everything else are validated exactly as in v8. The raw pre-v9 save is copied once to
 // SAVE_PRE_V07B_KEY.
+//
+// v0.7C (Tactical Support) keeps format v9 and adds one optional field, account.support (Nuclear
+// Strike stock + lifetime purchased / launched counters). A save without it (every v1-v9 save
+// written before v0.7C) loads unchanged with a stock of 0 and no repair note; nothing else moves.
+// An unreadable stock is restored from the counters (purchased - launched).
 // Formats are never reset just because they are old. Each field is repaired on its own (bad
 // XP -> derived from level, bad ranks -> clamped, negative credits -> 0, unknown mission ids
 // in the campaign lists dropped) instead of throwing a soldier away.
@@ -79,7 +84,7 @@ import { MODIFIER_KEYS, TRAITS, type StatModifiers } from './traits';
 import { ALL_SOLDIER_IDS, DEFAULT_SQUAD, LEGACY_DEFAULT_SQUAD, Roster, defaultRoster } from './roster';
 import {
   LEVEL_CAP, MAX_XP, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, cleanRank, levelForXp, newAccount,
-  newCampaign, newSquadTraining, newTraining, xpForLevel, type AccountData, type CampaignProgress, type MissionRecord, type SquadTrainingRanks, type TrainingRanks,
+  newCampaign, newSquadTraining, newSupportInventory, newTraining, xpForLevel, type AccountData, type SupportInventory, type CampaignProgress, type MissionRecord, type SquadTrainingRanks, type TrainingRanks,
 } from './progression';
 import { CAMPAIGN, CLASS_UNLOCK_TEXT, FIRST_MISSION, NAMED_RECRUITS, STARTING_SOLDIERS, derivedClassUnlocks, derivedMissionUnlocks, derivedRecruitUnlocks, derivedSoldierUnlocks } from './campaign';
 import { type CandidateRecord, type DismissalRecord, type RecruitmentState, ROSTER_CAP, newRecruitment } from './progression';
@@ -376,7 +381,25 @@ function cleanAccount(v: unknown, notes: string[], legacy: boolean, expected: st
     a.settledRuns = [...new Set(v.settledRuns.filter((x): x is string => typeof x === 'string' && x.length <= 64))].slice(-PROGRESSION.rememberRuns);
   }
   a.campaign = cleanCampaign(v.campaign, a.missions, notes, legacy, expected);
+  a.support = cleanSupport(v.support, notes);
   return a;
+}
+
+/** v0.7C Support Shop inventory (see the v0.7C note above). Missing = 0, quietly. */
+function cleanSupport(v: unknown, notes: string[]): SupportInventory {
+  const s = newSupportInventory();
+  if (v === undefined) return s;
+  if (!isObj(v)) { notes.push('Support inventory unreadable: Nuclear Strike stock set to 0.'); return s; }
+  const count = (x: unknown) => (isInt(x) && x >= 0 ? Math.min(99999, x) : null);
+  s.purchased = count(v.purchased) ?? 0;
+  s.launched = count(v.launched) ?? 0;
+  const n = count(v.nukes);
+  if (n !== null) s.nukes = n;
+  else {
+    s.nukes = Math.max(0, s.purchased - s.launched);
+    notes.push(`Nuclear Strike stock unreadable: restored to ${s.nukes} from the purchase record.`);
+  }
+  return s;
 }
 
 // ---------------- v5 (v0.6) permanent-death state ----------------
@@ -458,6 +481,7 @@ export function serialize(r: Roster, a: AccountData): SaveFileV7 {
       named: structuredClone(a.named),
       classUnlocks: structuredClone(a.classUnlocks),
       promotions: structuredClone(a.promotions),
+      support: { ...a.support },
     },
   };
 }

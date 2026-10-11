@@ -106,7 +106,7 @@ export class DestroyObjective extends Objective {
   constructor(id: string, label: string, readonly pos: Vec, readonly kind: string, readonly hp: number, readonly pointLabel: string) { super(id, label); this.phase = 'destroy'; }
   protected onStart(m: Mission, g: Game) {
     const t = g.spawnEnemy(this.pos);
-    t.structure = this.kind; t.guard = true; t.setMaxHp(this.hp); t.tag = `${this.id}-target`; t.label = this.pointLabel;
+    t.structure = this.kind; t.objective = true; t.guard = true; t.setMaxHp(this.hp); t.tag = `${this.id}-target`; t.label = this.pointLabel;
     this.target = t;
     m.wrecks = m.wrecks.filter((w) => w.id !== this.id);
   }
@@ -344,7 +344,7 @@ export class MultiDestroyObjective extends Objective {
   protected onStart(m: Mission, g: Game) {
     this.targets = this.points.map((p, i) => {
       const t = g.spawnEnemy(p);
-      t.structure = this.kind; t.guard = true; t.setMaxHp(this.hp); t.tag = `${this.id}-target`; t.label = `${this.pointLabel} ${i + 1}`;
+      t.structure = this.kind; t.objective = true; t.guard = true; t.setMaxHp(this.hp); t.tag = `${this.id}-target`; t.label = `${this.pointLabel} ${i + 1}`;
       return t;
     });
     m.wrecks = m.wrecks.filter((w) => !w.id.startsWith(this.id));

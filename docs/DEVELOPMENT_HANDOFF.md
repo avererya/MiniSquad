@@ -1,12 +1,13 @@
-# MiniSquad development handoff (after v0.7B.1)
+# MiniSquad development handoff (after v0.7C)
 
-Current release: **v0.7B.1 — Progression & Training Rebalance** (package 0.7.2, label `versionLabel: "0.7B.1"`), on top of v0.7B Elite Progression and v0.7A Elite Promotions.
-Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)" and "Progression & Training Rebalance (v0.7B.1)". This file is what the next step (v0.7C) needs.
+Current release: **v0.7C — Tactical Support** (package 0.7.3, label `versionLabel: "0.7C"`), on top of v0.7B.1 Progression & Training Rebalance, v0.7B Elite Progression and v0.7A Elite Promotions.
+Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)", "Progression & Training Rebalance (v0.7B.1)" and "Tactical Support (v0.7C)". This file is what the next step (v0.7D) needs.
 
 ## Workflow
 
 - Repo `avererya/MiniSquad`. A push to `main` deploys to Cloudflare Workers. Never touch the `prototype-v0.1` tag (the git proxy refuses tag pushes anyway).
 - Serve a build and run the headless suites: `npm run build && npx vite preview --port 4173`, then `node tools/<suite>.cjs` (`URL=` to point elsewhere, `OUT=` for screenshots).
+- Regression set used for v0.7C: `support` (with `BASE=<v0.7B.1 build>`), `fps-parity` (with `BASE=`), `training-rebalance` and `elite-progression` (with `BASE=`), then the v0.7B set below.
 - Regression set used for v0.7B.1: `training-rebalance` (with `BASE=<v0.7B build>`), then the v0.7B set below. `progression.cjs` expectations follow the v0.7B.1 XP / training values.
 - Regression set used for v0.7B: `elite-progression` (with `BASE=<v0.7A build>`), `elite logic permadeath recruitment failure-recruit progression campaign-rules barracks chapter2 fps-default` and `fps-parity` (with `BASE=<previous build>` to prove a change leaves the Recruit-only simulation bit-identical). The suites that check the save version expect v9.
 - To serve a previous build for `BASE=`: `git worktree add /tmp/base <commit> && (cd /tmp/base && npm ci && npm run build)`, then `npx vite preview --port 4174 --outDir /tmp/base/dist`.
@@ -40,6 +41,23 @@ Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0
 | Training tab preview (`STAT_VIEW[k].gain`, `.t-gain`) and squad tab (`rankBonus`) | `src/menus.ts`, `src/style.css` |
 | Suite | `tools/training-rebalance.cjs` |
 
+## Where Tactical Support lives (v0.7C)
+
+| Concern | File |
+|---|---|
+| Rules, constants (`AIRSTRIKE_ELITES` 3, `NUKE_ELITES` 6, `NUKE_COST` 3000), shop catalog `SUPPORT_ITEMS`, per-mission state `Support` (air: locked / ready / targeting / incoming / used; nuke: locked / ready / confirm / countdown / used), `spendNuke`, `supportDamageFor`, `supportRoom`, `airstrikeImpact`, `nukeDetonate` | `src/support.ts` |
+| Numbers (live sliders) | `src/config.ts` → `CFG.airstrike`, `CFG.nuke`, `CFG.support` |
+| Mission wiring: `Game.support` (new per attempt in `startMission`, counts `eliteCount` at deployment), `useAirstrike` / `confirmAirstrike` / `cancelAirstrike` / `useNuke` / `launchNuke` / `cancelNuke`, keys Q / N / Enter / Esc, floors in `Game.damage` (`opts.support`), `support.update` after grenades in the fixed step | `src/game.ts`, `src/combat.ts` (`DamageOpts.support` skips soldier modifiers) |
+| Objective marking (`Unit.objective`, `protectedObjective` = objective, structure or vehicle) | `src/unit.ts`, `src/objectives.ts`, `src/convoy.ts` |
+| Touch / mouse aiming (`isSupportAiming`, `onSupportAim`, `aimTouch`) | `src/input.ts` |
+| HUD buttons `#support`, CONFIRM bar `#asbar`, nuke box `#nkbox` (LAUNCH arms after 0.5 s) | `src/hud.ts`, `src/style.css` |
+| Aim circle, incoming marker, jet shadow (world); countdown warning, flash, shockwave, mushroom cloud (screen) | `src/render.ts` (`drawSupportGround`, `drawSupportScreen`) |
+| Inventory `account.support = { nukes, purchased, launched }`, repair `cleanSupport` | `src/progression.ts`, `src/save.ts` |
+| Purchase `buySupport` (atomic, refused in a mission / with a pending decision / stale stock) | `src/economy.ts` |
+| Support Shop tab (Barracks → SUPPORT) | `src/menus.ts` (`supportHtml`, action `supbuy`) |
+| Sounds `jet`, `strike`, `siren`, `beep`, `nuke` | `src/audio.ts` |
+| Suite, genuine v0.7B.1 save | `tools/support.cjs`, `tools/fixtures/v0.7B.1-save.json` |
+
 ## Invariants to keep
 
 1. **Elite Level 1 is never weaker than Recruit Level 25** and is exactly the v0.7A soldier. The stat pipeline still reads the Recruit level (25) for Elites; the v0.7B level bonus is one multiplier per stat in `eliteModifiers` (null at Elite 1), next to the trait.
@@ -52,6 +70,10 @@ Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0
 8. (v0.7B.1) **No training rank is ever weaker than an earlier release.** Each table's rank 1 equals the v0.7B flat value and increments only grow. A retune must keep `bonus[r]` ≥ the previous release's value at every rank (checked by `training-rebalance.cjs` A4 against `BASE=`), or it takes something players paid for.
 9. (v0.7B.1) Training prices and rank limits are approved and fixed; tune `first` / `last`, not `costs`.
 10. (v0.7B.1) Mission XP is by mission **number**, applied once on the Victory line; the replay multiplier scales the whole total. Credits do not scale with the mission number (yet).
+11. (v0.7C) **Support never kills what the squad must finish**: every support hit goes through `Game.damage` with `opts.support`, which clamps to `supportRoom` (boss ≥ 10% max HP, protected objective ≥ 1 HP, squad / allies 0). New support kinds or new objective types must keep using that path; mark new objective units with `objective = true`.
+12. (v0.7C) **Support adds no randomness and runs in the fixed step**: a mission without support used simulates bit-identically to v0.7B.1, and both strikes hash identically at 30 / 60 FPS (`support.cjs` F1). Timers are simulation time, so pause freezes them.
+13. (v0.7C) **A launched nuke is spent before the countdown starts** (saved first; a failed write cancels the launch). Never refund on failure / quit / reload. `purchased` and `launched` are the ledger; `cleanSupport` rebuilds an unreadable stock as `purchased − launched`.
+14. (v0.7C) Eligibility is counted once at deployment from deployed Elites; don't recount mid-mission. Deployment caps are unchanged (six from Mission 13).
 
 ## v0.7B: shipped
 
@@ -77,3 +99,20 @@ Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0
 - Balance after playtests (unchanged in v0.7B on purpose): Recon Deadeye (~+10% sustained), Phantom Shot (~+28% vs front armor, x2.12 vs the Iron Warden), Perfect Aim (~+31% when holding; the autopilot rarely charges it).
 - Overdrive and Rally have no button and no HUD meter beyond the panel label and ground effects; consider a small meter if players miss them.
 - Not started (later releases): Tactical Airstrikes, Nuclear Strikes, Support Shop, Chapter 3, decorations / medals, new classes.
+
+## v0.7C: shipped
+
+- Tactical Airstrike: 3+ deployed Elites, free, once per attempt; aim (touch / drag / mouse, never moves the squad), CONFIRM / CANCEL, 2.0 s delay, 120 px radius, 260 damage with linear falloff to 50% (armored x0.6, objectives x0.5, boss 15% of max HP x falloff).
+- Nuclear Strike: 6 deployed Elites, 3,000 CR each from Barracks → SUPPORT, persistent stock; confirm → LAUNCH (spent and saved at once) → 30 s simulation-time countdown → 1000 damage to every enemy on the map (objectives x0.5, boss 40% of max HP). One per attempt.
+- Floors: boss 10% max HP, objectives 1 HP; no friendly fire; no XP / kill credit / stats for support kills.
+- Save v9 unchanged (optional `account.support`); genuine v0.7B.1 fixture loads with stock 0 and no notes.
+- Suite `tools/support.cjs` (81 checks).
+
+## v0.7D: what is open
+
+- **The nuke is unreachable in the live campaign** until Mission 13 exists (six-soldier squads). It was tested through the dev harness; a real playtest needs Chapter 3.
+- **Balance after playtests**: airstrike 260 / 120 px and nuke 1000 / 40% boss are first numbers. The airstrike at Mission 3+ with three Elites may make Chapter 1 trivial for veterans; the nuke at 3,000 CR may be too cheap once Chapter 3 Credits arrive. All live-tunable in `CFG.airstrike` / `CFG.nuke`.
+- **HUD size on small phones**: the support buttons scale with the 1280×720 stage like the rest of the HUD (about 69×27 CSS px on an iPhone SE). They work, but are smaller than the 44 pt guideline; consider a minimum size for all HUD buttons.
+- **Detonation frame**: about 10-22 ms (median of three warm runs, varies per run) / 37-39 ms (first, cold) for update + render under a 4x CPU throttle with ~47 enemies (headless, not a phone). One possible dropped frame at 30 FPS; watch with `?perf=1` once real six-Elite missions exist.
+- `CFG.nuke.vehicleMul` / `CFG.airstrike.vehicleMul` apply only to non-objective vehicles, and every current vehicle is an objective; they matter once escort vehicles exist.
+- Ideas not started: more Support Shop items, support cooldown upgrades, Chapter 3 content, decorations / medals, new classes.

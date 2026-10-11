@@ -299,7 +299,7 @@ function installHelpers() {
       return JSON.stringify(await basePage.evaluate(f)) === JSON.stringify(await page.evaluate(f));
     })();
     check('E4 rank 1 of every category (individual + squad) identical to v0.7B', r1same, '');
-    const enemies = async (p) => p.evaluate(() => { const C = window.__CFG; return JSON.stringify(Object.fromEntries(Object.entries(C).filter(([k]) => !['infantry', 'heavy', 'medic', 'sniper', 'debug', 'perf'].includes(k)))); });
+    const enemies = async (p) => p.evaluate(() => { const C = window.__CFG; return JSON.stringify(Object.fromEntries(Object.entries(C).filter(([k]) => !['infantry', 'heavy', 'medic', 'sniper', 'debug', 'perf', 'airstrike', 'nuke', 'support'].includes(k)))); });
     check('E5 enemies, bosses, abilities and Elite passives tuning identical to v0.7B (no Mission 1-10 difficulty change)', (await enemies(page)) === (await enemies(basePage)), '');
   }
   await fresh();

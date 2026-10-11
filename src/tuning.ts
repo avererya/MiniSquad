@@ -106,6 +106,17 @@ const SECTIONS: [string, S[]][] = [
     ['Perfect Aim: charge (s)', 'elite.perfectAimCharge', 0.5, 10, 0.25],
     ['Perfect Aim: bonus damage', 'elite.perfectAimBonus', 0, 2, 0.05],
   ]],
+  ['Tactical Support (v0.7C)', [
+    ['Airstrike: blast radius (px)', 'airstrike.radius', 40, 300, 5],
+    ['Airstrike: delay (s)', 'airstrike.delay', 0.5, 6, 0.25],
+    ['Airstrike: damage (centre)', 'airstrike.damage', 20, 800, 10],
+    ['Airstrike: rim share', 'airstrike.edgeFrac', 0, 1, 0.05],
+    ['Airstrike: boss (× max HP)', 'airstrike.bossFrac', 0, 0.5, 0.01],
+    ['Nuke: countdown (s)', 'nuke.countdown', 5, 60, 1],
+    ['Nuke: damage', 'nuke.damage', 50, 3000, 50],
+    ['Nuke: boss (× max HP)', 'nuke.bossFrac', 0, 0.9, 0.01],
+    ['Support: boss HP floor', 'support.bossFloor', 0.01, 0.5, 0.01],
+  ]],
   ['Feel', [
     ['Camera smoothing', 'feel.cameraSmoothing', 1, 20, 0.5],
     ['Show accuracy cones', 'feel.showCones', 0, 1, 1],

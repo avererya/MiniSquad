@@ -129,6 +129,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   drawReviveCircles(ctx, game);
   if (CFG.feel.showCones) drawCones(ctx, game);
   drawTargetingGround(ctx, game);
+  drawSupportGround(ctx, game);
 
   // depth-sorted scene
   type Item = { y: number; draw: () => void };
@@ -183,6 +184,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
     grd.addColorStop(1, `rgba(220,0,0,${a * 0.5})`);
     ctx.fillStyle = grd; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
+  drawSupportScreen(ctx, game);
   game.input.drawJoystick(ctx);
   drawBanners(ctx, game);
   if (game.paused) {
@@ -339,6 +341,80 @@ function drawTargetingGround(ctx: CanvasRenderingContext2D, game: Game) {
   ctx.fillStyle = 'rgba(255,90,40,0.22)'; ctx.strokeStyle = 'rgba(255,120,60,0.95)'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.arc(tp.x, tp.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(tp.x - 8, tp.y); ctx.lineTo(tp.x + 8, tp.y); ctx.moveTo(tp.x, tp.y - 8); ctx.lineTo(tp.x, tp.y + 8); ctx.stroke();
+}
+
+/**
+ * v0.7C airstrike on the ground: the aiming circle (exactly CFG.airstrike.radius world px, the damage
+ * radius), then the locked target with a closing ring while it is INCOMING and a jet shadow on the
+ * final pass. A handful of paths per frame.
+ */
+function drawSupportGround(ctx: CanvasRenderingContext2D, game: Game) {
+  const sp = game.support;
+  if (game.phase !== 'playing') return;
+  const R = CFG.airstrike.radius;
+  const p = sp.aiming ? sp.aim : sp.strike?.pos ?? null;
+  if (!p) return;
+  const incoming = !!sp.strike;
+  const k = incoming ? clamp(1 - sp.strike!.t / CFG.airstrike.delay, 0, 1) : 0;
+  const blink = 0.5 + 0.5 * Math.sin(game.clock * (incoming ? 22 : 6));
+  ctx.save();
+  ctx.fillStyle = incoming ? `rgba(255,60,30,${0.14 + 0.16 * k})` : 'rgba(255,140,40,0.16)';
+  ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 7; ctx.stroke();
+  ctx.strokeStyle = incoming ? (blink > 0.5 ? '#ffffff' : '#ff4a2a') : '#ffb347'; ctx.lineWidth = 4;
+  if (!incoming) ctx.setLineDash([14, 8]);
+  ctx.stroke(); ctx.setLineDash([]);
+  if (incoming) { ctx.strokeStyle = 'rgba(255,230,160,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, R * (1 - k), 0, Math.PI * 2); ctx.stroke(); }
+  ctx.strokeStyle = incoming ? '#ff4a2a' : '#ffb347'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(p.x - 18, p.y); ctx.lineTo(p.x + 18, p.y); ctx.moveTo(p.x, p.y - 18); ctx.lineTo(p.x, p.y + 18); ctx.stroke();
+  bigText(ctx, incoming ? 'INCOMING' : 'AIRSTRIKE', p.x, p.y - R - 16, 20, incoming ? '#ff6a4a' : '#ffd08a');
+  if (incoming && k > 0.6) {
+    // jet shadow crossing the target just before impact
+    const jx = p.x - 500 + ((k - 0.6) / 0.4) * 1000, jy = p.y - 60;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.moveTo(jx + 34, jy); ctx.lineTo(jx - 22, jy - 26); ctx.lineTo(jx - 12, jy); ctx.lineTo(jx - 22, jy + 26); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * v0.7C screen-space support effects: the final-seconds nuke warning, then the detonation (one
+ * brief white flash, an expanding shockwave ring, a stylized mushroom cloud that fades out). A few
+ * shapes per frame; no particles here, no long or repeated flashing.
+ */
+function drawSupportScreen(ctx: CanvasRenderingContext2D, game: Game) {
+  const sp = game.support;
+  if (sp.nuke === 'countdown' && game.phase === 'playing' && sp.nukeLeft <= CFG.nuke.finalAt) {
+    const s = Math.ceil(sp.nukeLeft), pulse = 1 + 0.12 * (1 - (sp.nukeLeft % 1));
+    ctx.save(); ctx.translate(VIEW_W / 2, 250); ctx.scale(pulse, pulse);
+    bigText(ctx, `☢ NUCLEAR STRIKE ${s}`, 0, 0, 44, '#ff5a3a');
+    ctx.restore();
+  }
+  const t = sp.nukeFx;
+  if (t < 0) return;
+  ctx.save();
+  if (t < 0.6) { ctx.fillStyle = `rgba(255,250,235,${0.85 * (1 - t / 0.6)})`; ctx.fillRect(0, 0, VIEW_W, VIEW_H); }
+  if (t < 1.4) {
+    const k = t / 1.4;
+    ctx.globalAlpha = 1 - k;
+    ctx.strokeStyle = '#fff3c8'; ctx.lineWidth = 18 * (1 - k) + 4;
+    ctx.beginPath(); ctx.ellipse(VIEW_W / 2, VIEW_H / 2 + 60, 80 + k * 900, (80 + k * 900) * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  // mushroom cloud: stem + cap of a few soft circles, rising and fading (stylized, like the rest of the art)
+  const a = clamp(t < 0.3 ? t / 0.3 : 1 - (t - 1.8) / 1.7, 0, 1);
+  if (a > 0) {
+    const cx = VIEW_W / 2, base = VIEW_H / 2 + 60, rise = Math.min(1, t / 1.6);
+    ctx.globalAlpha = a * 0.85;
+    ctx.fillStyle = '#c9772e';
+    ctx.fillRect(cx - 22, base - 170 * rise, 44, 170 * rise);
+    const cy = base - 170 * rise - 40;
+    for (const [dx, dy, r, c] of [[0, 0, 80, '#e0913a'], [-62, 12, 52, '#d27a2c'], [62, 12, 52, '#d27a2c'], [0, -26, 56, '#f2b45a'], [0, 6, 40, '#ffd27a']] as const) {
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(cx + dx, cy + dy, r * (0.6 + 0.4 * rise), 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#8a8a8a'; ctx.globalAlpha = a * 0.5;
+    ctx.beginPath(); ctx.ellipse(cx, base, 150 + 120 * rise, 40 + 20 * rise, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawGrenade(ctx: CanvasRenderingContext2D, x: number, y: number, z: number, landed: boolean, clock: number) {

@@ -324,8 +324,8 @@ const SPECS = [['ace', 'inf-trooper'], ['ranger', 'inf-recon'], ['tank', 'hvy-ju
         tags: T.R.soldiers.filter((x) => x.progression.tier === 'elite').map((x) => T.EL.levelTag(x)).join() };
     });
     const src = JSON.parse(fx8);
-    // eliteLevel is what v9 derives; the named-recruit lists are re-derived on every load (v0.6.1), order only (v0.7A does the same)
-    const strip = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k === 'eliteLevel' ? undefined : (k === 'unlocked' || k === 'claimed' || k === 'notified') && Array.isArray(v) ? [...v].sort() : v)));
+    // eliteLevel is what v9 derives; v0.7C adds account.support (Nuclear Strike stock, 0; checked by support.cjs); the named-recruit lists are re-derived on every load (v0.6.1), order only (v0.7A does the same)
+    const strip = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k === 'eliteLevel' || k === 'support' ? undefined : (k === 'unlocked' || k === 'claimed' || k === 'notified') && Array.isArray(v) ? [...v].sort() : v)));
     const { version: _v1, ...a1 } = strip(src), { version: _v2, ...a2 } = strip(m.saved);
     const diff = [];
     for (const k of Object.keys(a1)) if (JSON.stringify(a1[k]) !== JSON.stringify(a2[k])) diff.push(k);

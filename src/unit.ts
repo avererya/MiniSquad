@@ -104,6 +104,12 @@ export class Unit {
    * only when no enemy soldier is in sight, grenades damage it. Not counted as a kill.
    */
   structure: string | null = null;
+  /**
+   * v0.7C: a mission-critical unit the squad must deal with itself (objective structures and convoy
+   * trucks set it; any future objective unit can). Tactical support never takes it below
+   * CFG.support.objectiveFloor HP. Structures and vehicles always count (protectedObjective).
+   */
+  objective = false;
 
   // escort NPC (team 'squad', not a soldier: no identity, no weapon, no ability)
   npc = false;
@@ -187,6 +193,9 @@ export class Unit {
   get active() { return this.state === 'active'; }
   /** Can be shot at right now (a held captive can't). */
   get targetable() { return this.state === 'active' && (!this.npc || this.escorting); }
+
+  /** v0.7C: protected from being destroyed by tactical support (see `objective`). */
+  get protectedObjective() { return this.objective || !!this.structure || this.vehicle; }
 
   /** Set a fixed max HP (structures, NPCs) and fill it. */
   setMaxHp(hp: number) { this.hpOverride = hp; this.hp = hp; }

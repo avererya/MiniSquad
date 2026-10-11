@@ -1,5 +1,6 @@
 // Tiny synthesized sound effects. Low priority: cheap, throttled, mutable.
-type Sfx = 'shot' | 'eshot' | 'hit' | 'boom' | 'down' | 'pickup' | 'throw' | 'deny' | 'heal' | 'suppress' | 'snipe' | 'lock' | 'clank' | 'alarm' | 'rocket' | 'levelup';
+type Sfx = 'shot' | 'eshot' | 'hit' | 'boom' | 'down' | 'pickup' | 'throw' | 'deny' | 'heal' | 'suppress' | 'snipe' | 'lock' | 'clank' | 'alarm' | 'rocket' | 'levelup'
+  | 'jet' | 'strike' | 'siren' | 'beep' | 'nuke'; // v0.7C Tactical Support
 
 let ctx: AudioContext | null = null;
 let noise: AudioBuffer | null = null;
@@ -55,7 +56,7 @@ function tone(f0: number, f1: number, type: OscillatorType, peak: number, dur: n
   o.start(t); o.stop(t + dur + 0.05);
 }
 
-const MIN_GAP: Record<Sfx, number> = { shot: 0.04, eshot: 0.06, hit: 0.05, boom: 0.05, down: 0.3, pickup: 0.1, throw: 0.1, deny: 0.25, heal: 0.2, suppress: 0.2, snipe: 0.08, lock: 0.15, clank: 0.08, alarm: 0.8, rocket: 0.3, levelup: 1 };
+const MIN_GAP: Record<Sfx, number> = { shot: 0.04, eshot: 0.06, hit: 0.05, boom: 0.05, down: 0.3, pickup: 0.1, throw: 0.1, deny: 0.25, heal: 0.2, suppress: 0.2, snipe: 0.08, lock: 0.15, clank: 0.08, alarm: 0.8, rocket: 0.3, levelup: 1, jet: 0.5, strike: 0.3, siren: 1, beep: 0.3, nuke: 2 };
 
 export function sfx(kind: Sfx) {
   if (muted || !ctx) return;
@@ -78,6 +79,12 @@ export function sfx(kind: Sfx) {
     case 'clank': tone(1800, 1200, 'square', 0.04, 0.06); break;
     case 'alarm': tone(700, 500, 'sawtooth', 0.06, 0.5); break;
     case 'rocket': tone(200, 900, 'sawtooth', 0.08, 0.6); break;
+    // v0.7C: jet pass before an airstrike, its impact, the nuke launch siren, countdown beeps, the detonation
+    case 'jet': noiseHit(1800, 'bandpass', 0.12, 1.1); tone(900, 300, 'sawtooth', 0.04, 1.0); break;
+    case 'strike': noiseHit(400, 'lowpass', 0.8, 1.0); tone(80, 25, 'sine', 0.55, 0.9); break;
+    case 'siren': tone(500, 900, 'sawtooth', 0.07, 0.6); tone(900, 500, 'sawtooth', 0.05, 1.1); break;
+    case 'beep': tone(1100, 1100, 'square', 0.05, 0.1); break;
+    case 'nuke': noiseHit(250, 'lowpass', 1.0, 2.6); tone(60, 18, 'sine', 0.7, 2.4); break;
     case 'levelup': tone(523, 523, 'triangle', 0.12, 0.16); tone(659, 1046, 'triangle', 0.12, 0.5); break; // v0.7A promotion fanfare
   }
 }

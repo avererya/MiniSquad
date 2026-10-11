@@ -12,6 +12,11 @@ import { Tuning } from './tuning';
 import { Menus } from './menus';
 import { TRAITS } from './traits';
 import { adrenalineActive } from './elite';
+import { getAccount } from './progression';
+import { NUKE_ELITES } from './support';
+
+/** v0.7C: the nuke LAUNCH button arms this long after the confirmation opens (a double tap on NUKE can't launch). */
+const NUKE_ARM_MS = 500;
 
 interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
 
@@ -60,6 +65,20 @@ export class Hud implements GameUI {
   private xwarnKey = '';
   private tuning: Tuning;
   readonly menus: Menus;
+  // v0.7C tactical support controls
+  private supEl!: HTMLElement;
+  private airBtn!: HTMLElement;
+  private airSt!: HTMLElement;
+  private nukeBtn!: HTMLElement;
+  private nukeSt!: HTMLElement;
+  private asBar!: HTMLElement;
+  private asText!: HTMLElement;
+  private asGo!: HTMLButtonElement;
+  private nkBox!: HTMLElement;
+  private nkBody!: HTMLElement;
+  private nkGo!: HTMLButtonElement;
+  private nkOpenAt = 0;
+  private nkWasOpen = false;
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
@@ -68,6 +87,9 @@ export class Hud implements GameUI {
       <div id="topbtns"><button data-a="mute">🔊</button><button data-a="pause">⏸</button><button data-a="tune">⚙</button></div>
       <div id="hint"></div>
       <div id="panels"></div>
+      <div id="support" style="display:none"><button class="sp-btn" data-s="air" title="Airstrike (Q)"><b>✈ AIRSTRIKE</b><span class="sp-st"></span></button><button class="sp-btn" data-s="nuke" title="Nuclear Strike (N)"><b>☢ NUKE</b><span class="sp-st"></span></button></div>
+      <div id="asbar" style="display:none"><div class="as-t"></div><div class="as-btns"><button data-as="cancel">CANCEL</button><button data-as="go">CONFIRM</button></div></div>
+      <div id="nkbox" role="alertdialog" style="display:none"><div class="nk-title">☢ LAUNCH NUCLEAR STRIKE?</div><div class="nk-body"></div><div class="nk-btns"><button data-nk="cancel">CANCEL</button><button data-nk="go">LAUNCH</button></div></div>
       <div id="xwarn" role="alert" style="display:none"><div class="xw-title"></div><div class="xw-body"></div><div class="xw-btns"><button data-x="stay">STAY AND RESCUE</button><button data-x="go">CONFIRM EXTRACTION</button></div></div>
       <div id="overlay"></div>`;
     this.objText = root.querySelector('.obj-text')!;
@@ -108,6 +130,25 @@ export class Hud implements GameUI {
         if (done) { this.xwarn.style.display = 'none'; this.xwarnKey = ''; } // closes at once (and can reopen on a new attempt)
       });
     });
+    // v0.7C tactical support: buttons take their own touches (never the joystick / canvas below)
+    this.supEl = root.querySelector('#support')!;
+    this.airBtn = this.supEl.querySelector('[data-s="air"]')!; this.airSt = this.airBtn.querySelector('.sp-st')!;
+    this.nukeBtn = this.supEl.querySelector('[data-s="nuke"]')!; this.nukeSt = this.nukeBtn.querySelector('.sp-st')!;
+    this.asBar = root.querySelector('#asbar')!; this.asText = this.asBar.querySelector('.as-t')!; this.asGo = this.asBar.querySelector('[data-as="go"]')!;
+    this.nkBox = root.querySelector('#nkbox')!; this.nkBody = this.nkBox.querySelector('.nk-body')!; this.nkGo = this.nkBox.querySelector('[data-nk="go"]')!;
+    const tap = (el: Element, fn: (b: HTMLButtonElement) => void) => el.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation(); unlockAudio();
+      const b = e.currentTarget as HTMLButtonElement;
+      if (!b.disabled) fn(b);
+    });
+    tap(this.airBtn, () => game.useAirstrike());
+    tap(this.nukeBtn, () => game.useNuke());
+    this.asBar.querySelectorAll('button').forEach((b) => tap(b, () => { if (b.dataset.as === 'go') game.confirmAirstrike(); else game.cancelAirstrike(); }));
+    this.nkBox.querySelectorAll('button').forEach((b) => tap(b, () => {
+      if (b.dataset.nk !== 'go') { game.cancelNuke(); return; }
+      if (performance.now() < this.nkOpenAt + NUKE_ARM_MS) return;
+      game.launchNuke();
+    }));
     this.tuning = new Tuning(tuningRoot, game);
     this.menus = new Menus(menuRoot, game, () => this.toggleTuning());
   }
@@ -168,7 +209,9 @@ export class Hud implements GameUI {
       this.objOpt.style.display = opt.length ? '' : 'none';
     }
 
-    if (g.targeting) {
+    this.updateSupport();
+    if (g.phase === 'playing' && g.support.aiming) setStyle(this.hint, 'display', 'none'); // the airstrike bar says it
+    else if (g.targeting) {
       setText(this.hint, `${g.targeting.name}: GRENADE — click/tap the ground · right-click / Esc / tap button to cancel`);
       setClass(this.hint, '');
       setStyle(this.hint, 'display', '');
@@ -244,6 +287,48 @@ export class Hud implements GameUI {
       setStyle(this.obFill, 'width', `${Math.max(0, (b.unit.hp / b.unit.maxHp) * 100)}%`);
       const st = b.rocket ? 'ROCKET!' : b.phase === 'windup' ? 'MG WINDING UP' : b.phase === 'burst' ? 'FIRING' : '';
       setText(this.obState, st);
+    }
+  }
+
+  /**
+   * v0.7C tactical support: AIRSTRIKE / NUKE buttons (top left, under the timer; shown when the
+   * deployed squad has 3+ Elites), the airstrike CONFIRM / CANCEL bar (bottom right, above the
+   * soldier panels, where the right thumb is) and the nuke launch confirmation. The nuke button
+   * carries the countdown. Cached writes only (no per-frame layout).
+   */
+  private updateSupport() {
+    const g = this.game, sp = g.support, playing = g.phase === 'playing';
+    const show = playing && sp.airEligible;
+    setStyle(this.supEl, 'display', show ? '' : 'none');
+    if (!show) { setStyle(this.asBar, 'display', 'none'); setStyle(this.nkBox, 'display', 'none'); this.nkWasOpen = false; return; }
+    const stock = getAccount().support.nukes;
+    // airstrike
+    const a = sp.air;
+    setText(this.airSt, a === 'ready' ? 'READY' : a === 'targeting' ? 'AIMING…' : a === 'incoming' ? `INCOMING ${Math.max(0, sp.strike?.t ?? 0).toFixed(1)}s` : 'USED');
+    setClass(this.airBtn, `sp-btn sp-air ${a}`);
+    setFlag(this.airBtn, 'off', a === 'incoming' || a === 'used');
+    // nuke: shown when the squad can use it, or the player owns some (then it explains the 6-Elite rule)
+    const n = sp.nuke, showNuke = sp.nukeEligible || stock > 0;
+    setStyle(this.nukeBtn, 'display', showNuke ? '' : 'none');
+    const nt = n === 'locked' ? `${NUKE_ELITES} ELITES` : n === 'countdown' ? `${Math.ceil(sp.nukeLeft)}s` : n === 'used' ? 'USED' : stock < 1 ? '0 STOCK' : `READY · ${stock}`;
+    setText(this.nukeSt, nt);
+    setClass(this.nukeBtn, `sp-btn sp-nuke ${n}${n === 'countdown' && sp.nukeLeft <= CFG.nuke.finalAt ? ' final' : ''}`);
+    setFlag(this.nukeBtn, 'off', n === 'locked' || n === 'used' || n === 'countdown' || (n === 'ready' && stock < 1));
+    // airstrike aiming bar
+    setStyle(this.asBar, 'display', a === 'targeting' ? '' : 'none');
+    if (a === 'targeting') {
+      setText(this.asText, sp.aim ? 'AIRSTRIKE · drag to adjust, then CONFIRM' : 'AIRSTRIKE · tap the battlefield to aim');
+      if (changed(this.asGo, 'dis', !sp.aim)) this.asGo.disabled = !sp.aim;
+    }
+    // nuke confirmation (LAUNCH arms after NUKE_ARM_MS)
+    const open = n === 'confirm';
+    if (open && !this.nkWasOpen) this.nkOpenAt = performance.now();
+    this.nkWasOpen = open;
+    setStyle(this.nkBox, 'display', open ? '' : 'none');
+    if (open) {
+      const armed = performance.now() >= this.nkOpenAt + NUKE_ARM_MS;
+      setText(this.nkBody, `Uses 1 of your ${stock} Nuclear Strike${stock === 1 ? '' : 's'} (${stock - 1} left). Detonates across the whole battlefield in ${CFG.nuke.countdown} seconds. Once launched it can't be cancelled or refunded.`);
+      if (changed(this.nkGo, 'dis', !armed)) this.nkGo.disabled = !armed;
     }
   }
 
