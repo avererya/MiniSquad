@@ -9,8 +9,9 @@
 // is ever written back, so nothing can stack on reload / respawn / retry):
 //   1. class base          CFG[class] (live; the tuning panel edits it)
 //   2. level growth        +pct of class base per level gained   \
-//   3. individual training +pct of class base per rank            } summed ADDITIVELY: base x (1 + sum)
-//   4. squad training      +pct of class base per rank            /
+//   3. individual training +pct of class base, by rank (table)    } summed ADDITIVELY: base x (1 + sum)
+//   4. squad training      +pct of class base, by rank (table)    /
+//   (v0.7B.1: training tables accelerate, TrainingDef.bonus / rankBonus)
 //   5. trait (+ legacy per-soldier `mods`)  multiplier on the result
 //   6. temporary effects   Suppressive Fire / Rapid Fire on fire rate (Unit.fireRate), at runtime
 // Spread (accuracy) uses the same model with negative percentages, then the trait multiplier,
@@ -19,11 +20,21 @@
 import type { SoldierStats } from './config';
 import type { SoldierClassId, SoldierIdentity } from './classes';
 import type { TraitId } from './traits';
-import { FIRST_MISSION } from './campaign';
+import { FIRST_MISSION, campaignMission } from './campaign';
 
 export const PROGRESSION = {
-  /** XP is per soldier, equal for every eligible (extracted) soldier. No XP for kills etc. */
-  xp: { victory: 100, perOptionalObjective: 25, fullExtraction: 25, flawless: 25, replayMul: 0.75 },
+  /**
+   * XP is per soldier, equal for every eligible (extracted) soldier. No XP for kills etc.
+   * v0.7B.1: the Victory line scales with the mission NUMBER (missionXp below); `victory` is kept
+   * as a dev override (null = use the curve). Bonus lines and the replay multiplier are unchanged.
+   */
+  xp: { victory: null as number | null, perOptionalObjective: 25, fullExtraction: 25, flawless: 25, replayMul: 0.75 },
+  /**
+   * v0.7B.1 mission XP curve (base Victory XP per soldier by mission number, rounded to `round`):
+   * Mission 1 = m1, rising linearly to `knee` at Mission `kneeAt`, then +perMission each mission
+   * (M10 200, M20 300, M40 500, M50 600). Works for any future mission number; no table to fill.
+   */
+  missionXp: { m1: 125, kneeAt: 5, knee: 150, perMission: 10, round: 5 },
   /** XP to go from level L to L+1 = base + step x (L - 1). Cap: no progress beyond it. */
   levels: { cap: 25, base: 150, step: 25 },
   /** Automatic growth per level GAINED (L1 = +0), as a fraction of the class base stat. */
@@ -37,6 +48,18 @@ export const PROGRESSION = {
   /** How many settled mission-run ids the save remembers (duplicate-reward guard). */
   rememberRuns: 50,
 };
+
+// ---------------- mission XP (v0.7B.1) ----------------
+/** Base Victory XP per soldier for a campaign mission number (1, 2, ...). */
+export function missionXp(missionNumber: number): number {
+  const M = PROGRESSION.missionXp, n = Math.max(1, Math.floor(Number.isFinite(missionNumber) ? missionNumber : 1));
+  const raw = n <= M.kneeAt ? M.m1 + ((M.knee - M.m1) * (n - 1)) / Math.max(1, M.kneeAt - 1) : M.knee + M.perMission * (n - M.kneeAt);
+  return Math.floor(raw / M.round + 0.5) * M.round;
+}
+/** Victory XP for a mission id: its campaign number's curve value (unknown ids = Mission 1). */
+export function victoryXp(missionId: string): number {
+  return PROGRESSION.xp.victory ?? missionXp(campaignMission(missionId)?.number ?? 1);
+}
 
 // ---------------- levels ----------------
 export const LEVEL_CAP = PROGRESSION.levels.cap;
@@ -75,8 +98,15 @@ export type SquadTrainingRanks = Record<SquadTrainingStat, number>;
 export interface TrainingDef<K extends string> {
   id: K;
   label: string;
-  /** Fraction of the class base per rank (negative = smaller is better, spread). */
-  perRank: number;
+  /**
+   * v0.7B.1 accelerating ranks: rank 1 adds `first` (fraction of the class base; negative =
+   * smaller is better, spread), each later rank adds a fixed step more, and the final rank adds
+   * `last`. `first` is the v0.7B flat per-rank value, so no rank is ever weaker than before.
+   */
+  first: number;
+  last: number;
+  /** Cumulative bonus after each rank (index = rank, [0] = 0), derived from first / last. */
+  bonus: number[];
   /** Cost of rank i+1 is costs[i]; max rank = costs.length. */
   costs: number[];
   desc: string;
@@ -84,21 +114,43 @@ export interface TrainingDef<K extends string> {
 const INDIVIDUAL_COSTS = [250, 400, 550, 700, 900, 1150, 1450, 1750, 2100, 2500];
 const SQUAD_COSTS = [1000, 1500, 2000, 2750, 3500];
 
+/** Cumulative table for `ranks` ranks whose per-rank gain grows linearly from `first` to `last`. */
+export function acceleratingBonus(first: number, last: number, ranks: number): number[] {
+  const step = ranks > 1 ? (last - first) / (ranks - 1) : 0;
+  // closed form (no running sum, so no float drift): r x first + step x r(r-1)/2
+  return Array.from({ length: ranks + 1 }, (_, r) => Math.round((r * first + (step * r * (r - 1)) / 2) * 1e6) / 1e6);
+}
+function def<K extends string>(id: K, label: string, first: number, last: number, costs: number[], desc: string): TrainingDef<K> {
+  return { id, label, first, last, bonus: acceleratingBonus(first, last, costs.length), costs, desc };
+}
+const pc = (f: number) => `${Math.round(Math.abs(f) * 10000) / 100}%`;
+const accelDesc = (sign: string, what: string, first: number, last: number, ranks: number, tail = '') =>
+  `${sign}${pc(first)} at rank 1, rising to ${sign}${pc(last)} at rank ${ranks} (${sign}${pc(acceleratingBonus(first, last, ranks)[ranks])} ${what} in all)${tail}`;
+
+/**
+ * v0.7B.1 rebalance (prices and rank limits unchanged). Totals at max rank, as a share of the class
+ * base: damage +50% (was +30%), HP +57.5% (was +50%), spread -55% (was -50%), fire rate +35%
+ * (was +30%), move speed +22.5% (was +20%). Measured on a Level 25 soldier (where full training
+ * is realistically bought), max damage training is +42% damage and max HP training +46% HP.
+ */
 export const TRAINING: Record<TrainingStat, TrainingDef<TrainingStat>> = {
-  accuracy: { id: 'accuracy', label: 'Accuracy', perRank: -0.05, costs: INDIVIDUAL_COSTS, desc: '-5% of class spread per rank (standing and moving)' },
-  damage: { id: 'damage', label: 'Damage', perRank: 0.03, costs: INDIVIDUAL_COSTS, desc: '+3% of class damage per rank' },
-  hp: { id: 'hp', label: 'Max HP', perRank: 0.05, costs: INDIVIDUAL_COSTS, desc: '+5% of class max HP per rank' },
-  fireRate: { id: 'fireRate', label: 'Fire Rate', perRank: 0.03, costs: INDIVIDUAL_COSTS, desc: '+3% of class fire rate per rank' },
-  moveSpeed: { id: 'moveSpeed', label: 'Move Speed', perRank: 0.02, costs: INDIVIDUAL_COSTS, desc: '+2% of class move speed per rank' },
+  accuracy: def('accuracy', 'Accuracy', -0.05, -0.06, INDIVIDUAL_COSTS, accelDesc('-', 'class spread', 0.05, 0.06, 10)),
+  damage: def('damage', 'Damage', 0.03, 0.07, INDIVIDUAL_COSTS, accelDesc('+', 'class damage', 0.03, 0.07, 10)),
+  hp: def('hp', 'Max HP', 0.05, 0.065, INDIVIDUAL_COSTS, accelDesc('+', 'class max HP', 0.05, 0.065, 10)),
+  fireRate: def('fireRate', 'Fire Rate', 0.03, 0.04, INDIVIDUAL_COSTS, accelDesc('+', 'class fire rate', 0.03, 0.04, 10)),
+  moveSpeed: def('moveSpeed', 'Move Speed', 0.02, 0.025, INDIVIDUAL_COSTS, accelDesc('+', 'class move speed', 0.02, 0.025, 10)),
 };
 export const TRAINING_IDS = Object.keys(TRAINING) as TrainingStat[];
 
+/** v0.7B.1: squad HP +12.5% (was +10%), damage +10% (was +7.5%), spread -12.5% (was -10%), fire rate +6.25% (was +5%). */
 export const SQUAD_TRAINING: Record<SquadTrainingStat, TrainingDef<SquadTrainingStat>> = {
-  hp: { id: 'hp', label: 'Squad HP', perRank: 0.02, costs: SQUAD_COSTS, desc: '+2% of class max HP per rank, every soldier' },
-  damage: { id: 'damage', label: 'Squad Damage', perRank: 0.015, costs: SQUAD_COSTS, desc: '+1.5% of class damage per rank, every soldier' },
-  accuracy: { id: 'accuracy', label: 'Squad Accuracy', perRank: -0.02, costs: SQUAD_COSTS, desc: '-2% of class spread per rank, every soldier' },
-  fireRate: { id: 'fireRate', label: 'Squad Fire Rate', perRank: 0.01, costs: SQUAD_COSTS, desc: '+1% of class fire rate per rank, every soldier' },
+  hp: def('hp', 'Squad HP', 0.02, 0.03, SQUAD_COSTS, accelDesc('+', 'class max HP', 0.02, 0.03, 5, ', every soldier')),
+  damage: def('damage', 'Squad Damage', 0.015, 0.025, SQUAD_COSTS, accelDesc('+', 'class damage', 0.015, 0.025, 5, ', every soldier')),
+  accuracy: def('accuracy', 'Squad Accuracy', -0.02, -0.03, SQUAD_COSTS, accelDesc('-', 'class spread', 0.02, 0.03, 5, ', every soldier')),
+  fireRate: def('fireRate', 'Squad Fire Rate', 0.01, 0.015, SQUAD_COSTS, accelDesc('+', 'class fire rate', 0.01, 0.015, 5, ', every soldier')),
 };
+/** Cumulative bonus fraction for a (clamped) rank. */
+export const rankBonus = (d: TrainingDef<string>, rank: number): number => d.bonus[Math.max(0, Math.min(d.costs.length, rank | 0))];
 export const SQUAD_TRAINING_IDS = Object.keys(SQUAD_TRAINING) as SquadTrainingStat[];
 
 export const newTraining = (): TrainingRanks => ({ accuracy: 0, damage: 0, hp: 0, fireRate: 0, moveSpeed: 0 });
@@ -283,11 +335,11 @@ export const NO_PROGRESSION: ProgressionInputs = { level: 1, training: ZERO_T, s
 export function bonusFractions(p: ProgressionInputs) {
   const G = PROGRESSION.growth, T = TRAINING, S = SQUAD_TRAINING, gained = Math.max(0, p.level - 1);
   return {
-    hp: G.hp * gained + T.hp.perRank * p.training.hp + S.hp.perRank * p.squad.hp,
-    damage: G.damage * gained + T.damage.perRank * p.training.damage + S.damage.perRank * p.squad.damage,
-    fireRate: G.fireRate * gained + T.fireRate.perRank * p.training.fireRate + S.fireRate.perRank * p.squad.fireRate,
-    spread: T.accuracy.perRank * p.training.accuracy + S.accuracy.perRank * p.squad.accuracy,
-    moveSpeed: T.moveSpeed.perRank * p.training.moveSpeed,
+    hp: G.hp * gained + rankBonus(T.hp, p.training.hp) + rankBonus(S.hp, p.squad.hp),
+    damage: G.damage * gained + rankBonus(T.damage, p.training.damage) + rankBonus(S.damage, p.squad.damage),
+    fireRate: G.fireRate * gained + rankBonus(T.fireRate, p.training.fireRate) + rankBonus(S.fireRate, p.squad.fireRate),
+    spread: rankBonus(T.accuracy, p.training.accuracy) + rankBonus(S.accuracy, p.squad.accuracy),
+    moveSpeed: rankBonus(T.moveSpeed, p.training.moveSpeed),
   };
 }
 
@@ -380,7 +432,7 @@ export interface MissionReward {
 }
 
 /**
- * Pure reward math (no state). XP rounding: the per-soldier total is multiplied by the
+ * Pure reward math (no state). Victory XP by mission number (missionXp). XP rounding: the per-soldier total is multiplied by the
  * replay multiplier and rounded to the nearest integer, halves up (150 x 0.75 = 112.5 -> 113).
  */
 export function computeMissionRewards(o: MissionOutcome, firstClear: boolean, firstClearBonusPaid = false) {
@@ -393,7 +445,9 @@ export function computeMissionRewards(o: MissionOutcome, firstClear: boolean, fi
   // achievement pays once, as the optional objective (+25 XP / +150 CR); the global
   // whole-squad bonus line is left out for that mission.
   const fullPaid = full && !(o.optional.list ?? []).some((x) => x.replaces === 'fullExtraction');
-  const xpLines: RewardLine[] = [{ label: 'Victory', amount: X.victory }];
+  // v0.7B.1: Victory XP follows the number of the mission actually played (a replay of Mission 4
+  // pays Mission 4's value), applied once; the replay multiplier below scales the whole total
+  const xpLines: RewardLine[] = [{ label: 'Victory', amount: victoryXp(o.missionId) }];
   if (o.optional.total > 0) xpLines.push({ label: `Optional objectives ${opt}/${o.optional.total}`, amount: X.perOptionalObjective * opt });
   if (fullPaid) xpLines.push({ label: 'Whole squad extracted', amount: X.fullExtraction });
   if (flawless) xpLines.push({ label: 'Nobody downed', amount: X.flawless });

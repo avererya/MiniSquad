@@ -54,12 +54,12 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       const c5 = P.computeMissionRewards(oc(['Standing', 'KIA'], [0, 1]), false);
       const c6 = P.computeMissionRewards(oc(['Standing'], [0], { total: 2, completed: 1 }), true);
       const c7 = P.computeMissionRewards(oc(['Downed', 'Downed'], [1, 1], undefined, false), true);
-      check('first clear, perfect: 150 XP each, 1000 Credits (500+150+100+250)', c1.xpEach === 150 && c1.credits === 1000, `${c1.xpEach} XP, ${c1.credits} CR`);
-      check('replay, perfect: 150 x 0.75 = 112.5 -> 113 XP, 650 Credits (400+150+100)', c2.xpEach === 113 && c2.credits === 650, `${c2.xpEach} XP, ${c2.credits} CR`);
-      check('first clear with a KIA: no extraction/flawless bonus: 100 XP, 750 CR', c3.xpEach === 100 && c3.credits === 750, `${c3.xpEach} XP, ${c3.credits} CR`);
-      check('replay, all out but one revived: 125 x 0.75 = 93.75 -> 94 XP, 550 CR', c4.xpEach === 94 && c4.credits === 550, `${c4.xpEach} XP, ${c4.credits} CR`);
-      check('replay with a KIA: 75 XP, 400 CR (minimum win)', c5.xpEach === 75 && c5.credits === 400, `${c5.xpEach} XP, ${c5.credits} CR`);
-      check('optional objectives (model): +25 XP / +150 CR each completed', c6.xpEach === 175 && c6.credits === 1150, `${c6.xpEach} XP, ${c6.credits} CR`);
+      check('first clear, perfect (v0.7B.1 Mission 1 Victory 125): 175 XP each, 1000 Credits (500+150+100+250)', c1.xpEach === 175 && c1.credits === 1000, `${c1.xpEach} XP, ${c1.credits} CR`);
+      check('replay, perfect: 175 x 0.75 = 131.25 -> 131 XP, 650 Credits (400+150+100)', c2.xpEach === 131 && c2.credits === 650, `${c2.xpEach} XP, ${c2.credits} CR`);
+      check('first clear with a KIA: no extraction/flawless bonus: 125 XP, 750 CR', c3.xpEach === 125 && c3.credits === 750, `${c3.xpEach} XP, ${c3.credits} CR`);
+      check('replay, all out but one revived: 150 x 0.75 = 112.5 -> 113 XP, 550 CR', c4.xpEach === 113 && c4.credits === 550, `${c4.xpEach} XP, ${c4.credits} CR`);
+      check('replay with a KIA: 125 x 0.75 -> 94 XP, 400 CR (minimum win)', c5.xpEach === 94 && c5.credits === 400, `${c5.xpEach} XP, ${c5.credits} CR`);
+      check('optional objectives (model): +25 XP / +150 CR each completed', c6.xpEach === 200 && c6.credits === 1150, `${c6.xpEach} XP, ${c6.credits} CR`);
       check('defeat: no XP, no Credits', c7.xpEach === 0 && c7.credits === 0 && c7.creditLines.length === 0, `${c7.xpEach} XP, ${c7.credits} CR`);
       check('Mission 3 has exactly one optional objective (Extract every soldier)', g.mission.optional.length === 1 && g.mission.optional[0].id === 'all-extracted' && g.mission.id === 'field-medicine', `${g.mission.id}: ${g.mission.optional.map((o) => o.id)}`);
 
@@ -76,14 +76,14 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       const run1 = g.runId;
       g.win();
       const xp1 = R.soldiers.map((s) => `${s.id}:${s.progression.xp}`).join(' ');
-      check('equal XP for eligible survivors; revived+extracted gets XP; KIA gets 0', revived && byId('ace').progression.xp === 100 && byId('tank').progression.xp === 100 && byId('doc').progression.xp === 0 && doc.state === 'kia', xp1);
+      check('equal XP for eligible survivors (M3 Victory 140); revived+extracted gets XP; KIA gets 0', revived && byId('ace').progression.xp === 140 && byId('tank').progression.xp === 140 && byId('doc').progression.xp === 0 && doc.state === 'kia', xp1);
       check('first clear credits with a KIA: 750 (no bonuses)', A().credits === 750 && A().missions['field-medicine'].completions === 1 && A().missions['field-medicine'].firstClearRun === run1, `credits ${A().credits}`);
       const cr1 = A().credits;
       g.win(); g.ui.showEnd(); g.ui.showEnd(); // re-render / repeated end
       const again = E.settleMission(R, A(), { missionId: 'field-medicine', runId: run1, won: true, deployed: [{ id: 'ace', status: 'Standing', downs: 0 }], optional: { total: 0, completed: 0 } });
-      check('no double award: win() again, Results re-render, same run id settled again', A().credits === cr1 && again === null && byId('ace').progression.xp === 100, `credits ${A().credits}, settle again -> ${again}`);
+      check('no double award: win() again, Results re-render, same run id settled again', A().credits === cr1 && again === null && byId('ace').progression.xp === 140, `credits ${A().credits}, settle again -> ${again}`);
       const resultsText = document.getElementById('menu').textContent;
-      check('Results show XP per soldier, credit breakdown and total', /\+100 XP/.test(resultsText) && /no XP/.test(resultsText) && /Victory\+500/.test(resultsText.replace(/\s+/g, '')) && /First-time completion/.test(resultsText) && /750/.test(resultsText), resultsText.replace(/\s+/g, ' ').slice(0, 160));
+      check('Results show XP per soldier, credit breakdown and total', /\+140 XP/.test(resultsText) && /no XP/.test(resultsText) && /Victory\+500/.test(resultsText.replace(/\s+/g, '')) && /First-time completion/.test(resultsText) && /750/.test(resultsText), resultsText.replace(/\s+/g, ' ').slice(0, 160));
       // v0.6: Doc's KIA is permanent: the mission-end transaction queued a decision, which blocks the
       // retry until it is resolved. Resurrect Doc (top-up first, so the Credit checks below are unchanged)
       const pend = A().pendingDecision && { queue: A().pendingDecision.queue.map((q) => ({ ...q })) };
@@ -93,10 +93,10 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       g.reset(); clearEnemies();
       const run2 = g.runId;
       g.win();
-      check('Retry = new run id; replay perfect: +113 XP each, +650 CR', run2 !== run1 && byId('ace').progression.xp === 213 && byId('doc').progression.xp === 113 && A().credits === cr1 + 650 && g.lastReward.firstClear === false, `ace ${byId('ace').progression.xp}, doc ${byId('doc').progression.xp}, credits ${A().credits}`);
+      check('Retry = new run id; replay perfect: (140+25+25) x 0.75 = +143 XP each, +650 CR', run2 !== run1 && byId('ace').progression.xp === 283 && byId('doc').progression.xp === 143 && A().credits === cr1 + 650 && g.lastReward.firstClear === false, `ace ${byId('ace').progression.xp}, doc ${byId('doc').progression.xp}, credits ${A().credits}`);
       // OVERLAP RULE (Mission 3): the optional 'Extract every soldier' pays instead of the whole-squad line, same totals
       check('M3: optional (= whole squad extracted) + flawless listed, no double whole-squad line', g.lastReward.xpLines.map((l) => l.label).join() === 'Victory,Optional objectives 1/1,Nobody downed' && g.lastReward.creditLines.map((l) => l.label).join() === 'Victory (replay),Optional objectives 1/1,Nobody downed', g.lastReward.xpLines.map((l) => `${l.label} ${l.amount}`).join(', '));
-      check('level-up from the award (Ace 100 -> 213 XP = LV 1 -> LV 2)', byId('ace').progression.level === 2 && g.lastReward.soldiers[0].before.level === 1 && g.lastReward.soldiers[0].after.level === 2, JSON.stringify(g.lastReward.soldiers[0]));
+      check('level-up from the award (Ace 140 -> 283 XP = LV 1 -> LV 2)', byId('ace').progression.level === 2 && g.lastReward.soldiers[0].before.level === 1 && g.lastReward.soldiers[0].after.level === 2, JSON.stringify(g.lastReward.soldiers[0]));
       // defeat: nothing (service record only)
       const crBefore = A().credits, xpBefore = byId('ace').progression.xp;
       g.reset(); clearEnemies(); g.soldiers.forEach((s) => g.downSoldier(s)); step(0.05);
@@ -132,24 +132,24 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       setXp('havoc', P.xpForLevel(20)); byId('havoc').training.fireRate = 5; A().squadTraining.fireRate = 3;
       deploy(['havoc']); const hv = g.soldiers[0];
       const hvRate = hv.fireRate; g.useAbility(hv); const hvSup = hv.fireRate;
-      check('Havoc L20 + Fire Rate 5 + Squad Fire Rate 3, x Trigger Happy, x Suppressive', r3(hvRate) === r3(7 * (1 + 0.095 + 0.15 + 0.03) * 1.05) && r3(hvSup) === r3(hvRate * 1.75), `base rate ${r3(hvRate)} (7 x 1.275 x 1.05), suppressing ${r3(hvSup)}`);
+      check('Havoc L20 + Fire Rate 5 (v0.7B.1 +16.11%) + Squad Fire Rate 3 (+3.375%), x Trigger Happy, x Suppressive', r3(hvRate) === r3(7 * (1 + 0.095 + 0.161111 + 0.03375) * 1.05) && r3(hvSup) === r3(hvRate * 1.75), `base rate ${r3(hvRate)} (7 x 1.289861 x 1.05), suppressing ${r3(hvSup)}`);
       g.toBarracks(); resetAll();
       // no stacking on redeploy/retry/reload-like re-reads
       setXp('tank', P.xpForLevel(6)); byId('tank').training.hp = 2;
       const reads = [];
       for (let i = 0; i < 3; i++) { if (i === 0) deploy(['tank']); else { g.reset(); clearEnemies(); } reads.push(g.soldiers[0].maxHp); }
-      check('no stacking across deploy + retry (Tank L6 + HP rank 2: 150 x 1.15 x 1.1 = 189.75)', reads.every((x) => x === 189.75), reads.join());
+      check('no stacking across deploy + retry (Tank L6 + HP rank 2: 150 x 1.151667 x 1.1 = 190.025)', reads.every((x) => Math.abs(x - 190.025) < 1e-3), reads.join());
       g.toBarracks();
       check('pipeline never mutates CFG', CFG.heavy.hp === 150 && CFG.infantry.damage === 10 && CFG.heavy.fireRate === 7, '');
       // tuning still edits class base under everything
       CFG.heavy.hp = 200; const tuned = eff(byId('tank')).hp; CFG.heavy.hp = 150;
-      check('tuning edits class base; level + training + trait apply on top', tuned === 253, `heavy 200 -> Tank ${tuned} (200 x 1.15 x 1.1)`);
+      check('tuning edits class base; level + training + trait apply on top', Math.abs(tuned - 253.3667) < 1e-3, `heavy 200 -> Tank ${tuned} (200 x 1.151667 x 1.1)`);
       // spread floor
       byId('ace').training.accuracy = 10; A().squadTraining.accuracy = 5;
       const aMax = eff(byId('ace'));
       CFG.infantry.accuracy = 2; const aFloor = eff(byId('ace')); CFG.infantry.accuracy = 12;
-      check('accuracy: 12 x (1 - 0.5 - 0.1) x 0.9 = 4.32° standing, moving 4.32 + 6.48 = 10.8 (max ranks)', aMax.accuracy === 4.32 && r3(aMax.accuracy + aMax.movePenalty) === 10.8, `${aMax.accuracy} / ${r3(aMax.accuracy + aMax.movePenalty)}`);
-      check('spread floor 1°: tuned 2° base x 0.36 = 0.72 -> 1°', aFloor.accuracy === 1 && aFloor.movePenalty > 0, `${aFloor.accuracy} (+${r3(aFloor.movePenalty)})`);
+      check('accuracy (v0.7B.1): 12 x (1 - 0.55 - 0.125) x 0.9 = 3.51° standing, moving 30 x 0.2925 = 8.775 (max ranks)', aMax.accuracy === 3.51 && r3(aMax.accuracy + aMax.movePenalty) === 8.775, `${aMax.accuracy} / ${r3(aMax.accuracy + aMax.movePenalty)}`);
+      check('spread floor 1°: tuned 2° base x 0.2925 = 0.585 -> 1°', aFloor.accuracy === 1 && aFloor.movePenalty > 0, `${aFloor.accuracy} (+${r3(aFloor.movePenalty)})`);
       resetAll();
 
       // ---- purchases ----
@@ -167,7 +167,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       check('stale / duplicate purchase event (expected rank 0, actual 2) refused', !r.ok && byId('ace').training.damage === 2 && A().credits === 5000, r.reason);
       byId('ace').training.hp = 10; r = E.buyTraining(R, A(), 'ace', 'hp', 10, persist);
       check('max rank: refused at 10/10', !r.ok && /maxed/.test(r.reason) && byId('ace').training.hp === 10, r.reason);
-      check('individual training is per soldier (Ranger untouched)', eff(byId('ranger')).damage === 10 && eff(byId('ace')).damage === 10.6 && eff(byId('ace')).hp === 150, `Ace dmg ${eff(byId('ace')).damage} hp ${eff(byId('ace')).hp}, Ranger dmg ${eff(byId('ranger')).damage}`);
+      check('individual training is per soldier (Ranger untouched)', eff(byId('ranger')).damage === 10 && eff(byId('ace')).damage === 10.64444 && eff(byId('ace')).hp === 157.5, `Ace dmg ${eff(byId('ace')).damage} hp ${eff(byId('ace')).hp}, Ranger dmg ${eff(byId('ranger')).damage}`);
       const saved1 = JSON.parse(localStorage.getItem('minisquad.save'));
       check('purchase persisted atomically (credits + rank in the save)', saved1.account.credits === 350 && saved1.roster[0].training.damage === 2, `${saved1.account.credits} / ${saved1.roster[0].training.damage}`);
       // failed write rolls back
@@ -178,11 +178,11 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       r = E.buySquadTraining(A(), 'hp', 0, persist); const r2 = E.buySquadTraining(A(), 'hp', 1, persist); const r3b = E.buySquadTraining(A(), 'hp', 1, persist);
       const hpAll = R.soldiers.map((s) => `${s.id}:${eff(s).hp}`).join(' ');
       g.reset(['infantry']); const genHp = g.soldiers[0].maxHp; g.toBarracks();
-      check('squad HP 2 ranks (1000 + 1500): +4% of class base for every roster soldier', r.ok && r2.ok && !r3b.ok && eff(byId('ranger')).hp === 104 && eff(byId('tank')).hp === 171.6 && eff(byId('doc')).hp === 83.2 && eff(byId('ace')).hp === 154 && A().credits === 2500, hpAll);
+      check('squad HP 2 ranks (1000 + 1500): +4.25% (2 + 2.25) of class base for every roster soldier', r.ok && r2.ok && !r3b.ok && eff(byId('ranger')).hp === 104.25 && eff(byId('tank')).hp === 172.0125 && eff(byId('doc')).hp === 83.4 && eff(byId('ace')).hp === 161.75 && A().credits === 2500, hpAll);
       check('squad training does not apply to dev generics (class base only)', genHp === 100, genHp);
       A().squadTraining.hp = 5; const sq5 = eff(byId('ranger')).hp; A().squadTraining.hp = 9;
       const sqClamp = window.__parseSave(JSON.stringify({ ...JSON.parse(localStorage.getItem('minisquad.save')), account: { ...A(), squadTraining: { hp: 9, damage: -2, accuracy: 2.6, fireRate: 'x' } } }));
-      check('squad ranks validated on load (9 -> 5, -2 -> 0, 2.6 -> 2, "x" -> 0)', sq5 === 110 && JSON.stringify(sqClamp.account.squadTraining) === '{"hp":5,"damage":0,"accuracy":2,"fireRate":0}', JSON.stringify(sqClamp.account.squadTraining));
+      check('squad ranks validated on load (9 -> 5, -2 -> 0, 2.6 -> 2, "x" -> 0)', sq5 === 112.5 && JSON.stringify(sqClamp.account.squadTraining) === '{"hp":5,"damage":0,"accuracy":2,"fireRate":0}', JSON.stringify(sqClamp.account.squadTraining));
       resetAll();
 
       // ---- save: migration + validation ----
@@ -225,10 +225,10 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const credUI = await page.textContent('.r-cr');
     if (OUT) await page.screenshot({ path: `${OUT}/desktop-results-first-clear.png` });
     let sv = await save();
-    check('UI: first clear pays 1000 CR, shown on Results and saved at once', credUI === '1,000' && sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150, `results ${credUI}, saved ${sv.account.credits}`);
+    check('UI: first clear pays 1000 CR + 175 XP (M1), shown on Results and saved at once', credUI === '1,000' && sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 175, `results ${credUI}, saved ${sv.account.credits}`);
     await page.reload(); await page.waitForTimeout(200); // reload while on Results
     sv = await save();
-    check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 150 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
+    check('UI: reload on Results: no duplicate reward, back on the Campaign screen', sv.account.credits === 1000 && sv.roster.find((s) => s.id === 'ace').progression.xp === 175 && await page.isVisible('#menu.campaign'), `credits ${sv.account.credits}`);
     // version from package.json ("versionLabel" when set, e.g. "v0.7A"; else 0.6.3 -> "v0.6.3", 0.7.0 -> "v0.7")
     const PKG = require('../package.json');
     const VER = (PKG.versionLabel || PKG.version).replace(/^(\d+\.\d+)\.0$/, '$1').replace(/\./g, '\\.');
@@ -368,7 +368,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     const R = await layout('#menu .r-card, #menu [data-a="retry"], #menu [data-a="barracks"]');
     const lvl = await page.evaluate(() => document.querySelector('.r-lvl')?.textContent || '');
     check(`${dev.name}: Results with level-up fit landscape, buttons tappable`, R.n === 3 && R.boxes.every((b) => b.inside && b.aligned) && !R.scroll && R.minFont >= 11, `min font ${R.minFont}px, scroll ${R.scroll}, inside ${R.boxes.map((b) => +b.inside)}, aligned ${R.boxes.map((b) => +b.aligned)}`);
-    check(`${dev.name}: level-up notice "ACE — LV 4 → LV 5 — +150 XP"`, /ACE — LV 4 → LV 5 — \+150 XP/.test(lvl), lvl);
+    check(`${dev.name}: level-up notice "ACE — LV 4 → LV 5 — +175 XP" (v0.7B.1 Mission 1)`, /ACE — LV 4 → LV 5 — \+175 XP/.test(lvl), lvl);
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-results-levelup.png` });
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(400);
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);

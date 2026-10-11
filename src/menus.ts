@@ -20,7 +20,7 @@ import { sfx, unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
 import { CAMPAIGN, CAPACITY_TABLE, CHAPTERS, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
-  PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, xpForLevel,
+  PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, rankBonus, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
 } from './progression';
 import {
@@ -53,12 +53,15 @@ export type BarracksTab = 'roster' | 'training' | 'squad' | 'recruit';
 const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAINING'], ['squad', 'SQUAD TRAINING'], ['recruit', 'RECRUIT']];
 
 /** How a training row shows its stat. */
-const STAT_VIEW: Record<TrainingStat, { get: (s: ReturnType<typeof effectiveStats>) => string }> = {
-  accuracy: { get: (s) => `${num(s.accuracy)}°/${num(s.accuracy + s.movePenalty)}°` },
-  damage: { get: (s) => num(s.damage) },
-  hp: { get: (s) => num(Math.round(s.hp * 10) / 10) },
-  fireRate: { get: (s) => `${num(s.fireRate)}/s` },
-  moveSpeed: { get: (s) => num(Math.round(s.moveSpeed * 10) / 10) },
+type Eff = ReturnType<typeof effectiveStats>;
+const signed = (v: number) => `${v < 0 ? '−' : '+'}${num(Math.abs(v))}`;
+/** Training row values; `gain` is the next rank's real change for this soldier (v0.7B.1 preview). */
+const STAT_VIEW: Record<TrainingStat, { get: (s: Eff) => string; gain: (a: Eff, b: Eff) => string }> = {
+  accuracy: { get: (s) => `${num(s.accuracy)}°/${num(s.accuracy + s.movePenalty)}°`, gain: (a, b) => `${signed(b.accuracy - a.accuracy)}° spread` },
+  damage: { get: (s) => num(s.damage), gain: (a, b) => `${signed(b.damage - a.damage)} damage` },
+  hp: { get: (s) => num(Math.round(s.hp * 10) / 10), gain: (a, b) => `${signed(Math.round(b.hp * 10) / 10 - Math.round(a.hp * 10) / 10)} HP` },
+  fireRate: { get: (s) => `${num(s.fireRate)}/s`, gain: (a, b) => `${signed(b.fireRate - a.fireRate)}/s` },
+  moveSpeed: { get: (s) => num(Math.round(s.moveSpeed * 10) / 10), gain: (a, b) => `${signed(Math.round(b.moveSpeed * 10) / 10 - Math.round(a.moveSpeed * 10) / 10)} speed` },
 };
 
 export class Menus {
@@ -688,7 +691,7 @@ export class Menus {
         <div class="t-row" data-stat="${k}">
           <div class="t-name"><b>${def.label}</b><span>${def.desc}</span></div>
           <div class="t-rank"><span class="pips">${this.pips(rank, max)}</span><span class="t-rk">RANK ${rank}/${max}</span></div>
-          <div class="t-val">${STAT_VIEW[k].get(cur)}${next ? ` → <b>${STAT_VIEW[k].get(next)}</b>` : ' <b>MAX</b>'}</div>
+          <div class="t-val">${STAT_VIEW[k].get(cur)}${next ? ` → <b>${STAT_VIEW[k].get(next)}</b><small class="t-gain">${STAT_VIEW[k].gain(cur, next)} · rank ${rank + 1}</small>` : ' <b>MAX</b>'}</div>
           ${btn}
         </div>`;
     }).join('');
@@ -705,7 +708,7 @@ export class Menus {
             </div>
           </div>
           <div class="t-rows">${rows}</div>
-          <div class="t-foot">Individual training stays with ${esc(s.name)} (levels, retries, squad changes). Percentages are of the class base and add up; the trait applies on top. Spread never goes below ${PROGRESSION.spreadFloorDeg}°.</div>
+          <div class="t-foot">Individual training stays with ${esc(s.name)} (levels, retries, squad changes). Each rank adds more than the last; values shown are this soldier's real stats (level, trait and Elite bonuses included). Percentages are of the class base and add up. Spread never goes below ${PROGRESSION.spreadFloorDeg}°.</div>
         </section>
       </div>`;
   }
@@ -722,7 +725,7 @@ export class Menus {
       const afford = cost !== null && acc.credits >= cost;
       const btn = cost === null ? '<button class="t-buy max" disabled>MAX</button>'
         : `<button class="t-buy ${afford ? '' : 'poor'}" data-a="sbuy" data-stat="${k}" data-rank="${rank}" ${afford ? '' : 'disabled'} title="${afford ? 'Buy' : 'Not enough Credits'}">${cr(cost)} CR</button>`;
-      const now = def.perRank * rank, nxt = def.perRank * (rank + 1);
+      const now = rankBonus(def, rank), nxt = rankBonus(def, rank + 1);
       const field = k === 'accuracy' ? 'accuracy' : k;
       const ex = CLASS_IDS.map((c) => {
         const b = classStats(c);
@@ -739,7 +742,7 @@ export class Menus {
     }).join('');
     return `
       <section class="t-panel q-panel t-scroll">
-        <div class="q-note">Squad Training applies to <b>every soldier in the roster</b>, now and in the future (deployed or not). It adds to individual training and levels as a percentage of the class base; it never stacks with itself.</div>
+        <div class="q-note">Squad Training applies to <b>every soldier in the roster</b>, now and in the future (deployed or not). Each rank adds more than the last. It adds to individual training and levels as a percentage of the class base; it never stacks with itself.</div>
         <div class="t-rows">${rows}</div>
         <div class="t-foot">Class-base examples shown as INF / HVY / MED values. ${VERSION_LABEL}</div>
       </section>`;

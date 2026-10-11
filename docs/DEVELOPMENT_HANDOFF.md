@@ -1,12 +1,13 @@
-# MiniSquad development handoff (after v0.7B)
+# MiniSquad development handoff (after v0.7B.1)
 
-Current release: **v0.7B — Elite Progression (Levels 2-30)** (package 0.7.1, label `versionLabel: "0.7B"`), on top of v0.7A Elite Promotions.
-Rules and numbers: README → "Elite Promotions (v0.7A)" and "Elite Progression (v0.7B)". This file is what the next step (v0.7C) needs.
+Current release: **v0.7B.1 — Progression & Training Rebalance** (package 0.7.2, label `versionLabel: "0.7B.1"`), on top of v0.7B Elite Progression and v0.7A Elite Promotions.
+Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)" and "Progression & Training Rebalance (v0.7B.1)". This file is what the next step (v0.7C) needs.
 
 ## Workflow
 
 - Repo `avererya/MiniSquad`. A push to `main` deploys to Cloudflare Workers. Never touch the `prototype-v0.1` tag (the git proxy refuses tag pushes anyway).
 - Serve a build and run the headless suites: `npm run build && npx vite preview --port 4173`, then `node tools/<suite>.cjs` (`URL=` to point elsewhere, `OUT=` for screenshots).
+- Regression set used for v0.7B.1: `training-rebalance` (with `BASE=<v0.7B build>`), then the v0.7B set below. `progression.cjs` expectations follow the v0.7B.1 XP / training values.
 - Regression set used for v0.7B: `elite-progression` (with `BASE=<v0.7A build>`), `elite logic permadeath recruitment failure-recruit progression campaign-rules barracks chapter2 fps-default` and `fps-parity` (with `BASE=<previous build>` to prove a change leaves the Recruit-only simulation bit-identical). The suites that check the save version expect v9.
 - To serve a previous build for `BASE=`: `git worktree add /tmp/base <commit> && (cd /tmp/base && npm ci && npm run build)`, then `npx vite preview --port 4174 --outDir /tmp/base/dist`.
 - Known pre-existing flakes: `logic.cjs` Ranger Quick Reflexes move-speed check and the escort-formation timing check fail intermittently on unchanged builds.
@@ -29,6 +30,16 @@ Rules and numbers: README → "Elite Promotions (v0.7A)" and "Elite Progression 
 | HUD panel labels (AIM READY / OVERDRIVE / ADRENALINE) | `src/hud.ts` |
 | Resurrection price x2 for Elites | `src/casualties.ts` |
 
+## Where the v0.7B.1 rebalance lives
+
+| Concern | File |
+|---|---|
+| Training tables: `acceleratingBonus(first, last, ranks)`, `TrainingDef.first / last / bonus`, `rankBonus(def, rank)`; prices `INDIVIDUAL_COSTS` / `SQUAD_COSTS` | `src/progression.ts` |
+| Pipeline (unchanged order; `bonusFractions` reads `rankBonus`) | `src/progression.ts`, `src/classes.ts` `effectiveStats` |
+| Mission XP curve `PROGRESSION.missionXp`, `missionXp(n)`, `victoryXp(missionId)` (used by `computeMissionRewards`) | `src/progression.ts` |
+| Training tab preview (`STAT_VIEW[k].gain`, `.t-gain`) and squad tab (`rankBonus`) | `src/menus.ts`, `src/style.css` |
+| Suite | `tools/training-rebalance.cjs` |
+
 ## Invariants to keep
 
 1. **Elite Level 1 is never weaker than Recruit Level 25** and is exactly the v0.7A soldier. The stat pipeline still reads the Recruit level (25) for Elites; the v0.7B level bonus is one multiplier per stat in `eliteModifiers` (null at Elite 1), next to the trait.
@@ -38,6 +49,9 @@ Rules and numbers: README → "Elite Promotions (v0.7A)" and "Elite Progression 
 5. **Caps**: incoming reduction ≤ 40% (`maxDamageReduction`), per-shot multiplier ≤ x2 (`maxShotMul`). New Elite bonuses must go through these.
 6. `eliteXp` is cumulative and never spent or reset; `eliteLevel` is derived from it (at settlement and on load). A load never lowers a stored v9 level (XP is raised to its threshold instead). If anything is ever bought with Elite XP, give it its own ledger instead of subtracting.
 7. Elite levels touch only max HP, damage and one class stat (spread / heal / aim time). Keep fire rate and move speed out (perf + balance).
+8. (v0.7B.1) **No training rank is ever weaker than an earlier release.** Each table's rank 1 equals the v0.7B flat value and increments only grow. A retune must keep `bonus[r]` ≥ the previous release's value at every rank (checked by `training-rebalance.cjs` A4 against `BASE=`), or it takes something players paid for.
+9. (v0.7B.1) Training prices and rank limits are approved and fixed; tune `first` / `last`, not `costs`.
+10. (v0.7B.1) Mission XP is by mission **number**, applied once on the Victory line; the replay multiplier scales the whole total. Credits do not scale with the mission number (yet).
 
 ## v0.7B: shipped
 
@@ -46,10 +60,20 @@ Rules and numbers: README → "Elite Promotions (v0.7A)" and "Elite Progression 
 - Results ELITE LEVEL UP! line, profile XP / next level / MAX LEVEL / bonus, Barracks ELITE n badge with Elite XP bar, squad slot ★n + spec.
 - Save v9; genuine v0.7A save fixture `tools/fixtures/v0.7A-save.json`; suite `tools/elite-progression.cjs`.
 
+## v0.7B.1: shipped
+
+- Accelerating training (individual and squad), prices / limits / save unchanged, every rank ≥ v0.7B. Max: damage +50%, HP +57.5%, spread -55%, fire rate +35%, move speed +22.5% of class base; squad HP +12.5%, damage +10%, spread -12.5%, fire rate +6.25%.
+- Training tab shows current → next value for the selected soldier, the exact gain and the rank bought.
+- Mission XP by mission number: 125 (M1) … 150 (M5), then +10 per mission (M10 200, M40 500, M50 600). Bonuses and x0.75 replay unchanged; Credits unchanged.
+- Deviation from the brief: HP keeps its 5% first rank (no nerf), so max HP training is +57.5% at Level 1 / +46% at Level 25, a little above the +35-45% target; damage lands at +50% / +42%.
+
 ## v0.7C: what is open
 
+- Elite pace after v0.7B.1: Missions 1-10 now pay ~94-275 XP per soldier, so ELITE 30 is roughly 130-250 Chapter 1-2 missions, and faster once later chapters (400-600 XP) exist. Worth a playtest.
+- Enemy scaling for Chapters 3-10 (see the v0.7B.1 completion report in the project thread): grow encounter size and mix rather than HP. Engine squad cap is 6; enemy count, flow-field rebuilds and projectile counts are the perf limits to watch (`?perf=1` overlay).
+
 - Measured v0.7A passive gains (tools/elite.cjs): Ironclad / Adrenaline exactly 20% / 25%, Overdrive +25% fire rate, Rally +10%, Miracle Worker 3.85 s revive with 50% HP.
-- **Pace**: at 110-200 XP per mission, ELITE 30 takes roughly 180-320 missions per soldier. That follows the v0.7B spec; worth a human playtest before v0.7C content lands. The curve is two numbers in `ELITE_PROGRESSION.xp`; a retune never lowers a stored level (save repair raises XP instead).
+- **Pace** (v0.7B note, superseded by the v0.7B.1 mission XP above): the Elite curve is two numbers in `ELITE_PROGRESSION.xp`; a retune never lowers a stored level (save repair raises XP instead).
 - Balance after playtests (unchanged in v0.7B on purpose): Recon Deadeye (~+10% sustained), Phantom Shot (~+28% vs front armor, x2.12 vs the Iron Warden), Perfect Aim (~+31% when holding; the autopilot rarely charges it).
 - Overdrive and Rally have no button and no HUD meter beyond the panel label and ground effects; consider a small meter if players miss them.
 - Not started (later releases): Tactical Airstrikes, Nuclear Strikes, Support Shop, Chapter 3, decorations / medals, new classes.
