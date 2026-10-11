@@ -129,7 +129,7 @@ const SPECS = [['ace', 'inf-trooper'], ['ranger', 'inf-recon'], ['tank', 'hvy-ju
       const id = id0 === 'sniper' ? sn.id : id0;
       const s = T.R.get(id); if (id0 === 'sniper') s.traitId = 'eagleEye'; // the recruited Sniper's trait is random: fix it
       s.training.hp = 2; s.training.damage = 3; s.training.accuracy = 1;
-      T.a.squadTraining.hp = 1; T.a.squadTraining.damage = 2;
+      T.a.squadTraining.hp = 0; T.a.squadTraining.damage = 0; // v0.7D changed the squad tables on purpose (tools/squad-training.cjs); this compares the rest to BASE
       T.lv(id, 25); T.recruit(id);
       const r25 = pick(window.__effectiveStats(s));
       const p = s.progression; p.tier = 'elite'; p.elitePath = spec; p.specialization = spec; p.eliteLevel = 1; p.eliteXp = 0;
@@ -155,7 +155,7 @@ const SPECS = [['ace', 'inf-trooper'], ['ranger', 'inf-recon'], ['tank', 'hvy-ju
         const id = id0 === 'sniper' ? sn.id : id0;
         const s = T.R.get(id); if (id0 === 'sniper') s.traitId = 'eagleEye'; // the recruited Sniper's trait is random: fix it
         s.training.hp = 2; s.training.damage = 3; s.training.accuracy = 1;
-        T.a.squadTraining.hp = 1; T.a.squadTraining.damage = 2;
+        T.a.squadTraining.hp = 0; T.a.squadTraining.damage = 0; // v0.7D changed the squad tables on purpose (tools/squad-training.cjs); this compares the rest to BASE
         T.lv(id, 25); T.recruit(id);
         const r25 = pick(window.__effectiveStats(s));
         const p = s.progression; p.tier = 'elite'; p.elitePath = spec; p.specialization = spec; p.eliteLevel = 1; p.eliteXp = 0;
@@ -167,7 +167,7 @@ const SPECS = [['ace', 'inf-trooper'], ['ranger', 'inf-recon'], ['tank', 'hvy-ju
     await bp.close();
     const sameE1 = Object.keys(baseSt).every((k) => JSON.stringify(baseSt[k].e1) === JSON.stringify(st[k].e1));
     const sameR = Object.keys(baseSt).every((k) => JSON.stringify(baseSt[k].r25) === JSON.stringify(st[k].r25));
-    check('B1 Elite Level 1 stats identical to the v0.7A build, all eight specializations (with training + squad training)', sameE1, Object.keys(baseSt).filter((k) => JSON.stringify(baseSt[k].e1) !== JSON.stringify(st[k].e1)).join() || 'all equal');
+    check('B1 Elite Level 1 stats identical to the v0.7A build, all eight specializations (with individual training)', sameE1, Object.keys(baseSt).filter((k) => JSON.stringify(baseSt[k].e1) !== JSON.stringify(st[k].e1)).join() || 'all equal');
     check('E1 Recruit Level 25 stats identical to the v0.7A build (Recruit progression untouched)', sameR, sameR ? 'all equal' : 'differs');
   } else check('B1 Elite Level 1 = Recruit Level 25 (+ Surgeon revive) (set BASE= to compare with v0.7A)', Object.values(st).every((x) => Object.keys(x.r25).every((k) => k === 'reviveTime' || x.r25[k] === x.e1[k])));
   const near = (a, b, eps = 1e-4) => Math.abs(a - b) <= eps;

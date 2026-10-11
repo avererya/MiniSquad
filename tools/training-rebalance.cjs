@@ -78,12 +78,14 @@ function installHelpers() {
     return { ind: dump(P.TRAINING), sqd: dump(P.SQUAD_TRAINING) };
   });
   const OLD_PER_RANK = { ind: { accuracy: -0.05, damage: 0.03, hp: 0.05, fireRate: 0.03, moveSpeed: 0.02 }, sqd: { hp: 0.02, damage: 0.015, accuracy: -0.02, fireRate: 0.01 } };
-  const indCosts = '250,400,550,700,900,1150,1450,1750,2100,2500', sqdCosts = '1000,1500,2000,2750,3500';
-  check('A1 training prices unchanged (individual 250..2500, squad 1000..3500), every category', Object.values(tab.ind).every((d) => d.costs.join() === indCosts) && Object.values(tab.sqd).every((d) => d.costs.join() === sqdCosts), indCosts + ' / ' + sqdCosts);
-  check('A2 rank limits unchanged (10 individual, 5 squad); same five + four categories', Object.values(tab.ind).every((d) => d.max === 10) && Object.values(tab.sqd).every((d) => d.max === 5) && Object.keys(tab.ind).join() === 'accuracy,damage,hp,fireRate,moveSpeed' && Object.keys(tab.sqd).join() === 'hp,damage,accuracy,fireRate', '');
+  const indCosts = '250,400,550,700,900,1150,1450,1750,2100,2500', sqdCosts = '1000,1500,2000,2750,3500,4500,5500,7000,8500,10000'; // v0.7D: squad ranks 6-10 added
+  check('A1 training prices unchanged (individual 250..2500, squad 1000..3500 + v0.7D ranks 6-10), every category', Object.values(tab.ind).every((d) => d.costs.join() === indCosts) && Object.values(tab.sqd).every((d) => d.costs.join() === sqdCosts), indCosts + ' / ' + sqdCosts);
+  check('A2 rank limits (10 individual; squad 10 since v0.7D); same five + four categories', Object.values(tab.ind).every((d) => d.max === 10) && Object.values(tab.sqd).every((d) => d.max === 10) && Object.keys(tab.ind).join() === 'accuracy,damage,hp,fireRate,moveSpeed' && Object.keys(tab.sqd).join() === 'hp,damage,accuracy,fireRate', '');
   const steps = (b) => b.slice(1).map((v, i) => Math.abs(v - b[i]));
   const incr = (b) => steps(b).every((d, i, a) => i === 0 || d > a[i - 1] + 1e-9);
-  check('A3 every category: each later rank adds MORE than the one before (accelerating)', [...Object.values(tab.ind), ...Object.values(tab.sqd)].every((d) => incr(d.bonus)),
+  // v0.7D: squad tables accelerate within each five-rank tier (rank 6 restarts the step; tools/squad-training.cjs A6)
+  const incrTiers = (b) => [b.slice(0, 6), b.slice(5)].every(incr);
+  check('A3 every category: each later rank adds MORE than the one before (accelerating; squad per 5-rank tier)', Object.values(tab.ind).every((d) => incr(d.bonus)) && Object.values(tab.sqd).every((d) => incrTiers(d.bonus)),
     Object.entries(tab.ind).map(([k, d]) => `${k} ${steps(d.bonus).map((x) => (x * 100).toFixed(2)).join('/')}`).join(' · '));
   const noLower = (grp) => Object.entries(tab[grp]).every(([k, d]) => d.bonus.every((v, r) => Math.abs(v) >= Math.abs(OLD_PER_RANK[grp][k] * r) - 1e-9 && Math.sign(v || OLD_PER_RANK[grp][k]) === Math.sign(OLD_PER_RANK[grp][k])));
   check('A4 no rank of any category is weaker than in v0.7B (rank 1 identical, later ranks stronger)', noLower('ind') && noLower('sqd') && Object.entries(tab.ind).every(([k, d]) => Math.abs(d.bonus[1] - OLD_PER_RANK.ind[k]) < 1e-9), '');
@@ -106,12 +108,12 @@ function installHelpers() {
   });
   check('A7 max HP training ≈ +35-45% on a Level 25 soldier (+46.4%; +42.1% with max Squad HP; +57.5% at L1)', hpMax.l25 >= 0.35 && hpMax.l25 <= 0.47 && hpMax.l25sq >= 0.35 && hpMax.l25sq <= 0.45, `L25 +${(hpMax.l25 * 100).toFixed(1)}%, L25+squad +${(hpMax.l25sq * 100).toFixed(1)}%, L1 +${(hpMax.l1 * 100).toFixed(1)}%; Heavy steps ${hpMax.steps.map((x) => x.toFixed(2)).join('/')}`);
   check('A8 class identity kept: fully trained Heavy far tougher than Sniper / Medic', hpMax.max.heavy > 1.8 * hpMax.max.sniper && hpMax.max.heavy > 1.8 * hpMax.max.medic, JSON.stringify(Object.fromEntries(Object.entries(hpMax.max).map(([k, v]) => [k, r2(v)]))));
-  const caps = { acc: tab.ind.accuracy.bonus[10], rate: tab.ind.fireRate.bonus[10], move: tab.ind.moveSpeed.bonus[10], sAcc: tab.sqd.accuracy.bonus[5], sRate: tab.sqd.fireRate.bonus[5], sHp: tab.sqd.hp.bonus[5], sDmg: tab.sqd.damage.bonus[5] };
-  check('A9 conservative caps: fire rate ≤ +35% (+6.25% squad), move speed ≤ +22.5%, spread ≥ -55% (-12.5% squad)', caps.rate <= 0.35 + 1e-9 && caps.sRate <= 0.0625 + 1e-9 && caps.move <= 0.225 + 1e-9 && caps.acc >= -0.55 - 1e-9 && caps.sAcc >= -0.125 - 1e-9, JSON.stringify(caps));
+  const caps = { acc: tab.ind.accuracy.bonus[10], rate: tab.ind.fireRate.bonus[10], move: tab.ind.moveSpeed.bonus[10], sAcc: tab.sqd.accuracy.bonus[10], sRate: tab.sqd.fireRate.bonus[10], sHp: tab.sqd.hp.bonus[10], sDmg: tab.sqd.damage.bonus[10] };
+  check('A9 caps: fire rate ≤ +35% (+25% squad, v0.7D), move speed ≤ +22.5%, spread ≥ -55% (-50% squad, v0.7D)', caps.rate <= 0.35 + 1e-9 && caps.sRate <= 0.25 + 1e-9 && caps.move <= 0.225 + 1e-9 && caps.acc >= -0.55 - 1e-9 && caps.sAcc >= -0.5 - 1e-9, JSON.stringify(caps));
   const flo = await page.evaluate(() => {
     const P = window.__progression, e = window.__effectiveStats;
     const s = { classId: 'sniper', traitId: 'sharpshooter', mods: {}, progression: { level: 25, xp: P.xpForLevel(25), upgrades: [], specialization: 'snp-deadeye', tier: 'elite', elitePath: 'snp-deadeye', eliteLevel: 30, eliteXp: window.__elite.eliteXpForLevel(30) }, training: { accuracy: 10, damage: 10, hp: 10, fireRate: 10, moveSpeed: 10 } };
-    const r = e(s, { level: 25, training: s.training, squad: { hp: 5, damage: 5, accuracy: 5, fireRate: 5 } });
+    const r = e(s, { level: 25, training: s.training, squad: { hp: 10, damage: 10, accuracy: 10, fireRate: 10 } });
     return { acc: r.accuracy, mp: r.movePenalty, rate: r.fireRate, move: r.moveSpeed };
   });
   check('A10 spread floor (1°) still holds for a fully trained Elite 30 Sharpshooter Sniper', flo.acc >= 1 - 1e-9 && flo.mp > 0, JSON.stringify(flo));
@@ -295,10 +297,10 @@ function installHelpers() {
     })();
     check('E3 untrained Recruits (L1 / 9 / 25, every trait) identical to v0.7B', same0, '');
     const r1same = await (async () => {
-      const f = () => { window.__debugUnlockAll(); const out = {}; for (const s of T.R.soldiers) { T.lv(s.id, 12); s.training = { accuracy: 1, damage: 1, hp: 1, fireRate: 1, moveSpeed: 1 }; T.a.squadTraining = { hp: 1, damage: 1, accuracy: 1, fireRate: 1 }; const e = window.__effectiveStats(s); out[s.id] = [e.hp, e.damage, e.fireRate, e.accuracy, e.moveSpeed].join(); } return out; };
+      const f = () => { window.__debugUnlockAll(); const out = {}; for (const s of T.R.soldiers) { T.lv(s.id, 12); s.training = { accuracy: 1, damage: 1, hp: 1, fireRate: 1, moveSpeed: 1 }; T.a.squadTraining = { hp: 0, damage: 0, accuracy: 0, fireRate: 0 }; const e = window.__effectiveStats(s); out[s.id] = [e.hp, e.damage, e.fireRate, e.accuracy, e.moveSpeed].join(); } return out; };
       return JSON.stringify(await basePage.evaluate(f)) === JSON.stringify(await page.evaluate(f));
     })();
-    check('E4 rank 1 of every category (individual + squad) identical to v0.7B', r1same, '');
+    check('E4 rank 1 of every individual category identical to v0.7B (v0.7D squad rank 1 is stronger by design)', r1same, '');
     const enemies = async (p) => p.evaluate(() => { const C = window.__CFG; return JSON.stringify(Object.fromEntries(Object.entries(C).filter(([k]) => !['infantry', 'heavy', 'medic', 'sniper', 'debug', 'perf', 'airstrike', 'nuke', 'support'].includes(k)))); });
     check('E5 enemies, bosses, abilities and Elite passives tuning identical to v0.7B (no Mission 1-10 difficulty change)', (await enemies(page)) === (await enemies(basePage)), '');
   }
@@ -358,7 +360,7 @@ function installHelpers() {
       const g = window.game, P = window.__progression, EL = window.__elite;
       window.__debugUnlockAll();
       const a = window.__account(), E = window.__economy;
-      a.squadTraining = { hp: 5, damage: 5, accuracy: 5, fireRate: 5 };
+      a.squadTraining = { hp: 10, damage: 10, accuracy: 10, fireRate: 10 }; // v0.7D max
       const squad = sq0.map(([id, sp]) => {
         if (!id.startsWith('sniper')) return [id, sp];
         if (!a.classUnlocks.unlocked.includes('sniper')) { a.classUnlocks.unlocked.push('sniper'); a.classUnlocks.notified.push('sniper'); }

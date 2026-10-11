@@ -109,6 +109,9 @@ function resize() {
   const aw = Math.max(1, w - sl - sr), ah = Math.max(1, h - st - sb);
   scale = Math.min(aw / VIEW_W, ah / VIEW_H);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // v0.7D: 44 CSS px expressed in stage px (the HUD is laid out on the 1280x720 stage, then scaled),
+  // so small phones can give HUD controls a real >= 44 px touch area
+  stage.style.setProperty('--t44', `${Math.ceil(44 / scale) + 1}px`);
   stage.style.transform = `translate(${sl + (aw - VIEW_W * scale) / 2}px, ${st + (ah - VIEW_H * scale) / 2}px) scale(${scale})`;
   const cw = Math.round(VIEW_W * scale * dpr), ch = Math.round(VIEW_H * scale * dpr);
   if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }

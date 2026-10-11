@@ -475,6 +475,7 @@ function installHelpers() {
   {
     const a = JSON.parse(ref), b = JSON.parse(mig.saved);
     const sup = b.account.support; delete b.account.support;
+    delete a.account.support; // a v0.7C+ BASE writes the stock too (v0.7B.1 itself has none)
     const same = JSON.stringify(a) === JSON.stringify(b);
     check('E1 [36] genuine v0.7B.1 save: loads with no notes, nothing changed except Nuclear Strike stock 0 added', mig.st === 'loaded' && mig.notes.length === 0 && same && sup.nukes === 0 && sup.purchased === 0 && sup.launched === 0, `${mig.st} notes ${mig.notes.length} same ${same} ${JSON.stringify(sup)}`);
     const tags = await ev(() => T.R.soldiers.map((s) => `${s.id}:${window.__elite.levelTag(s)}:${s.status}`).join() + ` | memorial ${T.a.memorial.map((m) => m.soldier.id + ':' + m.soldier.progression.elitePath).join()} | ${T.a.credits}`);
@@ -500,7 +501,7 @@ function installHelpers() {
       const g = window.game;
       const stats = (id, elite) => { const s = structuredClone(g.roster.get(id)); s.progression.xp = P.xpForLevel(25); s.progression.level = 25; for (const k of Object.keys(s.training)) s.training[k] = 7; if (elite) { s.progression.tier = 'elite'; s.progression.elitePath = elite; s.progression.specialization = elite; s.progression.eliteXp = 20000; s.progression.eliteLevel = EL.eliteLevelForXp(20000); } return JSON.stringify(window.__effectiveStats(s)); };
       out.train = [stats('ace'), stats('tank', 'hvy-juggernaut'), stats('doc', 'med-surgeon')].join('|');
-      out.training = JSON.stringify([P.TRAINING, P.SQUAD_TRAINING]);
+      out.training = JSON.stringify(P.TRAINING); // v0.7D intentionally expanded SQUAD_TRAINING (tools/squad-training.cjs)
       out.enemies = JSON.stringify(['enemy', 'enemySniper', 'armored', 'tower', 'boss', 'truck', 'grenade', 'revive', 'elite'].map((k) => window.__CFG[k]));
       return out;
     });
@@ -510,7 +511,7 @@ function installHelpers() {
     check('E4 [37] mission rewards (XP + Credits, first clear / replay, M1-M10) identical to v0.7B.1', a.rewards === b.rewards, a.rewards.slice(0, 120));
     check('E5 [37][39] XP curves (Recruit 1-25, Elite 1-30) identical to v0.7B.1', a.xp === b.xp, a.xp.slice(0, 80));
     check('E6 [38] resurrection prices identical to v0.7B.1', a.kia === b.kia, a.kia);
-    check('E7 [39] trained / Elite effective stats and training tables identical to v0.7B.1', a.train === b.train && a.training === b.training, a.train.slice(0, 100));
+    check('E7 [39] trained / Elite effective stats and individual training tables identical to v0.7B.1 (squad tables: v0.7D)', a.train === b.train && a.training === b.training, a.train.slice(0, 100));
     check('E8 enemy, boss, grenade, revive and Elite passive numbers identical to v0.7B.1 (no unrelated balance change)', a.enemies === b.enemies, '');
   } else console.log('SKIP  E4-E8 (set BASE= to a v0.7B.1 build to compare rewards, XP, KIA prices, training and enemy numbers)');
 

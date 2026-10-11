@@ -32,8 +32,8 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 /* v0.7C tactical support: AIRSTRIKE / NUKE under the timer (top left, above the joystick zone, clear of the
    objective box and the top-right buttons); the airstrike CONFIRM bar sits where the hint does (above the
    soldier panels); the nuke confirmation is a non-blocking box (only its buttons take touches) */
-#support { position: absolute; left: 12px; top: 44px; display: flex; flex-direction: column; gap: 6px; }
-.sp-btn { width: 132px; height: 52px; border-radius: 11px; border: 3px solid #ffb347; background: rgba(40,28,10,0.78); color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0; touch-action: none; }
+#support { position: absolute; left: 12px; top: 44px; display: flex; flex-direction: row; align-items: flex-start; gap: 8px; }
+.sp-btn { position: relative; width: 132px; height: 52px; border-radius: 11px; border: 3px solid #ffb347; background: rgba(40,28,10,0.78); color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0; touch-action: none; }
 .sp-btn b { font-size: 16px; font-weight: 900; letter-spacing: 0.5px; }
 .sp-btn .sp-st { font-size: 12px; font-weight: 900; color: #ffd84a; letter-spacing: 0.4px; }
 .sp-btn.sp-air.ready { box-shadow: 0 0 10px rgba(255,180,70,0.6); }
@@ -48,13 +48,18 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 .sp-btn.off { opacity: 0.6; }
 .sp-btn.sp-nuke.countdown.off { opacity: 1; }
 .sp-btn.used .sp-st, .sp-btn.locked .sp-st { color: #c8c8c8; }
+/* v0.7D small phones: the stage scales the HUD down (an iPhone SE draws a 132x52 button at ~69x27 CSS px).
+   AIRSTRIKE / NUKE now sit side by side (v0.7C stacked them) and each gets an invisible touch area at
+   least 44 CSS px tall (var(--t44) = 44 CSS px in stage px, set by main.ts), centred on the unchanged
+   compact button; side by side the enlarged areas can't overlap each other. */
+.sp-btn::after { content: ''; position: absolute; left: -3px; right: -3px; top: 50%; height: max(100% + 6px, var(--t44, 0px)); transform: translateY(-50%); }
 @keyframes nk-pulse { from { background: #8a1c14; } to { background: #d23a1c; } }
 #asbar { position: absolute; right: 16px; bottom: 108px; padding: 8px 10px 10px; border-radius: 12px; background: rgba(0,0,0,0.7); border: 2px solid #ffb347; text-align: center; }
 #hud.hud-compact2 #asbar { bottom: 286px; }
 #hud:has(#panels.compact.rows1) #asbar { bottom: 150px; }
 #asbar .as-t { font-size: 14px; font-weight: 900; color: #ffd08a; margin-bottom: 7px; }
 #asbar .as-btns { display: flex; gap: 12px; }
-#asbar button { width: 150px; height: 62px; border-radius: 11px; border: 3px solid rgba(255,255,255,0.35); font-size: 21px; font-weight: 900; color: #fff; cursor: pointer; touch-action: none; }
+#asbar button { width: 150px; height: max(62px, var(--t44, 0px)); border-radius: 11px; border: 3px solid rgba(255,255,255,0.35); font-size: 21px; font-weight: 900; color: #fff; cursor: pointer; touch-action: none; }
 #asbar button[data-as="cancel"] { background: #4a4a4a; }
 #asbar button[data-as="go"] { background: #c0601c; }
 #asbar button:disabled { opacity: 0.4; }
@@ -62,7 +67,7 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 #nkbox .nk-title { font-size: 28px; font-weight: 900; color: #ffb09a; text-shadow: 0 2px 2px #000; }
 #nkbox .nk-body { font-size: 18px; font-weight: 800; margin: 6px 0 12px; line-height: 1.3; }
 #nkbox .nk-btns { display: flex; gap: 22px; }
-#nkbox button { flex: 1; height: 68px; border-radius: 12px; border: 3px solid rgba(255,255,255,0.35); font-size: 23px; font-weight: 900; color: #fff; cursor: pointer; touch-action: none; }
+#nkbox button { flex: 1; height: max(68px, var(--t44, 0px)); border-radius: 12px; border: 3px solid rgba(255,255,255,0.35); font-size: 23px; font-weight: 900; color: #fff; cursor: pointer; touch-action: none; }
 #nkbox button[data-nk="cancel"] { background: #4a4a4a; }
 #nkbox button[data-nk="go"] { background: #b02012; }
 #nkbox button:disabled { opacity: 0.45; }
@@ -898,3 +903,24 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 .sp-free .sp-stock b { font-size: 1.1em; color: #7dff8a; }
 .t-row.sp-row .t-name span { display: block; }
 @media (orientation: landscape) and (max-height: 430px) { .t-row.sp-row .t-name span { font-size: 11px; line-height: 1.15; } }
+
+/* ================= v0.7D: Squad Training rows (rank /10, current / next, gain, real-stat preview) ================= */
+.t-row.q-row { grid-template-columns: minmax(7.5em, 10em) minmax(0, 1fr) 6.2em; gap: 0.3em 0.6em; }
+.q-name .pips { margin: 0.25em 0 0.1em; max-width: 9em; }
+.q-name .pips i { max-width: none; }
+.q-val { min-width: 0; line-height: 1.25; }
+.q-bon b.q-now { color: #cfe6ff; }
+.q-bon b.q-max { color: #9be7a5; }
+.t-val small.q-gain { color: #9fe6a6; }
+.t-val small.q-gain b { color: #7dff8a; }
+.t-val small.q-ex { color: #9fb6d0; overflow-wrap: anywhere; }
+.t-val small.q-ex b { color: #cfe6ff; }
+@media (orientation: landscape) and (max-height: 430px) {
+  .t-row.q-row { grid-template-columns: minmax(6.5em, 8.5em) minmax(0, 1fr) 5.6em; padding: 0.25em 0.45em; }
+  .q-panel .q-note { font-size: 11px; line-height: 1.25; margin-bottom: 0.3em; }
+  .q-val { font-size: 0.92em; }
+}
+@media (orientation: portrait) {
+  .t-row.q-row { grid-template-columns: minmax(0, 1fr) 6.2em; }
+  .t-row.q-row .q-val { grid-column: 1 / -1; grid-row: 2; }
+}

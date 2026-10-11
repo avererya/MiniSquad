@@ -11,7 +11,7 @@
 // pending every other screen redirects there (also on launch). The Memorial screen lists the
 // honored soldiers (Barracks / Campaign).
 import type { Game } from './game';
-import { ABILITY_NAMES, CLASSES, CLASS_IDS, classStats, effectiveStats, newProgression, type SoldierClassId, type SoldierIdentity } from './classes';
+import { ABILITY_NAMES, CLASSES, classStats, effectiveStats, newProgression, type SoldierClassId, type SoldierIdentity } from './classes';
 import { CFG } from './config';
 import { TRAITS } from './traits';
 import { SQUAD_SLOTS, defaultRoster } from './roster';
@@ -20,7 +20,7 @@ import { sfx, unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
 import { CAMPAIGN, CAPACITY_TABLE, CHAPTERS, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
-  PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, grownStats, levelProgress, maxRank, newTraining, nextCost, rankBonus, xpForLevel,
+  PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, levelProgress, maxRank, newTraining, nextCost, rankBonus, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
 } from './progression';
 import {
@@ -719,33 +719,42 @@ export class Menus {
   }
 
   // ----- Squad Training tab -----
+  /** v0.7D: the soldier whose real stats preview each squad rank (Training selection, else the highest level). */
+  private squadPreviewSoldier() {
+    const r = this.game.roster;
+    const owned = r.soldiers.filter((x) => r.isUnlocked(x.id) && x.progression && x.status !== 'kia');
+    const lv = (x: SoldierIdentity) => (isElite(x) ? 100 + (x.progression?.eliteLevel ?? 1) : x.progression?.level ?? 1);
+    return owned.find((x) => x.id === this.trainId) ?? [...owned].sort((a, b) => lv(b) - lv(a))[0] ?? null;
+  }
+
   private squadTrainingHtml() {
-    const acc = getAccount();
+    const acc = getAccount(), s = this.squadPreviewSoldier();
+    const cur = s ? effectiveStats(s) : null;
+    const what: Record<SquadTrainingStat, string> = { hp: 'class base max HP', damage: 'class base damage', accuracy: 'class base spread', fireRate: 'class base fire rate' };
     const rows = SQUAD_TRAINING_IDS.map((k) => {
       const def = SQUAD_TRAINING[k], rank = acc.squadTraining[k], max = maxRank(def), cost = nextCost(def, rank);
       const afford = cost !== null && acc.credits >= cost;
-      const btn = cost === null ? '<button class="t-buy max" disabled>MAX</button>'
+      const btn = cost === null ? '<button class="t-buy max" disabled>MAXED</button>'
         : `<button class="t-buy ${afford ? '' : 'poor'}" data-a="sbuy" data-stat="${k}" data-rank="${rank}" ${afford ? '' : 'disabled'} title="${afford ? 'Buy' : 'Not enough Credits'}">${cr(cost)} CR</button>`;
       const now = rankBonus(def, rank), nxt = rankBonus(def, rank + 1);
-      const field = k === 'accuracy' ? 'accuracy' : k;
-      const ex = CLASS_IDS.map((c) => {
-        const b = classStats(c);
-        const g = (r: number) => grownStats(b, { level: 1, training: { accuracy: 0, damage: 0, hp: 0, fireRate: 0, moveSpeed: 0 }, squad: { ...acc.squadTraining, [k]: r } })[field];
-        return `${CLASSES[c].short} ${num(g(rank))}${cost !== null ? `→${num(g(rank + 1))}` : ''}`;
-      }).join(' · ');
+      const pts = num(Math.abs(nxt - now) * 100);
+      const gain = cost === null ? `<small class="q-gain">Maximum rank reached · ${pct(now)} ${what[k]}, every soldier</small>`
+        : `<small class="q-gain">Upgrade gain: <b>${k === 'accuracy' ? '−' : '+'}${pts} pts</b> of ${what[k]} for every soldier</small>`;
+      // real stats of one soldier (level, training, trait, Elite bonuses included) via the combat pipeline
+      const nextS = s && cost !== null ? effectiveStats(s, { level: s.progression?.level ?? 1, training: s.training, squad: { ...acc.squadTraining, [k]: rank + 1 } }) : null;
+      const prev = s && cur ? `<small class="q-ex" data-now="${STAT_VIEW[k].get(cur)}"${nextS ? ` data-next="${STAT_VIEW[k].get(nextS)}"` : ''}>${esc(s.name)}: ${STAT_VIEW[k].get(cur)}${nextS ? ` → <b>${STAT_VIEW[k].get(nextS)}</b> (${STAT_VIEW[k].gain(cur, nextS)})` : ''}</small>` : '';
       return `
-        <div class="t-row" data-stat="${k}">
-          <div class="t-name"><b>${def.label}</b><span>${def.desc}</span></div>
-          <div class="t-rank"><span class="pips">${this.pips(rank, max)}</span><span class="t-rk">RANK ${rank}/${max}</span></div>
-          <div class="t-val">${pct(now)}${cost !== null ? ` → <b>${pct(nxt)}</b>` : ' <b>MAX</b>'}<small>${ex}</small></div>
+        <div class="t-row q-row" data-stat="${k}">
+          <div class="t-name q-name"><b>${def.label}</b><div class="pips">${this.pips(rank, max)}</div><div class="t-rk">RANK ${rank}/${max}</div></div>
+          <div class="t-val q-val"><span class="q-bon">Current <b class="q-now">${pct(now)}</b>${cost !== null ? ` → Next <b class="q-next">${pct(nxt)}</b>` : ' <b class="q-max">MAXED</b>'}</span>${gain}${prev}</div>
           ${btn}
         </div>`;
     }).join('');
     return `
       <section class="t-panel q-panel t-scroll">
-        <div class="q-note">Squad Training applies to <b>every soldier in the roster</b>, now and in the future (deployed or not). Each rank adds more than the last. It adds to individual training and levels as a percentage of the class base; it never stacks with itself.</div>
+        <div class="q-note">Squad Training applies to <b>every soldier in the roster</b>, now and in the future. Bonuses are percentages of each class's base stat and add to levels and individual training (they apply once, never stack with themselves), so the final stat changes by less than the headline percentage on a trained soldier.${s ? ` Example: <b>${esc(s.name)}</b>'s real stats.` : ''}</div>
         <div class="t-rows">${rows}</div>
-        <div class="t-foot">Class-base examples shown as INF / HVY / MED values. ${VERSION_LABEL}</div>
+        <div class="t-foot">Spread never goes below ${PROGRESSION.spreadFloorDeg}°. ${VERSION_LABEL}</div>
       </section>`;
   }
 

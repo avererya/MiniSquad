@@ -112,7 +112,8 @@ export interface TrainingDef<K extends string> {
   desc: string;
 }
 const INDIVIDUAL_COSTS = [250, 400, 550, 700, 900, 1150, 1450, 1750, 2100, 2500];
-const SQUAD_COSTS = [1000, 1500, 2000, 2750, 3500];
+/** v0.7D: ranks 1-5 keep their v0.3 prices; ranks 6-10 added (46,250 CR per category, 185,000 for all four). */
+const SQUAD_COSTS = [1000, 1500, 2000, 2750, 3500, 4500, 5500, 7000, 8500, 10000];
 
 /** Cumulative table for `ranks` ranks whose per-rank gain grows linearly from `first` to `last`. */
 export function acceleratingBonus(first: number, last: number, ranks: number): number[] {
@@ -142,12 +143,31 @@ export const TRAINING: Record<TrainingStat, TrainingDef<TrainingStat>> = {
 };
 export const TRAINING_IDS = Object.keys(TRAINING) as TrainingStat[];
 
-/** v0.7B.1: squad HP +12.5% (was +10%), damage +10% (was +7.5%), spread -12.5% (was -10%), fire rate +6.25% (was +5%). */
+/**
+ * v0.7D Squad Training: ten ranks per category from an explicit, locked cumulative table (fraction
+ * of the class base; accuracy negative = less spread). Each five-rank tier grows its per-rank gain,
+ * e.g. Squad Damage ranks 6-10 add +3 / +3.5 / +4 / +4.5 / +5 points. Rank 5 doubles the v0.7B.1
+ * maximum and rank 10 doubles it again: HP +25% / +50%, damage +20% / +40%, spread -25% / -50%,
+ * fire rate +12.5% / +25%. Every rank is above its v0.7B.1 value (invariant 8). The bonus still
+ * enters the same additive pipeline once (bonusFractions), so nothing else changes.
+ */
+export const SQUAD_BONUS: Record<SquadTrainingStat, number[]> = {
+  hp:       [0, 0.03, 0.07, 0.12, 0.18, 0.25, 0.29, 0.335, 0.385, 0.44, 0.5],
+  damage:   [0, 0.02, 0.05, 0.09, 0.14, 0.2, 0.23, 0.265, 0.305, 0.35, 0.4],
+  accuracy: [0, -0.03, -0.07, -0.12, -0.18, -0.25, -0.29, -0.335, -0.385, -0.44, -0.5],
+  fireRate: [0, 0.015, 0.035, 0.06, 0.09, 0.125, 0.145, 0.1675, 0.1925, 0.22, 0.25],
+};
+function tableDef<K extends string>(id: K, label: string, bonus: number[], costs: number[], desc: string): TrainingDef<K> {
+  const n = costs.length;
+  return { id, label, first: bonus[1], last: Math.round((bonus[n] - bonus[n - 1]) * 1e6) / 1e6, bonus: [...bonus], costs, desc };
+}
+const tableDesc = (sign: string, what: string, b: number[]) =>
+  `${sign}${pc(b[1])} at rank 1, ${sign}${pc(b[5])} at rank 5, ${sign}${pc(b[10])} ${what} at rank 10, every soldier`;
 export const SQUAD_TRAINING: Record<SquadTrainingStat, TrainingDef<SquadTrainingStat>> = {
-  hp: def('hp', 'Squad HP', 0.02, 0.03, SQUAD_COSTS, accelDesc('+', 'class max HP', 0.02, 0.03, 5, ', every soldier')),
-  damage: def('damage', 'Squad Damage', 0.015, 0.025, SQUAD_COSTS, accelDesc('+', 'class damage', 0.015, 0.025, 5, ', every soldier')),
-  accuracy: def('accuracy', 'Squad Accuracy', -0.02, -0.03, SQUAD_COSTS, accelDesc('-', 'class spread', 0.02, 0.03, 5, ', every soldier')),
-  fireRate: def('fireRate', 'Squad Fire Rate', 0.01, 0.015, SQUAD_COSTS, accelDesc('+', 'class fire rate', 0.01, 0.015, 5, ', every soldier')),
+  hp: tableDef('hp', 'Squad HP', SQUAD_BONUS.hp, SQUAD_COSTS, tableDesc('+', 'class max HP', SQUAD_BONUS.hp)),
+  damage: tableDef('damage', 'Squad Damage', SQUAD_BONUS.damage, SQUAD_COSTS, tableDesc('+', 'class damage', SQUAD_BONUS.damage)),
+  accuracy: tableDef('accuracy', 'Squad Accuracy', SQUAD_BONUS.accuracy, SQUAD_COSTS, tableDesc('-', 'class spread', SQUAD_BONUS.accuracy)),
+  fireRate: tableDef('fireRate', 'Squad Fire Rate', SQUAD_BONUS.fireRate, SQUAD_COSTS, tableDesc('+', 'class fire rate', SQUAD_BONUS.fireRate)),
 };
 /** Cumulative bonus fraction for a (clamped) rank. */
 export const rankBonus = (d: TrainingDef<string>, rank: number): number => d.bonus[Math.max(0, Math.min(d.costs.length, rank | 0))];

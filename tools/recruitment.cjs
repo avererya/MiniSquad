@@ -123,7 +123,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
     const st = window.__effectiveStats(id); a.squadTraining.hp = 0;
     return st.hp;
   });
-  check('offer stats include squad training (HP 100 -> 104.25 at Squad HP rank 2, v0.7B.1 2% + 2.25%)', statMatch === 104.25, statMatch);
+  check('offer stats include squad training (HP 100 -> 107 at Squad HP rank 2, v0.7D 3% + 4%)', statMatch === 107, statMatch);
   for (const t of ['roster', 'training', 'squad', 'recruit', 'roster', 'recruit']) await page.click(`[data-a="tab"][data-tab="${t}"]`);
   await page.click('[data-a="to-campaign"]'); await toRecruit();
   await reload(); await toRecruit();

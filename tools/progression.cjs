@@ -132,7 +132,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       setXp('havoc', P.xpForLevel(20)); byId('havoc').training.fireRate = 5; A().squadTraining.fireRate = 3;
       deploy(['havoc']); const hv = g.soldiers[0];
       const hvRate = hv.fireRate; g.useAbility(hv); const hvSup = hv.fireRate;
-      check('Havoc L20 + Fire Rate 5 (v0.7B.1 +16.11%) + Squad Fire Rate 3 (+3.375%), x Trigger Happy, x Suppressive', r3(hvRate) === r3(7 * (1 + 0.095 + 0.161111 + 0.03375) * 1.05) && r3(hvSup) === r3(hvRate * 1.75), `base rate ${r3(hvRate)} (7 x 1.289861 x 1.05), suppressing ${r3(hvSup)}`);
+      check('Havoc L20 + Fire Rate 5 (v0.7B.1 +16.11%) + Squad Fire Rate 3 (v0.7D +6%), x Trigger Happy, x Suppressive', r3(hvRate) === r3(7 * (1 + 0.095 + 0.161111 + 0.06) * 1.05) && r3(hvSup) === r3(hvRate * 1.75), `base rate ${r3(hvRate)} (7 x 1.316111 x 1.05), suppressing ${r3(hvSup)}`);
       g.toBarracks(); resetAll();
       // no stacking on redeploy/retry/reload-like re-reads
       setXp('tank', P.xpForLevel(6)); byId('tank').training.hp = 2;
@@ -148,13 +148,13 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       byId('ace').training.accuracy = 10; A().squadTraining.accuracy = 5;
       const aMax = eff(byId('ace'));
       CFG.infantry.accuracy = 2; const aFloor = eff(byId('ace')); CFG.infantry.accuracy = 12;
-      check('accuracy (v0.7B.1): 12 x (1 - 0.55 - 0.125) x 0.9 = 3.51° standing, moving 30 x 0.2925 = 8.775 (max ranks)', aMax.accuracy === 3.51 && r3(aMax.accuracy + aMax.movePenalty) === 8.775, `${aMax.accuracy} / ${r3(aMax.accuracy + aMax.movePenalty)}`);
-      check('spread floor 1°: tuned 2° base x 0.2925 = 0.585 -> 1°', aFloor.accuracy === 1 && aFloor.movePenalty > 0, `${aFloor.accuracy} (+${r3(aFloor.movePenalty)})`);
+      check('accuracy (v0.7D): 12 x (1 - 0.55 - 0.25) x 0.9 = 2.16° standing, moving 30 x 0.18 = 5.4 (max individual, squad rank 5)', aMax.accuracy === 2.16 && r3(aMax.accuracy + aMax.movePenalty) === 5.4, `${aMax.accuracy} / ${r3(aMax.accuracy + aMax.movePenalty)}`);
+      check('spread floor 1°: tuned 2° base x 0.18 = 0.36 -> 1°', aFloor.accuracy === 1 && aFloor.movePenalty > 0, `${aFloor.accuracy} (+${r3(aFloor.movePenalty)})`);
       resetAll();
 
       // ---- purchases ----
       const T = P.TRAINING;
-      check('individual costs 250..2500 (10 ranks), squad 1000..3500 (5 ranks)', T.damage.costs.join() === '250,400,550,700,900,1150,1450,1750,2100,2500' && P.SQUAD_TRAINING.hp.costs.join() === '1000,1500,2000,2750,3500' && P.TRAINING_IDS.every((k) => P.maxRank(T[k]) === 10), '');
+      check('individual costs 250..2500 (10 ranks), squad 1000..10000 (10 ranks, v0.7D)', T.damage.costs.join() === '250,400,550,700,900,1150,1450,1750,2100,2500' && P.SQUAD_TRAINING.hp.costs.join() === '1000,1500,2000,2750,3500,4500,5500,7000,8500,10000' && P.TRAINING_IDS.every((k) => P.maxRank(T[k]) === 10), '');
       const persist = window.__persist;
       let r = E.buyTraining(R, A(), 'ace', 'damage', 0, persist);
       check('insufficient credits: refused, nothing changes', !r.ok && A().credits === 0 && byId('ace').training.damage === 0, r.reason);
@@ -178,11 +178,11 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       r = E.buySquadTraining(A(), 'hp', 0, persist); const r2 = E.buySquadTraining(A(), 'hp', 1, persist); const r3b = E.buySquadTraining(A(), 'hp', 1, persist);
       const hpAll = R.soldiers.map((s) => `${s.id}:${eff(s).hp}`).join(' ');
       g.reset(['infantry']); const genHp = g.soldiers[0].maxHp; g.toBarracks();
-      check('squad HP 2 ranks (1000 + 1500): +4.25% (2 + 2.25) of class base for every roster soldier', r.ok && r2.ok && !r3b.ok && eff(byId('ranger')).hp === 104.25 && eff(byId('tank')).hp === 172.0125 && eff(byId('doc')).hp === 83.4 && eff(byId('ace')).hp === 161.75 && A().credits === 2500, hpAll);
+      check('squad HP 2 ranks (1000 + 1500): +7% (v0.7D: 3 + 4) of class base for every roster soldier', r.ok && r2.ok && !r3b.ok && eff(byId('ranger')).hp === 107 && eff(byId('tank')).hp === 176.55 && eff(byId('doc')).hp === 85.6 && eff(byId('ace')).hp === 164.5 && A().credits === 2500, hpAll);
       check('squad training does not apply to dev generics (class base only)', genHp === 100, genHp);
       A().squadTraining.hp = 5; const sq5 = eff(byId('ranger')).hp; A().squadTraining.hp = 9;
-      const sqClamp = window.__parseSave(JSON.stringify({ ...JSON.parse(localStorage.getItem('minisquad.save')), account: { ...A(), squadTraining: { hp: 9, damage: -2, accuracy: 2.6, fireRate: 'x' } } }));
-      check('squad ranks validated on load (9 -> 5, -2 -> 0, 2.6 -> 2, "x" -> 0)', sq5 === 112.5 && JSON.stringify(sqClamp.account.squadTraining) === '{"hp":5,"damage":0,"accuracy":2,"fireRate":0}', JSON.stringify(sqClamp.account.squadTraining));
+      const sqClamp = window.__parseSave(JSON.stringify({ ...JSON.parse(localStorage.getItem('minisquad.save')), account: { ...A(), squadTraining: { hp: 14, damage: -2, accuracy: 2.6, fireRate: 'x' } } }));
+      check('squad ranks validated on load (14 -> 10, -2 -> 0, 2.6 -> 2, "x" -> 0)', sq5 === 125 && JSON.stringify(sqClamp.account.squadTraining) === '{"hp":10,"damage":0,"accuracy":2,"fireRate":0}', JSON.stringify(sqClamp.account.squadTraining));
       resetAll();
 
       // ---- save: migration + validation ----

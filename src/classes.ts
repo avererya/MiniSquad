@@ -156,7 +156,11 @@ export function effectiveStats(id: Pick<SoldierIdentity, 'classId' | 'traitId' |
   if (out.accuracy < floor) {
     const k = base.accuracy > 0 ? floor / out.accuracy : 1;
     out.accuracy = floor;
-    out.movePenalty = clean(out.movePenalty * (Number.isFinite(k) ? k : 1));
+    // v0.7D: full individual (-55%) + full squad (-50%) accuracy sums past -100%, so the grown cone is 0
+    // and the ratio above is infinite; keep the same rule (moving penalty scaled by the factor that brings
+    // the class + trait cone to the floor) in closed form instead of letting the penalty collapse to 0
+    if (Number.isFinite(k)) out.movePenalty = clean(out.movePenalty * k);
+    else if (base.accuracy > 0) out.movePenalty = clean((base.movePenalty * m.movePenaltyMul * floor) / base.accuracy);
   }
   return out;
 }
