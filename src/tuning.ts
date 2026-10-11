@@ -1,5 +1,5 @@
 // In-game tuning panel: live sliders on CFG, JSON export/import, reset, debug actions.
-import { perfSettings, setPerfSettings } from './perf';
+import { DEFAULT_FPS_CAP, fpsCapChosen, fpsCapFromUrl, isMobileDevice, perfSettings, setPerfSettings } from './perf';
 import { VERSION_LABEL } from './version';
 import { CFG, DEFAULTS, applyConfigJSON, getPath, resetConfig, setPath } from './config';
 import type { Game } from './game';
@@ -100,6 +100,9 @@ export class Tuning {
   private invulnBtn!: HTMLButtonElement;
   private presetSel!: HTMLSelectElement;
   private missionSel!: HTMLSelectElement;
+  private fpsSel!: HTMLSelectElement;
+  private ovBox!: HTMLInputElement;
+  private fpsNote!: HTMLElement;
 
   constructor(private root: HTMLElement, private game: Game) {
     this.build();
@@ -183,20 +186,22 @@ export class Tuning {
     }));
     r.appendChild(dbg);
 
-    // v0.6.3 performance (developer options, stored apart from the save)
+    // Performance (v0.6.3; v0.6.4: 30 FPS default on mobile, 60 on desktop), stored apart from the save
     const pf = document.createElement('div');
     pf.className = 'tune-sec';
+    const dflt = (c: number) => (c === DEFAULT_FPS_CAP ? ' (default)' : '');
     pf.innerHTML = `<div class="tune-title">Performance</div>
       <div class="tune-btns">
-        <label title="Render frame-rate cap. The simulation always runs fixed 1/60 s steps, so gameplay is identical at 30 and 60.">Frame cap <select data-k="fps"><option value="60">60 FPS</option><option value="30">30 FPS (test)</option></select></label>
+        <label title="Render frame-rate cap. The simulation always runs fixed 1/60 s steps, so gameplay is identical at 30 and 60.">Frame cap <select data-k="fps"><option value="30">30 FPS${dflt(30)}</option><option value="60">60 FPS${dflt(60)}</option></select></label>
         <label><input type="checkbox" data-k="perfov"> Performance overlay</label>
-      </div>`;
-    const fpsSel = pf.querySelector<HTMLSelectElement>('select[data-k="fps"]')!;
-    const ovBox = pf.querySelector<HTMLInputElement>('input[data-k="perfov"]')!;
-    fpsSel.value = String(perfSettings().fpsCap);
-    ovBox.checked = perfSettings().overlay;
-    fpsSel.addEventListener('change', () => setPerfSettings({ fpsCap: fpsSel.value === '30' ? 30 : 60 }));
-    ovBox.addEventListener('change', () => setPerfSettings({ overlay: ovBox.checked }));
+      </div>
+      <div class="dim tune-note" data-k="fpsnote"></div>`;
+    this.fpsSel = pf.querySelector<HTMLSelectElement>('select[data-k="fps"]')!;
+    this.ovBox = pf.querySelector<HTMLInputElement>('input[data-k="perfov"]')!;
+    this.fpsNote = pf.querySelector<HTMLElement>('[data-k="fpsnote"]')!;
+    this.fpsSel.addEventListener('change', () => { setPerfSettings({ fpsCap: this.fpsSel.value === '30' ? 30 : 60 }); this.refreshPerf(); });
+    this.ovBox.addEventListener('change', () => { setPerfSettings({ overlay: this.ovBox.checked }); this.refreshPerf(); });
+    this.refreshPerf();
     r.appendChild(pf);
 
     // sliders
@@ -263,7 +268,16 @@ export class Tuning {
     this.refresh();
   }
 
+  /** Shows the ACTIVE frame cap and overlay state (explicit pick, device default or URL override). */
+  private refreshPerf() {
+    const p = perfSettings();
+    this.fpsSel.value = String(p.fpsCap);
+    this.ovBox.checked = p.overlay;
+    this.fpsNote.textContent = fpsCapFromUrl() ? `Active: ${p.fpsCap} FPS (?fps= in the URL, not saved)` : fpsCapChosen() ? `Active: ${p.fpsCap} FPS (your choice)` : `Active: ${p.fpsCap} FPS (${isMobileDevice() ? 'mobile' : 'desktop'} default)`;
+  }
+
   refresh() {
+    if (this.fpsSel) this.refreshPerf();
     for (const { path, input, val } of this.inputs) {
       const v = getPath(path);
       if (document.activeElement !== input) input.value = String(v);

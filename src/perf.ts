@@ -5,30 +5,63 @@
 // movement, fire rates, enemy attacks, bleed-out, cooldowns, mission timers and boss attacks
 // are identical (tools/fps-parity.cjs checks this step for step).
 //
-// Settings are a developer option (⚙ tuning panel, or ?fps=30 / ?perf=1 in the URL), stored
-// under their own localStorage key, never in the save.
+// Settings → Performance (⚙ panel), or ?fps=30 / ?perf=1 in the URL for testing. Stored under
+// their own localStorage key, never in the save.
+//
+// v0.6.4 default frame cap: 30 FPS on mobile (phone playtests: no visible difference, less
+// heat), 60 FPS on desktop. A cap the player picked in Settings is stored and always wins; with
+// no explicit pick, the device default applies (so it follows the device, not an old default).
+// Storage v2: { v: 2, fpsCap?: 30 | 60 (only when explicitly picked), overlay }. The v0.6.3
+// format wrote fpsCap whenever ANY performance option changed, so its 60 (the old default) is
+// indistinguishable from "never chose": only its 30, which had to be picked, counts as a choice.
 
 export type FpsCap = 30 | 60;
 export interface PerfSettings { fpsCap: FpsCap; overlay: boolean }
 
 const KEY = 'minisquad.dev.perf';
-const SETTINGS: PerfSettings = { fpsCap: 60, overlay: false };
+
+/** Phones and tablets: touch is the primary input, or a mobile browser. Desktop touchscreens with a mouse are desktop. */
+export function isMobileDevice(): boolean {
+  try {
+    if (window.matchMedia?.('(pointer: coarse)').matches) return true;
+  } catch { /* no matchMedia */ }
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  return nav.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+export const DEFAULT_FPS_CAP: FpsCap = isMobileDevice() ? 30 : 60;
+
+/** The player's explicit frame-cap pick, or null (device default applies). */
+let chosenCap: FpsCap | null = null;
+let overlay = false;
+let urlCap: FpsCap | null = null;
+let urlOverlay = false;
 (() => {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    if (s.fpsCap === 30 || s.fpsCap === 60) SETTINGS.fpsCap = s.fpsCap;
-    if (typeof s.overlay === 'boolean') SETTINGS.overlay = s.overlay;
+    if (s.v === 2) { if (s.fpsCap === 30 || s.fpsCap === 60) chosenCap = s.fpsCap; }
+    else if (s.fpsCap === 30) chosenCap = 30; // v0.6.3: only 30 was necessarily a deliberate pick
+    if (typeof s.overlay === 'boolean') overlay = s.overlay;
   } catch { /* storage unavailable: defaults */ }
   // URL overrides for testing (not stored)
   const q = new URLSearchParams(location.search);
-  if (q.get('fps') === '30' || q.get('fps') === '60') SETTINGS.fpsCap = +q.get('fps')! as FpsCap;
-  if (q.get('perf') === '1') SETTINGS.overlay = true;
+  if (q.get('fps') === '30' || q.get('fps') === '60') urlCap = +q.get('fps')! as FpsCap;
+  if (q.get('perf') === '1') urlOverlay = true;
 })();
 
-export function perfSettings(): Readonly<PerfSettings> { return SETTINGS; }
+/** Active settings: URL override, else the explicit pick, else the device default. */
+export function perfSettings(): Readonly<PerfSettings> {
+  return { fpsCap: urlCap ?? chosenCap ?? DEFAULT_FPS_CAP, overlay: urlOverlay || overlay };
+}
+/** Is the frame cap the player's own pick (stored) rather than the device default? */
+export function fpsCapChosen(): boolean { return chosenCap !== null; }
+/** Is a ?fps= URL override active (testing; not stored)? */
+export function fpsCapFromUrl(): boolean { return urlCap !== null; }
 export function setPerfSettings(p: Partial<PerfSettings>) {
-  Object.assign(SETTINGS, p);
-  try { localStorage.setItem(KEY, JSON.stringify(SETTINGS)); } catch { /* not persisted */ }
+  if (p.fpsCap !== undefined) { chosenCap = p.fpsCap; urlCap = null; }
+  if (p.overlay !== undefined) { overlay = p.overlay; urlOverlay = false; }
+  const out: { v: 2; fpsCap?: FpsCap; overlay: boolean } = { v: 2, overlay };
+  if (chosenCap !== null) out.fpsCap = chosenCap;
+  try { localStorage.setItem(KEY, JSON.stringify(out)); } catch { /* not persisted */ }
 }
 
 /** Frame rate for screens where nothing moves much (paused, Results behind the menu). */
