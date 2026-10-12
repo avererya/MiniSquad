@@ -56,9 +56,12 @@ const TABS: [BarracksTab, string][] = [['roster', 'ROSTER'], ['training', 'TRAIN
 /** How a training row shows its stat. */
 type Eff = ReturnType<typeof effectiveStats>;
 const signed = (v: number) => `${v < 0 ? '−' : '+'}${num(Math.abs(v))}`;
+/** v0.7D.1: spread changes near the floor can be under 0.01°: show 3 decimals there instead of "−0". */
+const signedDeg = (v: number) => (Math.abs(v) < 0.1 && Math.abs(v) >= 0.0005 ? `${v < 0 ? '−' : '+'}${Math.round(Math.abs(v) * 1000) / 1000}` : signed(v));
 /** Training row values; `gain` is the next rank's real change for this soldier (v0.7B.1 preview). */
 const STAT_VIEW: Record<TrainingStat, { get: (s: Eff) => string; gain: (a: Eff, b: Eff) => string }> = {
-  accuracy: { get: (s) => `${num(s.accuracy)}°/${num(s.accuracy + s.movePenalty)}°`, gain: (a, b) => `${signed(b.accuracy - a.accuracy)}° spread` },
+  // v0.7D.1: near the (soft) floor most of a rank's gain is in the moving cone, so the gain shows both
+  accuracy: { get: (s) => `${num(s.accuracy)}°/${num(s.accuracy + s.movePenalty)}°`, gain: (a, b) => `${signedDeg(b.accuracy - a.accuracy)}° / ${signedDeg(b.accuracy + b.movePenalty - a.accuracy - a.movePenalty)}° moving spread` },
   damage: { get: (s) => num(s.damage), gain: (a, b) => `${signed(b.damage - a.damage)} damage` },
   hp: { get: (s) => num(Math.round(s.hp * 10) / 10), gain: (a, b) => `${signed(Math.round(b.hp * 10) / 10 - Math.round(a.hp * 10) / 10)} HP` },
   fireRate: { get: (s) => `${num(s.fireRate)}/s`, gain: (a, b) => `${signed(b.fireRate - a.fireRate)}/s` },
@@ -709,7 +712,7 @@ export class Menus {
             </div>
           </div>
           <div class="t-rows">${rows}</div>
-          <div class="t-foot">Individual training stays with ${esc(s.name)} (levels, retries, squad changes). Each rank adds more than the last; values shown are this soldier's real stats (level, trait and Elite bonuses included). Percentages are of the class base and add up. Spread never goes below ${PROGRESSION.spreadFloorDeg}°.</div>
+          <div class="t-foot">Individual training stays with ${esc(s.name)} (levels, retries, squad changes). Each rank adds more than the last; values shown are this soldier's real stats (level, trait and Elite bonuses included). Percentages are of the class base and add up. Near the ${PROGRESSION.spreadFloorDeg}° spread floor each Accuracy rank's effect tapers off but never stops; spread never goes below ${PROGRESSION.spreadFloorDeg}°.</div>
         </section>
       </div>`;
   }
@@ -754,7 +757,7 @@ export class Menus {
       <section class="t-panel q-panel t-scroll">
         <div class="q-note">Squad Training applies to <b>every soldier in the roster</b>, now and in the future. Bonuses are percentages of each class's base stat and add to levels and individual training (they apply once, never stack with themselves), so the final stat changes by less than the headline percentage on a trained soldier.${s ? ` Example: <b>${esc(s.name)}</b>'s real stats.` : ''}</div>
         <div class="t-rows">${rows}</div>
-        <div class="t-foot">Spread never goes below ${PROGRESSION.spreadFloorDeg}°. ${VERSION_LABEL}</div>
+        <div class="t-foot">Near the ${PROGRESSION.spreadFloorDeg}° spread floor each Accuracy rank's effect tapers off but never stops; spread never goes below ${PROGRESSION.spreadFloorDeg}°. ${VERSION_LABEL}</div>
       </section>`;
   }
 

@@ -15,8 +15,9 @@
 //   5. trait (+ legacy per-soldier `mods`)  multiplier on the result
 //   6. temporary effects   Suppressive Fire / Rapid Fire on fire rate (Unit.fireRate), at runtime
 // Spread (accuracy) uses the same model with negative percentages, then the trait multiplier,
-// then the floor (PROGRESSION.spreadFloorDeg) on the standing cone. The moving penalty is
-// scaled by the same factor, so the moving cone = standing + penalty is never below the floor.
+// then (v0.7D.1) a SOFT floor: near PROGRESSION.spreadFloorDeg the standing cone eases towards the
+// floor without reaching it, and the moving penalty keeps shrinking towards moveFloorShare of its
+// v0.7D frozen value (classes.ts effectiveStats). Every rank helps; cones away from the floor are unchanged.
 import type { SoldierStats } from './config';
 import type { SoldierClassId, SoldierIdentity } from './classes';
 import type { TraitId } from './traits';
@@ -43,6 +44,18 @@ export const PROGRESSION = {
   credits: { victory: 500, replayVictory: 400, perOptionalObjective: 150, fullExtraction: 150, flawless: 100, firstClear: 250 },
   /** Minimum standing cone (degrees, full cone) that upgrades can reach. */
   spreadFloorDeg: 1,
+  /**
+   * v0.7D.1 soft spread floor. Below floor + spreadSoftness degrees the standing cone eases into the
+   * floor (exponential approach, same value and slope at the join) instead of stopping dead on it,
+   * so every accuracy rank keeps helping up to rank 10 and the floor itself is never reached.
+   * Cones at or above floor + spreadSoftness are exactly the v0.7D values.
+   */
+  spreadSoftness: 0.5,
+  /**
+   * v0.7D.1: the moving penalty keeps shrinking past the point where v0.7D froze it (the class's
+   * penalty at the floor), easing towards this share of that frozen value (never below it).
+   */
+  moveFloorShare: 0.5,
   /** Repeated purchase taps within this window are ignored (double-tap guard). */
   purchaseLockMs: 350,
   /** How many settled mission-run ids the save remembers (duplicate-reward guard). */
@@ -375,6 +388,17 @@ export function bonusFractions(p: ProgressionInputs) {
 
 // strips float noise (150 x 1.1 = 165.00000000000003) without hiding real values
 export const clean = (v: number) => Math.round(v * 1e6) / 1e6;
+
+/**
+ * v0.7D.1 soft floor: x itself while x >= floor + width; below that, floor + width x e^((x - floor - width) / width),
+ * which meets x with the same value and slope at the join, keeps falling as x falls (also for x < 0) and never
+ * reaches `floor`. width <= 0 = the old hard floor.
+ */
+export function softFloor(x: number, floor: number, width: number): number {
+  if (x >= floor + width) return x;
+  if (!(width > 0)) return Math.max(floor, x);
+  return floor + width * Math.exp((x - floor - width) / width);
+}
 
 /** Steps 1-4: class base with additive bonuses. Returns a NEW object; `base` is never touched. */
 export function grownStats(base: SoldierStats, p: ProgressionInputs): SoldierStats {

@@ -13,7 +13,7 @@
 import { CFG, type SoldierStats } from './config';
 import { FieldTreatmentAbility, FocusAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
 import { TRAITS, applyModifiers, combineModifiers, type EffectiveStats, type StatModifiers, type TraitId } from './traits';
-import { NO_PROGRESSION, PROGRESSION, clean, getAccount, grownStats, newTraining, type ProgressionInputs, type TrainingRanks } from './progression';
+import { NO_PROGRESSION, PROGRESSION, bonusFractions, clean, getAccount, grownStats, newTraining, softFloor, type ProgressionInputs, type TrainingRanks } from './progression';
 import { CLASS_BRANCHES, eliteModifiers } from './elite';
 
 export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper';
@@ -143,24 +143,33 @@ export function progressionInputs(id: Pick<SoldierIdentity, 'progression' | 'tra
 /**
  * Effective stats, computed fresh (see the pipeline in progression.ts):
  * class base -> + level growth + individual training + squad training (additive % of base)
- * -> x trait (and legacy mods) -> spread floor. Nothing is mutated.
+ * -> x trait (and legacy mods) -> soft spread floor (v0.7D.1). Nothing is mutated.
  */
 export function effectiveStats(id: Pick<SoldierIdentity, 'classId' | 'traitId' | 'mods' | 'progression' | 'training'>, inputs?: ProgressionInputs): EffectiveStats {
   const base = classStats(id.classId);
   const trait = id.traitId ? TRAITS[id.traitId].mods : null;
   const m = combineModifiers(trait, id.mods, eliteModifiers(id)); // v0.7A Combat Surgeon revive speed, v0.7B Elite-level bonus
-  const out = applyModifiers(grownStats(base, inputs ?? progressionInputs(id)), m);
+  const p = inputs ?? progressionInputs(id);
+  const out = applyModifiers(grownStats(base, p), m);
   // spread floor: upgrades can't push the standing cone below the floor (nor below what the
   // class + trait alone give, if a tuned base is already under the floor)
-  const floor = Math.min(PROGRESSION.spreadFloorDeg, clean(base.accuracy * m.spreadMul));
-  if (out.accuracy < floor) {
-    const k = base.accuracy > 0 ? floor / out.accuracy : 1;
-    out.accuracy = floor;
-    // v0.7D: full individual (-55%) + full squad (-50%) accuracy sums past -100%, so the grown cone is 0
-    // and the ratio above is infinite; keep the same rule (moving penalty scaled by the factor that brings
-    // the class + trait cone to the floor) in closed form instead of letting the penalty collapse to 0
-    if (Number.isFinite(k)) out.movePenalty = clean(out.movePenalty * k);
-    else if (base.accuracy > 0) out.movePenalty = clean((base.movePenalty * m.movePenaltyMul * floor) / base.accuracy);
+  const cone0 = clean(base.accuracy * m.spreadMul); // class + trait + Elite cone, before training
+  const floor = Math.min(PROGRESSION.spreadFloorDeg, cone0);
+  const w = PROGRESSION.spreadSoftness;
+  if (cone0 > 0 && out.accuracy < floor + w) {
+    // v0.7D.1 soft floors (v0.7D clamped hard at the floor, so with full Individual + Squad Accuracy the
+    // last ranks did nothing). K is the additive training factor, NOT clamped at 0 (the two tracks reach
+    // -105%), so every rank keeps moving the eased value. Cones >= floor + w never get here: unchanged.
+    const K = 1 + bonusFractions(p).spread;
+    out.accuracy = clean(Math.min(cone0, softFloor(cone0 * K, floor, w)));
+    // moving penalty: identical to v0.7D until it would freeze (the class penalty at the floor), then it
+    // keeps shrinking towards moveFloorShare of that frozen value instead of stopping
+    const pen0 = base.movePenalty * m.spreadMul * m.movePenaltyMul;
+    const knee = (pen0 * floor) / cone0, rawPen = pen0 * K;
+    if (rawPen < knee) {
+      const lo = knee * PROGRESSION.moveFloorShare;
+      out.movePenalty = clean(softFloor(rawPen, lo, knee - lo));
+    }
   }
   return out;
 }

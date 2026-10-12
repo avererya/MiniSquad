@@ -1,12 +1,13 @@
-# MiniSquad development handoff (after v0.7D)
+# MiniSquad development handoff (after v0.7D.1)
 
-Current release: **v0.7D — Squad Training Expansion & Mobile Polish** (package 0.7.4, label `versionLabel: "0.7D"`), on top of v0.7C Tactical Support, v0.7B.1 Progression & Training Rebalance, v0.7B Elite Progression and v0.7A Elite Promotions.
-Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)", "Progression & Training Rebalance (v0.7B.1)", "Tactical Support (v0.7C)" and "Squad Training Expansion & Mobile Polish (v0.7D)". This file is what the next step (Chapter 3: Missions 11-15, Commando, Demolitions Expert) needs.
+Current release: **v0.7D.1 — Accuracy Soft Floor & HUD Touch Areas** (package 0.7.5, label `versionLabel: "0.7D.1"`), a patch on **v0.7D — Squad Training Expansion & Mobile Polish** (package 0.7.4), on top of v0.7C Tactical Support, v0.7B.1 Progression & Training Rebalance, v0.7B Elite Progression and v0.7A Elite Promotions.
+Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)", "Progression & Training Rebalance (v0.7B.1)", "Tactical Support (v0.7C)" and "Squad Training Expansion & Mobile Polish (v0.7D)" and "Accuracy Soft Floor & HUD Touch Areas (v0.7D.1)". This file is what the next step (Chapter 3: Missions 11-15, Commando, Demolitions Expert) needs.
 
 ## Workflow
 
 - Repo `avererya/MiniSquad`. A push to `main` deploys to Cloudflare Workers. Never touch the `prototype-v0.1` tag (the git proxy refuses tag pushes anyway).
 - Serve a build and run the headless suites: `npm run build && npx vite preview --port 4173`, then `node tools/<suite>.cjs` (`URL=` to point elsewhere, `OUT=` for screenshots).
+- Regression set used for v0.7D.1: `accuracy` (with `BASE=<v0.7D build>`), `progression`, `training-rebalance` and `squad-training` (with `BASE=`), `fps-parity` (with `BASE=`), `elite-progression` and `support` (with `BASE=`), then the v0.7B set below. Serve the v0.7D base from a worktree on port 4174 as described below.
 - Regression set used for v0.7D: `squad-training` (with `BASE=<v0.7C build>`; `QUICK=1` skips the long runs), `training-rebalance`, `progression`, `support` (with `BASE=`), `elite-progression` and `fps-parity` (with `BASE=`), then the v0.7B set below.
 - Regression set used for v0.7C: `support` (with `BASE=<v0.7B.1 build>`), `fps-parity` (with `BASE=`), `training-rebalance` and `elite-progression` (with `BASE=`), then the v0.7B set below.
 - Regression set used for v0.7B.1: `training-rebalance` (with `BASE=<v0.7B build>`), then the v0.7B set below. `progression.cjs` expectations follow the v0.7B.1 XP / training values.
@@ -144,7 +145,18 @@ Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0
 - Spread-floor fix for > 100% combined spread reduction (moving penalty no longer collapses to 0).
 - Suite `tools/squad-training.cjs`; `training-rebalance.cjs` / `progression.cjs` expectations moved to the 10-rank squad tables.
 
-## v0.7D: what is open
+## v0.7D.1: what shipped and what is open
+
+Shipped: Option D from `/mnt/project-files/minisquad/v0.7D.1/ACCURACY-PROPOSAL-v0.7D.1.md` (soft standing floor 0.5° wide, moving penalty floor share 0.5, additive training and base spreads untouched), previews of the standing + moving gain (`signedDeg` / `STAT_VIEW.accuracy.gain` in `src/menus.ts`), the `--t44` touch areas for mute / pause / settings (`src/style.css`, `#topbtns`), `tools/accuracy.cjs`. Code: `PROGRESSION.spreadSoftness` / `moveFloorShare` and `softFloor()` in `src/progression.ts`, the soft-floor block in `effectiveStats` (`src/classes.ts`).
+
+Open:
+- **Future combat improvement, separate review: target leading.** Rounds are not led, so accuracy training can lower the hit chance against *crossing* enemies (a tight cone lands behind a moving target: tightly trained Infantry / Heavy / Medic hit 13-15% of a rifleman advancing at 45° at 300-400 px, untrained 25-35%; the Sniper's 540 px shots too). Not changed; see the proposal section 8.
+- Fully trained soldiers are effectively 100% accurate vs stationary targets while moving (accepted by design, no deliberate nerf).
+- A band of Sniper builds (about 40-60% combined training) is up to 0.18° wider when moving than in v0.7D (worst hit loss 3.0 points, Dead Calm Sniper at 300 px); every fully trained Sniper is better.
+- Both new constants are live in `PROGRESSION`; moving share 0.75 would soften the fully trained Sniper's gain (51% instead of 65% moving hits at 540 px).
+- Pause / mute / settings: resolved by the `--t44` pattern. New HUD controls (Commando, Demolitions Expert abilities) should reuse it.
+
+## v0.7D: what was open (accuracy saturation and the top buttons are resolved in v0.7D.1)
 
 - **Accuracy saturates** for fully trained soldiers: with individual Accuracy 10, squad Accuracy reaches the 1° floor at rank 8 (Infantry / Heavy / Medic) and rank 2 (Sniper), so later ranks only help partially trained soldiers and new recruits. The tables are locked; if this bothers players, the lever is the floor or the individual table, not the squad table.
 - **Pause / mute / settings (top right) are still 44 stage px** (~23 CSS px on an iPhone SE). Not in the v0.7D brief; the same `--t44` pattern would work, but the three buttons sit 8 px apart, so their touch areas would need a layout change (e.g. one menu button).

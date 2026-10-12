@@ -15,6 +15,13 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 #timer { position: absolute; top: 14px; left: 16px; font-weight: 800; font-size: 18px; text-shadow: 0 1px 2px #000; }
 #topbtns { position: absolute; top: 10px; right: 12px; display: flex; gap: 8px; }
 #topbtns button { width: 44px; height: 44px; border-radius: 10px; border: none; background: rgba(0,0,0,0.55); color: #fff; font-size: 20px; cursor: pointer; }
+/* v0.7D.1 small phones: mute / pause / settings draw at ~23 CSS px on an iPhone SE. Same pattern as AIRSTRIKE /
+   NUKE (v0.7D): an invisible touch area of var(--t44) (= 44 CSS px in stage px, set by main.ts) centred on each
+   unchanged button, with the gap and the corner offsets grown so the enlarged areas tile edge to edge without
+   overlapping each other or leaving the stage. On desktop --t44 <= 45 px, so the layout is unchanged. */
+#topbtns { top: max(10px, calc((var(--t44, 44px) - 44px) / 2)); right: max(12px, calc((var(--t44, 44px) - 44px) / 2)); gap: max(8px, calc(var(--t44, 44px) - 44px)); }
+#topbtns button { position: relative; touch-action: manipulation; }
+#topbtns button::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, var(--t44, 0px)); height: max(100%, var(--t44, 0px)); transform: translate(-50%, -50%); }
 #hint { position: absolute; bottom: 108px; right: 16px; background: rgba(0,0,0,0.65); padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; color: #ffb070; }
 #hint.deny { color: #ff8a8a; border: 1px solid rgba(255,120,120,0.6); }
 

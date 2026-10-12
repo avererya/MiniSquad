@@ -149,7 +149,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       const aMax = eff(byId('ace'));
       CFG.infantry.accuracy = 2; const aFloor = eff(byId('ace')); CFG.infantry.accuracy = 12;
       check('accuracy (v0.7D): 12 x (1 - 0.55 - 0.25) x 0.9 = 2.16° standing, moving 30 x 0.18 = 5.4 (max individual, squad rank 5)', aMax.accuracy === 2.16 && r3(aMax.accuracy + aMax.movePenalty) === 5.4, `${aMax.accuracy} / ${r3(aMax.accuracy + aMax.movePenalty)}`);
-      check('spread floor 1°: tuned 2° base x 0.18 = 0.36 -> 1°', aFloor.accuracy === 1 && aFloor.movePenalty > 0, `${aFloor.accuracy} (+${r3(aFloor.movePenalty)})`);
+      check('soft spread floor (v0.7D.1): tuned 2° base x 0.18 = 0.36 eases to 1.051° (never below 1°, never exactly 1°), moving penalty > 0', aFloor.accuracy > 1 && Math.abs(aFloor.accuracy - 1.0511) < 5e-4 && aFloor.movePenalty > 0, `${aFloor.accuracy} (+${r3(aFloor.movePenalty)})`);
       resetAll();
 
       // ---- purchases ----
