@@ -73,7 +73,7 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
   // the player has to bring the squad there; leaving the area cancels the assist) ---
   const assist = new Map<Unit, Vec>();
   const R = CFG.revive;
-  for (const d of [...game.soldiers, ...game.npcs]) {
+  for (const d of [...game.soldiers, ...game.allies, ...game.npcs]) {
     if (d.state !== 'downed' || dist(a, d.pos) > R.assistRadius) continue;
     let best: Unit | null = null;
     for (const s of active) if (!assist.has(s) && (!best || dist(s.pos, d.pos) < dist(best.pos, d.pos))) best = s;
@@ -272,4 +272,58 @@ export function updateEscort(game: Game, n: Unit, dt: number) {
     n.pos.x = p.x; n.pos.y = p.y; n.vel.x = 0; n.vel.y = 0; n.path = null; n.stuckT = 0;
     game.escortRescues++;
   }
+}
+
+/**
+ * v0.8A resistance allies (Mission 11+). Each ally holds its `post` (the safehouse defence) or, without one,
+ * follows the squad on a loose arc behind the anchor. They stop to shoot when they have a target and are
+ * close to where they should be; A* around obstacles; a safety net moves an ally left far behind and stuck
+ * for 4 s next to the squad (like the captive). Downed allies stay put until revived.
+ */
+export function updateAllies(game: Game, dt: number) {
+  const a = game.anchor, n = game.allies.length;
+  const c = squadCentre(game.soldiers) ?? a;
+  const heading = Math.atan2(a.y - c.y, a.x - c.x); // roughly where the squad is heading
+  game.allies.forEach((u, i) => {
+    if (!u.active) { u.vel.x = 0; u.vel.y = 0; return; }
+    let goal: Vec;
+    if (u.post) goal = u.post;
+    else {
+      const t = heading + Math.PI + (n > 1 ? (i - (n - 1) / 2) * 0.7 : 0);
+      goal = { x: a.x + Math.cos(t) * 95, y: a.y + Math.sin(t) * 95 };
+      if (!game.world.isOpen(goal.x, goal.y) || game.world.insideObstacle(goal, u.radius)) goal = { x: a.x, y: a.y };
+    }
+    const away = dist(u.pos, goal);
+    u.catchUp += ((1 + 0.35 * clamp((away - 140) / 160, 0, 1)) - u.catchUp) * (1 - Math.exp(-4 * dt));
+    let to = goal, isFinal = true;
+    if (game.world.passable(u.pos, goal, u.radius - 1)) u.path = null;
+    else {
+      u.pathTimer -= dt;
+      if (!u.path || u.pathTimer <= 0 || (u.path.length && dist(u.path[u.path.length - 1], goal) > 40)) { u.path = game.world.findPath(u.pos, goal, u.radius); u.pathTimer = 0.4; }
+      if (u.path && u.path.length) {
+        while (u.path.length > 1 && dist(u.pos, u.path[0]) < 10) u.path.shift();
+        to = u.path[0]; isFinal = u.path.length === 1;
+      }
+    }
+    const dx = to.x - u.pos.x, dy = to.y - u.pos.y, dd = Math.hypot(dx, dy);
+    let speed = u.maxSpeed;
+    if (isFinal) speed *= clamp((dd - 8) / 45, 0, 1);
+    if (u.target && away < 70) speed = 0; // close enough: hold and fire
+    let vx = dd > 0.01 ? (dx / dd) * speed : 0, vy = dd > 0.01 ? (dy / dd) * speed : 0;
+    for (const o of [...game.soldiers, ...game.allies]) {
+      if (o === u || !o.active) continue;
+      const sx = u.pos.x - o.pos.x, sy = u.pos.y - o.pos.y, sd = Math.hypot(sx, sy);
+      if (sd < CFG.squad.separationRadius && sd > 0.01) { const k = (1 - sd / CFG.squad.separationRadius) * CFG.squad.separationStrength * 0.25; vx += (sx / sd) * k; vy += (sy / sd) * k; }
+    }
+    const ex = vx - u.vel.x, ey = vy - u.vel.y, el = Math.hypot(ex, ey), maxDv = 900 * dt;
+    if (el > maxDv) { u.vel.x += (ex / el) * maxDv; u.vel.y += (ey / el) * maxDv; } else { u.vel.x = vx; u.vel.y = vy; }
+    // safety net (following only): left far behind and not moving
+    const moved = u.prevPos ? dist(u.pos, u.prevPos) / Math.max(1e-6, dt) : 999;
+    u.prevPos = { x: u.pos.x, y: u.pos.y };
+    u.stuckT = !u.post && away > 160 && moved < 15 ? u.stuckT + dt : Math.max(0, u.stuckT - dt * 2);
+    if (u.stuckT > 4) {
+      const p = game.findOpenNear(goal, 40);
+      u.pos.x = p.x; u.pos.y = p.y; u.vel.x = 0; u.vel.y = 0; u.path = null; u.stuckT = 0;
+    }
+  });
 }

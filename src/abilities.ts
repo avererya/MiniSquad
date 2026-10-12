@@ -33,6 +33,12 @@ export interface Ability {
   fireRateMul?(): number;
   /** Optional held-aim time multiplier (Sniper Focus). */
   aimMul?(): number;
+  /** v0.8A: full length of the running effect (HUD duration bar); absent for one-shot abilities. */
+  duration?(): number;
+  /** v0.8A: multiplier on the moving-fire spread penalty while the effect runs (Bullet Storm). */
+  movePenaltyMul?(): number;
+  /** v0.8A Assault Specialist: a pistol hit while Bullet Storm runs restores a little HP (returns HP restored). */
+  heal?(owner: Unit): number;
 }
 
 abstract class BaseAbility {
@@ -71,6 +77,7 @@ export class SuppressiveFireAbility extends BaseAbility implements Ability {
   }
   /** Fire-rate multiplier this ability currently gives its owner. */
   fireRateMul() { return this.activeLeft > 0 ? CFG.suppressive.fireRateMul : 1; }
+  duration() { return CFG.suppressive.duration; }
 }
 
 /**
@@ -97,6 +104,61 @@ export class FocusAbility extends BaseAbility implements Ability {
   }
   fireRateMul() { return this.activeLeft > 0 ? CFG.focus.fireRateMul : 1; }
   aimMul() { return this.activeLeft > 0 ? CFG.focus.aimMul : 1; }
+  duration() { return CFG.focus.duration; }
+}
+
+/**
+ * v0.8A Commando: Bullet Storm. For CFG.bulletStorm.duration s both pistols fire x fireRateMul (Gunslinger's
+ * Enhanced Bullet Storm: x gunslingerMul and instant retargeting), the moving-fire spread penalty is cut
+ * (x movePenaltyMul) and each pistol keeps choosing its own target. The cooldown starts when the effect
+ * ENDS (also when it ends early because the Commando went down). Downed / KIA Commandos can't start it;
+ * one activation at a time. Assault Specialist: each pistol hit while it runs restores a little HP (capped
+ * per activation, never above max HP; see heal()). Everything runs in simulation time (pauses with it).
+ */
+export class BulletStormAbility extends BaseAbility implements Ability {
+  readonly id = 'bulletStorm';
+  readonly name = 'Bullet Storm';
+  readonly icon = '✶';
+  readonly targetingMode = 'instant' as const;
+  /** Fire-rate multiplier of the running activation (set at activation from the owner's specialization). */
+  private mul = 1;
+  /** Assault Specialist: HP restored by this activation so far. */
+  healed = 0;
+  /** Gunslinger's Enhanced Bullet Storm is running (instant retargeting). */
+  enhanced = false;
+  /** Activations this mission (tests). */
+  uses = 0;
+  cooldown() { return CFG.bulletStorm.cooldown; }
+  duration() { return CFG.bulletStorm.duration; }
+  execute(game: Game, owner: Unit) {
+    if (this.blockReason(game, owner)) return;
+    const B = CFG.bulletStorm;
+    this.enhanced = owner.elite?.id === 'com-gunslinger';
+    this.mul = this.enhanced ? B.gunslingerMul : B.fireRateMul;
+    this.activeLeft = B.duration;
+    this.healed = 0;
+    this.uses++;
+    game.fx.text(owner.pos, 'BULLET STORM!', '#9fd8ff');
+    game.fx.ring(owner.pos, 32, 'rgba(150,210,255,0.95)', 0.35, 3);
+    sfx('suppress');
+  }
+  tick(_game: Game, owner: Unit, dt: number) {
+    if (this.activeLeft <= 0) return;
+    if (!owner.active) this.activeLeft = 0; // ends if the Commando goes down
+    else this.activeLeft = Math.max(0, this.activeLeft - dt);
+    if (this.activeLeft <= 0) { this.cooldownLeft = this.cooldown(); this.enhanced = false; } // cooldown after the effect
+  }
+  fireRateMul() { return this.activeLeft > 0 ? this.mul : 1; }
+  movePenaltyMul() { return this.activeLeft > 0 ? CFG.bulletStorm.movePenaltyMul : 1; }
+  /** Assault Specialist: a pistol hit while the Storm runs (returns HP restored). */
+  heal(owner: Unit): number {
+    const B = CFG.bulletStorm;
+    if (this.activeLeft <= 0 || owner.elite?.id !== 'com-assault' || !owner.active) return 0;
+    const add = Math.max(0, Math.min(B.assaultHealPerHit, B.assaultHealCap - this.healed, owner.maxHp - owner.hp));
+    if (add <= 0) return 0;
+    owner.hp += add; this.healed += add;
+    return add;
+  }
 }
 
 /**
@@ -183,7 +245,7 @@ export function updateGrenades(game: Game, dt: number) {
       g.fuse -= dt;
       if (g.fuse <= 0) {
         const G = CFG.grenade;
-        explode(game, g.to, G.radius, G.damage, G.edgeDamageFrac, game.enemies, g.owner, true);
+        explode(game, g.to, G.radius, G.damage, G.edgeDamageFrac, game.enemies, g.owner, true, g.from);
       }
     }
   }

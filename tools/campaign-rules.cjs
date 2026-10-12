@@ -333,10 +333,13 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     await page.goto(URL); await page.waitForTimeout(200);
     const rows = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
     const tabs = await page.evaluate(() => [...document.querySelectorAll('.c-tab')].map((t) => t.textContent.replace(/\s+/g, ' ').trim()));
-    check('Campaign shows Chapter 1 (M1-M5; M1 available, M2-M5 locked) + chapter tabs CH 1 / CH 2 / CH 3 SOON', rows.length === 5 && /first-contact:available/.test(rows[0]) && rows.slice(1, 5).every((r) => /locked/.test(r)) && tabs.length === 3 && /CH 1/.test(tabs[0]) && /CH 2/.test(tabs[1]) && /SOON/.test(tabs[2]), rows.join(' ') + ' | ' + tabs.join(','));
+    check('Campaign shows Chapter 1 (M1-M5; M1 available, M2-M5 locked) + chapter tabs CH 1 / CH 2 / CH 3 (v0.8A: CH 3 playable, 2 missions = 6 stars)', rows.length === 5 && /first-contact:available/.test(rows[0]) && rows.slice(1, 5).every((r) => /locked/.test(r)) && tabs.length === 3 && /CH 1/.test(tabs[0]) && /CH 2/.test(tabs[1]) && /CH 3/.test(tabs[2]) && /0\/6/.test(tabs[2]), rows.join(' ') + ' | ' + tabs.join(','));
     await page.click('[data-a="cchap"][data-ch="2"]');
     const rows2 = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
     check('Chapter 2 tab: Missions 6-10 listed, all locked on a fresh save', rows2.length === 5 && rows2[0].startsWith('bridgehead') && rows2[4].startsWith('iron-fist') && rows2.every((r) => /locked/.test(r)), rows2.join(' '));
+    await page.click('[data-a="cchap"][data-ch="3"]');
+    const rows3 = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
+    check('Chapter 3 tab (v0.8A): Missions 11-12 locked on a fresh save, Mission 13 coming soon', rows3.length === 3 && rows3[0].startsWith('resistance-rising') && rows3[1].startsWith('artillery-hunt') && /locked/.test(rows3[0]) && /locked/.test(rows3[1]) && rows3[2].startsWith('mission-13'), rows3.join(' '));
     await page.click('[data-a="cchap"][data-ch="1"]');
     await page.click('[data-a="csel"][data-id="red-canyon"]');
     const lockTxt = await page.textContent('.c-detail');
@@ -344,7 +347,7 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     if (OUT) await page.screenshot({ path: `${OUT}/campaign-locked-desktop.png` });
     await page.click('[data-a="csel"][data-id="first-contact"]');
     if (OUT) await page.screenshot({ path: `${OUT}/campaign-desktop-new-player.png` });
-    await page.click('.c-btns [data-a="deploy"]');
+    await page.click('.c-btns [data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
     await page.evaluate(() => window.game.win());
     await page.waitForTimeout(100);
     const unl = await page.evaluate(() => [...document.querySelectorAll('.r-unl')].map((e) => e.textContent.trim()));

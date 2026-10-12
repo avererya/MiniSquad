@@ -25,6 +25,7 @@ const SECTIONS: [string, S[]][] = [
   ['Infantry', classSliders('infantry')],
   ['Heavy Gunner', classSliders('heavy')],
   ['Medic', classSliders('medic')],
+  ['Commando (v0.8A)', classSliders('commando')],
   ['Enemy Rifleman', [
     ['HP', 'enemy.hp', 5, 300, 5],
     ['Damage', 'enemy.damage', 1, 60, 1],
@@ -66,6 +67,37 @@ const SECTIONS: [string, S[]][] = [
     ['Fire-rate multiplier', 'suppressive.fireRateMul', 1, 4, 0.05],
     ['Duration (s)', 'suppressive.duration', 0.5, 20, 0.5],
     ['Cooldown (s)', 'suppressive.cooldown', 1, 60, 0.5],
+  ]],
+  ['Bullet Storm (Commando)', [
+    ['Fire-rate multiplier', 'bulletStorm.fireRateMul', 1, 4, 0.05],
+    ['Gunslinger multiplier', 'bulletStorm.gunslingerMul', 1, 4, 0.05],
+    ['Duration (s)', 'bulletStorm.duration', 1, 20, 0.5],
+    ['Cooldown after it ends (s)', 'bulletStorm.cooldown', 1, 90, 1],
+    ['Moving penalty while active (×)', 'bulletStorm.movePenaltyMul', 0, 1, 0.05],
+  ]],
+  ['Enemy awareness (v0.8A)', [
+    ['Alert radius (px)', 'awareness.radius', 0, 800, 10],
+    ['Reaction min (s)', 'awareness.reactMin', 0, 2, 0.05],
+    ['Reaction max (s)', 'awareness.reactMax', 0, 3, 0.05],
+    ['Sight range (px)', 'awareness.sightRange', 100, 800, 10],
+    ['Search time (s)', 'awareness.searchTime', 0, 60, 1],
+  ]],
+  ['Extraction pressure (v0.8A)', [
+    ['Min spawn distance (px)', 'extractionPressure.minDist', 200, 1200, 20],
+    ['Light group', 'extractionPressure.light', 0, 10, 1],
+    ['Small group', 'extractionPressure.small', 0, 10, 1],
+    ['Moderate: first group', 'extractionPressure.moderateA', 0, 10, 1],
+    ['Moderate: second group', 'extractionPressure.moderateB', 0, 10, 1],
+    ['Strong: first group', 'extractionPressure.strongA', 0, 10, 1],
+    ['Strong: second group', 'extractionPressure.strongB', 0, 10, 1],
+  ]],
+  ['Artillery (Mission 12)', [
+    ['Spotlight exposure to alert (s)', 'artillery.exposure', 0.2, 5, 0.1],
+    ['Warning before impact (s)', 'artillery.warn', 0.5, 6, 0.1],
+    ['Shell interval (s)', 'artillery.interval', 3, 30, 0.5],
+    ['Shell damage (exposed)', 'artillery.damage', 0, 150, 5],
+    ['Cover multiplier', 'artillery.coverMul', 0, 1, 0.05],
+    ['Alert clears after (s)', 'artillery.clearAfter', 5, 60, 1],
   ]],
   ['Field Treatment (Medic)', [
     ['Heal (× max HP)', 'fieldTreatment.healFrac', 0, 1, 0.05],
@@ -258,7 +290,8 @@ export class Tuning {
         input.addEventListener('input', () => {
           setPath(path, +input.value);
           // enemies must never out-range the squad (they'd fire from off screen)
-          const minRange = Math.min(...CLASS_IDS.map((c) => CFG[c].range));
+          // (v0.8A: the Commando is a deliberately short-range class and is left out of this rule)
+          const minRange = Math.min(...CLASS_IDS.filter((c) => c !== 'commando').map((c) => CFG[c].range));
           if (CFG.enemy.range > minRange) CFG.enemy.range = minRange;
           this.refresh();
         });

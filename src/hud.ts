@@ -20,7 +20,7 @@ const NUKE_ARM_MS = 500;
 
 interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
 
-const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT', focus: 'FOCUS' };
+const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT', focus: 'FOCUS', bulletStorm: 'STORM' };
 
 // Per-frame DOM writes are cached by last-written value (never read back from the DOM): on mobile an
 // unchanged write still invalidates style/layout, which costs battery. WeakMap keys survive rebuildPanels.
@@ -171,10 +171,10 @@ export class Hud implements GameUI {
       root.dataset.cls = def.id;
       if (u.elite) root.dataset.spec = u.elite.id; // v0.7A: Elite portrait (black helmet, blue band)
       root.innerHTML = `
-        <button class="ability cls-${def.id}" title="${ab.name} (${i + 1})" data-ability="${ab.id}">
+        <button class="ability cls-${def.id}" title="${ab.name} (${i + 1})" data-ability="${ab.id}"><span class="ab-clip">
           <div class="portrait"><div class="face"></div><div class="helmet"></div><div class="badge"></div></div>
           <div class="cd"></div><div class="act"></div><span class="key">${i + 1}</span><span class="icon">${ab.icon}</span>
-        </button>
+        </span></button>
         <div class="info"><div class="name">${u.elite ? '<i class="el-star">★</i>' : ''}${u.name}</div><div class="cls">${u.elite ? u.elite.spec.title : def.label}</div><div class="hp"><div class="fill"></div><span class="hpnum"></span></div><div class="state"></div></div>`;
       const btn = root.querySelector<HTMLElement>('.ability')!;
       btn.addEventListener('pointerdown', (e) => {
@@ -250,7 +250,7 @@ export class Hud implements GameUI {
       // while an effect runs, the button shows its remaining duration instead of the cooldown
       const running = u.active && ab.activeLeft > 0;
       setStyle(p.cd, 'height', running ? '0%' : `${Math.min(100, cdFrac * 100)}%`);
-      const dur = ab.id === 'focus' ? CFG.focus.duration : CFG.suppressive.duration;
+      const dur = ab.duration?.() ?? CFG.suppressive.duration;
       setStyle(p.act, 'width', running ? `${Math.min(100, (ab.activeLeft / dur) * 100)}%` : '0%');
       setFlag(p.btn, 'disabled', !u.active);
       setFlag(p.btn, 'ready', ab.ready(u));

@@ -3,7 +3,7 @@
 //   npx vite preview --port 4173 &  node tools/elite.cjs        (OUT=dir saves screenshots)
 //
 // (v0.7B: save expectations moved to v9; Elite levels 2-30 are covered by tools/elite-progression.cjs.)
-//  A. Data: eight specializations, two per class, stable ids, cost 3,000 CR at Recruit Level 25
+//  A. Data: ten specializations (v0.8A: + Commando), two per class, stable ids, cost 3,000 CR at Recruit Level 25
 //  B. Promotion rules (economy): level 24 / 25, Credits, wrong branch, atomic, no double promotion,
 //     no respec, failed save rolls everything back, blocked while KIA / in a mission / a decision is
 //     pending; identity kept; Elite Level 1 never weaker than Recruit Level 25
@@ -88,7 +88,7 @@ function installHelpers() {
     return { ids: EL.ELITE_SPEC_IDS.join(), branches: JSON.stringify(EL.CLASS_BRANCHES), cost: EL.PROMOTION_COST, lvl: EL.PROMOTION_LEVEL, cap: EL.ELITE_LEVEL_CAP,
       complete: EL.ELITE_SPEC_IDS.every((id) => { const s = EL.ELITE_SPECS[id]; return s.title && s.role && s.passive && s.desc && s.short && EL.CLASS_BRANCHES[s.classId].includes(id); }) };
   });
-  check('A1 eight specializations with stable ids, two per class, all fields filled', data.ids === 'inf-trooper,inf-recon,hvy-juggernaut,hvy-weapons,med-surgeon,med-commander,snp-ghost,snp-deadeye' && data.complete, data.branches);
+  check('A1 ten specializations (v0.8A: + Commando Gunslinger / Assault Specialist) with stable ids, two per class, all fields filled', data.ids === 'inf-trooper,inf-recon,hvy-juggernaut,hvy-weapons,med-surgeon,med-commander,snp-ghost,snp-deadeye,com-gunslinger,com-assault' && data.complete, data.branches);
   check('A2 promotion: 3,000 CR at Recruit Level 25; Elite levels modelled up to 30', data.cost === 3000 && data.lvl === 25 && data.cap === 30, JSON.stringify(data));
 
   // ================= B. PROMOTION RULES =================
@@ -245,7 +245,7 @@ function installHelpers() {
   check('D4 damage-reduction cap 40% (a tuned 90% Ironclad still takes 6 of 10)', inc.capped === 6, inc.capped);
   check('D5 Ironclad in the field: enemy rounds deal 80% to the Juggernaut', inc.field.hits > 0 && Math.abs(inc.field.per - inc.field.edmg * 0.8) < 0.01, JSON.stringify(inc.field));
 
-  // D6 Deadeye (Recon Commando): every 5th hit +50%; grenades excluded
+  // D6 Deadeye (Recon Specialist): every 5th hit +50%; grenades excluded
   const dead = await ev(() => {
     T.spec('ranger', 'inf-recon'); T.lv('ace', 25);
     const pa = T.R.get('ace').progression; pa.tier = 'recruit'; pa.elitePath = null; pa.specialization = null; pa.eliteLevel = 0;
@@ -606,7 +606,7 @@ function installHelpers() {
     const conf = await p.evaluate(() => { const d = document.querySelector('.pr-confirm'); const b = d.querySelector('[data-a="promo-confirm"]'); const r = b.getBoundingClientRect(); return { t: d.textContent, armed: !b.disabled, inView: r.bottom <= innerHeight + 1 || d.scrollHeight > d.clientHeight }; });
     if (OUT) await p.screenshot({ path: `${OUT}/confirm-${name}.png` });
     check(`G ${name}: confirmation shows name, class, specialization, passive, cost, Credits after, warning; confirm not armed instantly`,
-      /Ace/.test(conf.t) && /Infantry/.test(conf.t) && /RECON COMMANDO/.test(conf.t) && /Deadeye/.test(conf.t) && /3,000 CR/.test(conf.t) && /2,000 CR/.test(conf.t) && /permanent/.test(conf.t) && !conf.armed, conf.t.slice(0, 140));
+      /Ace/.test(conf.t) && /Infantry/.test(conf.t) && /RECON SPECIALIST/.test(conf.t) && /Deadeye/.test(conf.t) && /3,000 CR/.test(conf.t) && /2,000 CR/.test(conf.t) && /permanent/.test(conf.t) && !conf.armed, conf.t.slice(0, 140));
     await p.click('[data-a="promo-cancel"]');
     const cancel = await p.evaluate(() => ({ cr: T.a.credits, tier: T.R.get('ace').progression.tier, modal: !!document.querySelector('.pr-confirm'), box: !!document.querySelector('.pr-box') }));
     check(`G ${name}: Cancel changes nothing (Credits, rank), back to the profile`, cancel.cr === 5000 && cancel.tier === 'recruit' && !cancel.modal && cancel.box, JSON.stringify(cancel));
@@ -618,13 +618,13 @@ function installHelpers() {
     await p.waitForTimeout(700);
     const cer = await p.evaluate(() => ({ t: document.querySelector('.cer-card').textContent, cr: T.a.credits, led: T.a.promotions.length, path: T.R.get('ace').progression.elitePath, saved: T.store().roster.find((s) => s.id === 'ace').progression.elitePath }));
     if (OUT) await p.screenshot({ path: `${OUT}/ceremony-${name}.png` });
-    check(`G ${name}: ceremony shows name, title, specialization; 3,000 CR charged once; saved`, /ACE/.test(cer.t) && /RECON COMMANDO/.test(cer.t) && /Mobile Precision Fighter/.test(cer.t) && cer.cr === 2000 && cer.led === 1 && cer.path === 'inf-recon' && cer.saved === 'inf-recon', JSON.stringify({ ...cer, t: cer.t.slice(0, 80) }));
+    check(`G ${name}: ceremony shows name, title, specialization; 3,000 CR charged once; saved`, /ACE/.test(cer.t) && /RECON SPECIALIST/.test(cer.t) && /Mobile Precision Fighter/.test(cer.t) && cer.cr === 2000 && cer.led === 1 && cer.path === 'inf-recon' && cer.saved === 'inf-recon', JSON.stringify({ ...cer, t: cer.t.slice(0, 80) }));
     await p.click('[data-a="ceremony-close"]');
     await p.waitForSelector('.el-box');
     const prof = await p.evaluate(() => { const d = document.querySelector('.d-card'); return { t: d.textContent, promo: !!document.querySelector('.pr-box') }; });
     if (OUT) await p.screenshot({ path: `${OUT}/profile-${name}.png` });
     check(`G ${name}: Elite profile: ELITE 1, specialization, passive, trait, training, stats; never "LV 1"; no second offer`,
-      /ELITE 1/.test(prof.t) && /RECON COMMANDO/.test(prof.t) && /Deadeye/.test(prof.t) && /Sharpshooter/i.test(prof.t) && /Training:/.test(prof.t) && /Max HP/.test(prof.t) && !/\bLV 1\b/.test(prof.t) && !prof.promo, prof.t.slice(0, 160));
+      /ELITE 1/.test(prof.t) && /RECON SPECIALIST/.test(prof.t) && /Deadeye/.test(prof.t) && /Sharpshooter/i.test(prof.t) && /Training:/.test(prof.t) && /Max HP/.test(prof.t) && !/\bLV 1\b/.test(prof.t) && !prof.promo, prof.t.slice(0, 160));
     if (OUT && name === 'iphone-14') {
       await p.click('[data-a="close"]');
       await p.evaluate(() => { for (const [id, sp] of [['ranger', 'inf-trooper'], ['tank', 'hvy-juggernaut'], ['havoc', 'hvy-weapons'], ['doc', 'med-surgeon'], ['patch', 'med-commander']]) { T.a.credits += 3000; T.E.promote(T.R, T.a, id, sp, window.__persist); } window.game.menus?.renderBarracks?.(); });

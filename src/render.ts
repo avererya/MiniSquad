@@ -20,6 +20,8 @@ const COL = {
   squadBullet: '#fff7a8', enemyBullet: '#ff6a3a',
   // v0.7A Elite: black tactical uniform with MiniSquad-blue accents (Recruits keep blue + black gear)
   eliteHelmet: '#20242c', eliteBody: '#2a2f38', eliteAccent: '#3d8cff', eliteTrim: '#9fc6ff',
+  // v0.8A resistance fighters: olive jackets and brown caps (readable apart from the blue squad and red enemies)
+  allyBody: '#5f6b34', allyCap: '#6e4a2a', ally: '#c9e08a',
 };
 
 // Ground palettes per map theme (reused art, recoloured; no new assets).
@@ -137,7 +139,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   const inView = (r: Rect) => r.x + r.w > vx - 80 && r.x < vx + VIEW_W + 80 && r.y + r.h > vy - 80 && r.y - 80 < vy + VIEW_H + 80;
   for (const o of OBSTACLES) if (inView(o) && !isLowObstacle(o)) items.push({ y: o.y + o.h, draw: () => drawObstacle(ctx, o, game.clock) });
   for (const p of game.map.props ?? []) if (p.kind !== 'flood') items.push({ y: p.y, draw: () => drawProp(ctx, p, game.clock) });
-  for (const u of [...game.soldiers, ...game.npcs, ...game.enemies]) {
+  for (const u of [...game.soldiers, ...game.allies, ...game.npcs, ...game.enemies]) {
     if (u.structure) items.push({ y: u.pos.y, draw: () => drawStructure(ctx, u, game) });
     else if (u.npc) items.push({ y: u.pos.y, draw: () => drawCaptive(ctx, u, game) });
     else if (u.vehicle) items.push({ y: u.pos.y, draw: () => drawTruck(ctx, u, game) });
@@ -168,6 +170,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   // v0.6.2 night: darkness away from the squad, floodlight pools (units underneath stay readable;
   // telegraphs, bullets, effects and markers are drawn on top at full brightness)
   if (map.theme === 'night') drawNight(ctx, game, vx, vy);
+  game.mission.artillery?.drawLights(ctx, game); // v0.8A Mission 12 searchlights (over the darkness)
   drawTelegraphs(ctx, game);
   drawProjectiles(ctx, game);
   drawFx(ctx, game);
@@ -301,7 +304,7 @@ function drawPickups(ctx: CanvasRenderingContext2D, game: Game) {
 
 function drawReviveCircles(ctx: CanvasRenderingContext2D, game: Game) {
   const R = CFG.revive;
-  for (const s of [...game.soldiers, ...game.npcs]) {
+  for (const s of [...game.soldiers, ...game.allies, ...game.npcs]) {
     if (s.state !== 'downed') continue;
     const pulse = 0.5 + 0.5 * Math.sin(game.clock * 8);
     ctx.fillStyle = s.reviving ? 'rgba(120,255,140,0.15)' : `rgba(255,60,60,${0.08 + 0.1 * pulse})`;
@@ -431,8 +434,8 @@ function drawGrenade(ctx: CanvasRenderingContext2D, x: number, y: number, z: num
 function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   const sq = u.team === 'squad';
   const el = sq ? u.elite : null;
-  const helmet = el ? COL.eliteHelmet : sq ? COL.squadHelmet : COL.enemyHelmet;
-  const body = el ? COL.eliteBody : sq ? COL.squadBody : COL.enemyBody;
+  const helmet = u.ally ? COL.allyCap : el ? COL.eliteHelmet : sq ? COL.squadHelmet : COL.enemyHelmet;
+  const body = u.ally ? COL.allyBody : el ? COL.eliteBody : sq ? COL.squadBody : COL.enemyBody;
   const { x, y } = u.pos;
 
   // shadow
@@ -471,7 +474,7 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   const sc = CHAR_SCALE * (u.classDef?.id === 'heavy' ? 1.06 : armored ? 1.16 : 1);
   ctx.save();
   ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
-  const vis = u.team === 'enemy' ? ENEMY_VIS[u.kind] : undefined;
+  const vis = u.team === 'enemy' ? ENEMY_VIS[u.kind] : u.ally ? ALLY_VIS : undefined;
   drawStanding(ctx, u, x, y, armored ? '#7d8794' : helmet, body, vis, el?.id ?? null);
   if (armored) drawArmorPlate(ctx, u, x, y);
   ctx.restore();
@@ -535,6 +538,16 @@ function drawEliteBody(ctx: CanvasRenderingContext2D, spec: EliteSpecId, x: numb
       ctx.beginPath(); ctx.moveTo(x + bw / 2 - 1, by - 11); ctx.lineTo(x - bw / 2 + 1, by); ctx.stroke();
       ctx.setLineDash([]);
       break;
+    case 'com-gunslinger': // low-slung double holster belt with blue buckles
+      ctx.fillStyle = '#0e0f12'; ctx.fillRect(x - bw / 2 - 1, by - 2, bw + 2, 2.8);
+      ctx.fillStyle = '#2a2d33'; ctx.fillRect(x - bw / 2 - 2.5, by - 1, 3.5, 6); ctx.fillRect(x + bw / 2 - 1, by - 1, 3.5, 6);
+      ctx.fillStyle = COL.eliteAccent; ctx.fillRect(x - 1.5, by - 2, 3, 2.8);
+      break;
+    case 'com-assault': // shoulder pads + a blue-striped chest plate
+      ctx.fillStyle = '#3a404b';
+      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(x + sx * (bw / 2), by - 10.5, 3.6, 2.8, 0, 0, Math.PI * 2); ctx.fill(); }
+      if (front) { ctx.fillStyle = '#2f343d'; roundRect(ctx, x - 4, by - 10, 8, 7, 1.5); ctx.fill(); ctx.fillStyle = COL.eliteAccent; ctx.fillRect(x - 4, by - 7.2, 8, 1.5); }
+      break;
     case 'med-commander': // gold chevrons on the chest
       if (front) {
         ctx.strokeStyle = '#ffd25a'; ctx.lineWidth = 1.6;
@@ -565,6 +578,7 @@ function drawEliteHead(ctx: CanvasRenderingContext2D, spec: EliteSpecId, hx: num
   // blue helmet band (every Elite)
   ctx.fillStyle = COL.eliteAccent;
   if (hs === 'boonie') ctx.fillRect(hx - 9.5, hy - 6, 19, 2.5);
+  else if (hs === 'beret') ctx.fillRect(hx - 10, hy - 5, 20, 1.6);
   else if (hs === 'heavy') ctx.fillRect(hx - 12, hy - 5, 24, 2);
   else ctx.fillRect(hx - 10.5, hy - 5.5, 21, 2);
   switch (spec) {
@@ -583,6 +597,12 @@ function drawEliteHead(ctx: CanvasRenderingContext2D, spec: EliteSpecId, hx: num
         ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(hx + ax * 4, hy - 7, 3.2, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#eaffff'; ctx.beginPath(); ctx.arc(hx + ax * 4, hy - 7, 1.8, 0, Math.PI * 2); ctx.fill();
       }
+      break;
+    case 'com-gunslinger': // dark shooting glasses
+      if (facing) { ctx.fillStyle = '#0d0f12'; ctx.fillRect(hx - 7 + ax * 3, hy - 1, 14, 3.2); ctx.fillStyle = 'rgba(127,196,255,0.7)'; ctx.fillRect(hx - 5 + ax * 3, hy - 0.5, 3, 1.4); }
+      break;
+    case 'com-assault': // black half mask
+      if (facing) { ctx.fillStyle = '#15181d'; roundRect(ctx, hx - 7.5 + ax * 2.5, hy + 2, 15, 6, 2.5); ctx.fill(); }
       break;
     case 'snp-ghost': { // hood with ragged ghillie edge over the boonie
       ctx.fillStyle = '#2e3530';
@@ -613,6 +633,9 @@ const ENEMY_VIS: Partial<Record<string, ClassVisual>> = {
   armored: { bodyW: 19, weapon: 'rifle', pack: 'ammo', helmet: 'heavy', tracerWidth: 3.5, tracerLen: 18 },
   tower: { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'standard', tracerWidth: 3.5, tracerLen: 18 },
 };
+
+/** v0.8A resistance fighter: rifle, no pack, soft cap. */
+const ALLY_VIS: ClassVisual = { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'cap', tracerWidth: 3, tracerLen: 18 };
 
 /** Armored Trooper: a big steel plate carried in front (where he faces) + a dark visor. */
 function drawArmorPlate(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: number) {
@@ -706,6 +729,24 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
         ctx.beginPath(); ctx.arc(gx + ax * 13, gy + ay * 10 - 3, ready ? 2.6 : 1.6, 0, Math.PI * 2); ctx.fill();
       }
       muzzle(33, 1.15);
+    } else if (weapon === 'pistols') {
+      // v0.8A Commando: two pistols, one per hand; the left one points where the second pistol aims
+      const pistol = (px: number, py: number, a: number, flash: number) => {
+        const cx = Math.cos(a), cy = Math.sin(a);
+        ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 3.4;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + cx * 9, py + cy * 7); ctx.stroke();
+        ctx.lineWidth = 2.4; // grip
+        ctx.beginPath(); ctx.moveTo(px + cx * 1.5, py + cy * 1.2); ctx.lineTo(px + cx * 1.5, py + cy * 1.2 + 4); ctx.stroke();
+        if (flash > 0) {
+          const mx = px + cx * 12, my = py + cy * 9.2;
+          ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.arc(mx, my, 4.2, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.arc(mx + cx * 2, my + cy * 2, 2.8, 0, Math.PI * 2); ctx.fill();
+        }
+      };
+      const la = u.offhand?.aim ?? u.aim;
+      const rx = -ay * 4.5, ry = ax * 3.2; // right hand side of the body
+      pistol(gx + rx, gy + ry, u.aim, u.muzzle);
+      pistol(gx - rx, gy - ry, la, u.offhand?.muzzle ?? 0);
     } else if (weapon === 'smg') {
       // compact SMG
       ctx.strokeStyle = COL.gun; ctx.lineWidth = 3.5;
@@ -722,6 +763,12 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
   const drawPack = () => {
     if (!vis || vis.pack === 'none') return;
     const px = x - ax * 7, py = by - 6;
+    if (vis.pack === 'vest') {
+      // small black back pouch (the vest's back panel)
+      ctx.fillStyle = '#15171b';
+      roundRect(ctx, px - 6, py - 6, 12, 9, 2.5); ctx.fill();
+      return;
+    }
     if (vis.pack === 'ammo') {
       ctx.fillStyle = '#3f4a2c';
       roundRect(ctx, px - 8, py - 8, 16, 14, 3); ctx.fill();
@@ -748,6 +795,13 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
     ctx.strokeStyle = '#d9b23a'; ctx.lineWidth = 2.5; ctx.setLineDash([2.5, 1.5]);
     ctx.beginPath(); ctx.moveTo(x - bw / 2 + 1, by - 11); ctx.lineTo(x + bw / 2 - 1, by); ctx.stroke();
     ctx.setLineDash([]);
+  } else if (vis?.pack === 'vest') {
+    // v0.8A Commando: black tactical vest with magazine pouches and a holster belt
+    ctx.fillStyle = '#16181d';
+    roundRect(ctx, x - bw / 2 + 1.5, by - 11.5, bw - 3, 9.5, 2.5); ctx.fill();
+    ctx.fillStyle = '#2c3038';
+    for (const px of [-3.4, 0, 3.4]) ctx.fillRect(x + px - 1.3, by - 8, 2.6, 4);
+    ctx.fillStyle = '#101114'; ctx.fillRect(x - bw / 2, by - 1.5, bw, 2.2);
   } else if (vis?.pack === 'medical') {
     // white armband + hip pouch with the green cross
     ctx.fillStyle = '#f4f4f4'; ctx.fillRect(x - bw / 2 - 1, by - 9, 3, 4);
@@ -781,6 +835,17 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
     ctx.beginPath(); ctx.arc(hx, hy - 1, 12, Math.PI * 1.0, Math.PI * 2.0); ctx.closePath(); ctx.fill();
     ctx.fillStyle = spec ? '#111418' : '#1a3a6e'; ctx.fillRect(hx - 14, hy - 2, 28, 4);
     ctx.fillRect(hx - 13, hy - 2, 3, 8); ctx.fillRect(hx + 10, hy - 2, 3, 8);
+  } else if (hs === 'beret') {
+    // v0.8A Commando: black beret tilted to one side with a blue badge
+    ctx.fillStyle = '#16181d';
+    ctx.beginPath(); ctx.ellipse(hx - 2, hy - 7, 12, 6, -0.18, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(hx - 10, hy - 5, 20, 2.5);
+    if (ay > -0.6) { ctx.fillStyle = spec ? '#9fc6ff' : '#3d8cff'; ctx.beginPath(); ctx.arc(hx + 4 + ax * 2, hy - 7, 2.2, 0, Math.PI * 2); ctx.fill(); }
+  } else if (hs === 'cap') {
+    // v0.8A resistance fighter: soft cap with a short peak
+    ctx.beginPath(); ctx.arc(hx, hy - 2, 10.5, Math.PI * 1.05, Math.PI * 1.95); ctx.closePath(); ctx.fill();
+    ctx.fillRect(hx - 10, hy - 4, 20, 2.5);
+    if (ay > -0.6) ctx.fillRect(hx - 6 + ax * 5, hy - 4, 12, 2.5 + Math.max(0, ay) * 2);
   } else {
     ctx.beginPath(); ctx.arc(hx, hy - 1, 11, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();
     ctx.fillRect(hx - 11, hy - 3, 22, 3);
@@ -878,6 +943,15 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
     ctx.fillStyle = '#000'; ctx.fillText(tag, n.pos.x + 1, n.pos.y - 69);
     ctx.fillStyle = '#7dd3ff'; ctx.fillText(tag, n.pos.x, n.pos.y - 70);
   }
+  for (const a of game.allies) {
+    if (a.state === 'downed') { drawDownedMarker(ctx, a, game); continue; }
+    if (a.state !== 'active') { if (a.state === 'kia') { ctx.fillStyle = '#bbb'; ctx.fillText(`${a.name} OUT`, a.pos.x, a.pos.y - 24); } continue; }
+    const w = 30, f = clamp(a.hp / a.maxHp, 0, 1), bx = a.pos.x - w / 2, byy = a.pos.y - 60;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 1, byy - 1, w + 2, 7);
+    ctx.fillStyle = a.hitFlash > 0 ? '#ffffff' : COL.ally; ctx.fillRect(bx, byy, w * f, 5);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(a.name, a.pos.x + 1, a.pos.y - 69);
+    ctx.fillStyle = COL.ally; ctx.fillText(a.name, a.pos.x, a.pos.y - 70);
+  }
   for (const s of game.soldiers) {
     if (s.state === 'active') {
       // green health bar (enemies' bars are red), name tag just above it
@@ -941,6 +1015,7 @@ function drawDownedMarker(ctx: CanvasRenderingContext2D, s: Unit, game: Game) {
 function drawStructure(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   if (u.structure === 'relay') { drawRelay(ctx, u, game); return; }
   if (u.structure === 'bunker') { drawBunker(ctx, u, game); return; }
+  if (u.structure === 'artillery') { drawArtilleryGun(ctx, u, game); return; }
   const { x, y } = u.pos;
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath(); ctx.ellipse(x, y + 4, 34, 14, 0, 0, Math.PI * 2); ctx.fill();
@@ -982,9 +1057,10 @@ function drawCaptive(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
 function drawOffscreenArrows(ctx: CanvasRenderingContext2D, game: Game) {
   if (game.phase !== 'playing') return;
   const targets: { x: number; y: number; label: string; color: string }[] = [];
-  for (const s of [...game.soldiers, ...game.npcs]) {
+  for (const s of [...game.soldiers, ...game.allies, ...game.npcs]) {
     if (s.state === 'downed') targets.push({ ...s.pos, label: `${s.name} ${Math.ceil(s.bleed)}s`, color: '#ff4040' });
   }
+  for (const m of game.mission.incoming) if (Math.sin(game.clock * 10) > -0.3) targets.push({ ...m.pos, label: 'ENEMIES', color: '#ffb347' });
   const obj = game.mission.objectivePoint(game);
   if (obj) targets.push({ ...obj.pos, label: obj.label, color: obj.color });
   const m = 46;
@@ -1141,6 +1217,34 @@ function drawNight(ctx: CanvasRenderingContext2D, game: Game, vx: number, vy: nu
     ctx.strokeStyle = '#333'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - 56); ctx.stroke();
     ctx.fillStyle = '#fff6c8'; ctx.fillRect(p.x - 9, p.y - 64, 18, 9);
   }
+}
+
+/** v0.8A Mission 12 artillery gun: split-trail carriage, shield, long barrel raised toward the north-east. */
+function drawArtilleryGun(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos, flash = u.hitFlash > 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(x, y + 4, 40, 15, 0, 0, Math.PI * 2); ctx.fill();
+  // trails
+  ctx.strokeStyle = flash ? '#fff' : '#3c4628'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x - 34, y + 10); ctx.moveTo(x, y - 6); ctx.lineTo(x - 18, y + 14); ctx.stroke();
+  // wheels
+  ctx.fillStyle = '#1d1f1a';
+  ctx.beginPath(); ctx.arc(x - 16, y - 2, 9, 0, Math.PI * 2); ctx.arc(x + 16, y - 2, 9, 0, Math.PI * 2); ctx.fill();
+  // barrel + recoil housing
+  ctx.strokeStyle = flash ? '#eee' : '#2f3822'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(x - 4, y - 14); ctx.lineTo(x + 40, y - 52); ctx.stroke();
+  ctx.strokeStyle = flash ? '#ddd' : '#4b5a33'; ctx.lineWidth = 11;
+  ctx.beginPath(); ctx.moveTo(x - 6, y - 12); ctx.lineTo(x + 10, y - 26); ctx.stroke();
+  // shield
+  ctx.fillStyle = flash ? '#fff' : '#56663a'; ctx.fillRect(x - 20, y - 26, 40, 16);
+  ctx.strokeStyle = '#2a3020'; ctx.lineWidth = 2; ctx.strokeRect(x - 20, y - 26, 40, 16);
+  if (u.muzzle > 0) {
+    ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.arc(x + 44, y - 56, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.arc(x + 48, y - 60, 6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#ffd84a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(u.label, x, y - 74);
+  void game;
 }
 
 /** Communications relay: lattice mast with a dish and blinking lights on a generator box. */

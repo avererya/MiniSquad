@@ -7,7 +7,7 @@ const OUT = process.env.OUT || '.';
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
-  await page.click('[data-a="deploy"]');
+  await page.click('[data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
   await page.evaluate(() => { window.game.invuln = true; });
   await page.keyboard.down('KeyD');
   await page.waitForTimeout(3500);

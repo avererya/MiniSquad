@@ -85,13 +85,13 @@ function installHelpers() {
     const C = window.__campaign, M = window.game.mission;
     const rows = CH2.map((id) => { const m = C.campaignMission(id); return { id, n: m.number, cap: C.capacityOf(id), playable: m.playable, unlocks: m.unlocks.missions.join(), opt: m.optional.map((o) => o.id).join(), stars: m.stars.two + '/' + m.stars.three, recruits: m.unlocks.recruits.join(), classes: (m.unlocks.classes || []).join() }; });
     const scripts = CH2.map((id) => { const s = window.game.selectMission(id, true) && window.game.mission.script; return { id, ok: !!s, opt: s ? s.optionals().map((o) => o.id).join() : '' }; });
-    return { rows, scripts, m5: C.campaignMission('bring-them-home').unlocks.missions.join(), m11: C.campaignMission('mission-11'), patch: C.namedRecruit('patch').milestone };
+    return { rows, scripts, m5: C.campaignMission('bring-them-home').unlocks.missions.join(), m11: C.campaignMission('resistance-rising'), m13: C.campaignMission('mission-13'), patch: C.namedRecruit('patch').milestone };
   }, CH2);
-  check('M5 unlocks M6; M6->M7->M8->M9->M10 in order; M10 is the finale', camp.m5 === 'bridgehead' && camp.rows.map((r) => r.unlocks).join('|') === 'prison-break|convoy-crusher|blackout|iron-fist|', camp.rows.map((r) => `${r.id}->${r.unlocks}`).join(' '));
+  check('M5 unlocks M6; M6->M7->M8->M9->M10 in order; M10 (Chapter 2 finale) unlocks M11 (v0.8A)', camp.m5 === 'bridgehead' && camp.rows.map((r) => r.unlocks).join('|') === 'prison-break|convoy-crusher|blackout|iron-fist|resistance-rising', camp.rows.map((r) => `${r.id}->${r.unlocks}`).join(' '));
   check('mission numbers 6-10, all playable; deployment caps 4/5/5/5/5 (6 still reserved for M13+)', camp.rows.map((r) => r.n).join() === '6,7,8,9,10' && camp.rows.every((r) => r.playable) && camp.rows.map((r) => r.cap).join() === '4,5,5,5,5', camp.rows.map((r) => r.cap).join());
   check('optional objective ids match the mission scripts (no-kia, prisoner-safe, all-trucks, alarm, no-kia)', camp.rows.map((r) => r.opt).join() === 'no-kia,prisoner-safe,all-trucks,alarm,no-kia' && camp.scripts.every((s, i) => s.ok && s.opt === camp.rows[i].opt), camp.scripts.map((s) => s.opt).join());
   check('M7 milestone = Patch offer (prison-break), M9 unlocks the Sniper class, no soldier awarded', camp.patch === 'prison-break' && camp.rows[1].recruits === 'patch' && camp.rows[3].classes === 'sniper' && camp.rows.every((r, i) => i === 1 ? r.recruits === 'patch' : r.recruits === ''), JSON.stringify(camp.rows.map((r) => r.recruits + '/' + r.classes)));
-  check('Chapter 3 placeholder after M10 (not playable)', camp.m11 && !camp.m11.playable && camp.m11.number === 11, camp.m11 && camp.m11.name);
+  check('Chapter 3 after M10: M11 playable (v0.8A), placeholder M13 not playable', camp.m11 && camp.m11.playable && camp.m11.number === 11 && camp.m13 && !camp.m13.playable && camp.m13.number === 13, camp.m11 && camp.m11.name);
 
   // mission chain through real settlements on a fresh save (first clears only unlock the next one)
   await fresh();
@@ -226,13 +226,16 @@ function installHelpers() {
     // B(1050, 1000, 200, 150) sits between (1150,1120)... put the sniper north of the building
     const e2 = g.spawnEnemy({ x: 1150, y: 880 }, 'sniper'); e2.guard = true;
     const blocked = !g.world.clear(s2.pos, e2.pos);
-    const sh0 = e2.shots; T.step(8, () => { s2.vel = { x: 0, y: 0 }; s2.pos = { x: 1150, y: 1180 }; });
+    // v0.8A: an alerted enemy Sniper may REPOSITION around the building (group awareness); what must never happen is
+    // a shot fired while the building blocks its line (counted per shot, at the moment it fires)
+    let sh0 = e2.shots, coverShots = 0, openShots = 0;
+    T.step(8, () => { s2.vel = { x: 0, y: 0 }; s2.pos = { x: 1150, y: 1180 }; if (e2.shots > sh0) { if (g.world.clear(s2.pos, e2.pos)) openShots++; else coverShots++; sh0 = e2.shots; } });
     g.invuln = false;
-    return { aimStart, lockedAt, firedAt, aimTime: C.aimTime, lockTime: C.lockTime, range: C.range, rifle: T.C.enemy.range, dmg: C.damage, rifleDmg: T.C.enemy.damage, rate: C.fireRate, dev: aimAtShot !== null ? Math.abs(Math.atan2(Math.sin(aimAtShot - aimAtLock), Math.cos(aimAtShot - aimAtLock))) * 180 / Math.PI : null, blocked, coverShots: e2.shots - sh0 };
+    return { aimStart, lockedAt, firedAt, aimTime: C.aimTime, lockTime: C.lockTime, range: C.range, rifle: T.C.enemy.range, dmg: C.damage, rifleDmg: T.C.enemy.damage, rate: C.fireRate, dev: aimAtShot !== null ? Math.abs(Math.atan2(Math.sin(aimAtShot - aimAtLock), Math.cos(aimAtShot - aimAtLock))) * 180 / Math.PI : null, blocked, coverShots, openShots };
   });
   check('enemy Sniper: longer range, slower fire, higher single-shot damage than a rifleman', sn.range > sn.rifle && sn.rate < 0.5 && sn.dmg >= 2.5 * sn.rifleDmg, `range ${sn.range} vs ${sn.rifle}, dmg ${sn.dmg} vs ${sn.rifleDmg}, ${sn.rate}/s`);
   check('enemy Sniper telegraph: visible aim for the full aim time, LOCK before the shot, shot along the locked line', sn.firedAt !== null && sn.firedAt - sn.aimStart >= sn.aimTime - 0.05 && sn.lockedAt < sn.firedAt && sn.firedAt - sn.lockedAt >= sn.lockTime - 0.05 && sn.dev < 2, `aim ${sn.aimStart} lock ${sn.lockedAt && sn.lockedAt.toFixed(2)} fire ${sn.firedAt && sn.firedAt.toFixed(2)} dev ${sn.dev && sn.dev.toFixed(2)}°`);
-  check('enemy Sniper never fires through cover (8 s with a building in between)', sn.blocked && sn.coverShots === 0, `blocked ${sn.blocked}, shots ${sn.coverShots}`);
+  check('enemy Sniper never fires through cover (8 s with a building in between; repositioning for a clear line is allowed)', sn.blocked && sn.coverShots === 0, `blocked ${sn.blocked}, shots through cover ${sn.coverShots}, shots after repositioning ${sn.openShots}`);
 
   // ================= D. PRISON BREAK =================
   await fresh();

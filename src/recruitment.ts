@@ -12,7 +12,8 @@
 //    milestone, Mission 1; Medic from Doc's milestone, Mission 2). Havoc / Patch add no class.
 //    v0.6.1: these CAMPAIGN FLAGS (campaignFlags) come from the milestones, not from owning the
 //    named soldier (a player who never buys Tank still recruits Heavy Gunners after Mission 1).
-//    v0.6.2: Sniper from Mission 9's first clear (flag 'class:sniper'; 1250 CR, refund 300). Random class per offer,
+//    v0.6.2: Sniper from Mission 9's first clear (flag 'class:sniper'; 1250 CR, refund 300); v0.8A: Commando from
+//    Mission 12's first clear (flag 'class:commando'; 1250 CR, refund 300). Random class per offer,
 //    duplicates allowed, no guaranteed spread.
 //  - One-time introduction: when a class first becomes recruitable, the next lineup the player
 //    sees holds at least one offer of it. Offers already on the table: the LAST offer(s) are
@@ -41,6 +42,8 @@ export const RECRUIT_CLASSES: RecruitClassDef[] = [
   { classId: 'medic', price: 1000, refund: 250, requires: 'doc' },
   // v0.6.2: unlocked by Mission 9's first clear (campaign flag, never a free soldier)
   { classId: 'sniper', price: 1250, refund: 300, requires: 'class:sniper' },
+  // v0.8A: unlocked by Mission 12's first clear (campaign flag, never a free soldier)
+  { classId: 'commando', price: 1250, refund: 300, requires: 'class:commando' },
 ];
 export const recruitClass = (c: SoldierClassId) => RECRUIT_CLASSES.find((x) => x.classId === c);
 export const priceOf = (c: SoldierClassId) => recruitClass(c)?.price ?? Infinity;
@@ -57,7 +60,7 @@ export const RECRUIT_LOCK_MS = 450;
  * Trait pool for recruits: the named soldier whose JOIN (unlock flag) makes the trait available,
  * and which classes may roll it (null = every class; each of these traits works for any class).
  */
-const GENERIC: SoldierClassId[] = ['infantry', 'heavy', 'medic'];
+const GENERIC: SoldierClassId[] = ['infantry', 'heavy', 'medic', 'commando'];
 export const RECRUIT_TRAITS: { traitId: TraitId; requires: string; classes: SoldierClassId[] | null }[] = [
   // v0.6.2: the original traits stay with the original classes (Snipers roll Sniper traits only)
   { traitId: 'sharpshooter', requires: 'ace', classes: GENERIC },

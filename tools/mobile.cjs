@@ -95,7 +95,7 @@ const DEVICES = [
     await page.screenshot({ path: `${OUT}/m-${dev.name}-landscape-selection.png` });
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(300); // deploy in portrait, then rotate
     await page.tap('.b-go'); await page.waitForTimeout(100); // v0.6.1: deploy from the Campaign screen only
-    await page.tap('.c-btns [data-a="deploy"]');
+    await page.tap('.c-btns [data-a="deploy"]'); await page.tap('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
     await page.waitForTimeout(200);
     const dep = await page.evaluate(() => window.game.soldiers.map((s) => s.identity.id).join());
     check(`${dev.name}: Deploy starts the mission with the picked soldiers`, dep === 'ace,havoc,doc', dep);

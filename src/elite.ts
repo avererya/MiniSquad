@@ -40,7 +40,7 @@ import type { Unit } from './unit';
 import type { Game } from './game';
 import { dist } from './util';
 
-export type EliteSpecId = 'inf-trooper' | 'inf-recon' | 'hvy-juggernaut' | 'hvy-weapons' | 'med-surgeon' | 'med-commander' | 'snp-ghost' | 'snp-deadeye';
+export type EliteSpecId = 'inf-trooper' | 'inf-recon' | 'hvy-juggernaut' | 'hvy-weapons' | 'med-surgeon' | 'med-commander' | 'snp-ghost' | 'snp-deadeye' | 'com-gunslinger' | 'com-assault';
 
 export interface EliteSpecDef {
   /** Stable save id (never shown; display names can change). */
@@ -64,7 +64,8 @@ export const ELITE_SPECS: Record<EliteSpecId, EliteSpecDef> = {
     desc: 'Below 35% HP, takes 25% less damage from every attack. Turns off again once healed above 35%.',
   },
   'inf-recon': {
-    id: 'inf-recon', classId: 'infantry', title: 'Recon Commando', role: 'Mobile Precision Fighter', passive: 'Deadeye', short: 'RCN',
+    // v0.8A: shown as "Recon Specialist" (was "Recon Commando" before the Commando class); same stable id and Deadeye passive
+    id: 'inf-recon', classId: 'infantry', title: 'Recon Specialist', role: 'Mobile Precision Fighter', passive: 'Deadeye', short: 'RCN',
     desc: 'Every 5th rifle hit deals +50% damage. Misses don\'t count; grenades are not affected.',
   },
   'hvy-juggernaut': {
@@ -91,6 +92,15 @@ export const ELITE_SPECS: Record<EliteSpecId, EliteSpecDef> = {
     id: 'snp-deadeye', classId: 'sniper', title: 'Deadeye', role: 'Deliberate Marksman', passive: 'Perfect Aim', short: 'DED',
     desc: 'Holding still with a target in sight for 3 s charges the next shot: +75% damage. Moving resets the charge.',
   },
+  // v0.8A Commando
+  'com-gunslinger': {
+    id: 'com-gunslinger', classId: 'commando', title: 'Gunslinger', role: 'Rapid Target Switching', passive: 'Quick Draw', short: 'GUN',
+    desc: 'Snaps onto new targets faster (first shot 0.03 s instead of 0.08 s, aim turns 40% faster) and 25% less spread while moving. Bullet Storm: x2 fire rate and instant retargeting.',
+  },
+  'com-assault': {
+    id: 'com-assault', classId: 'commando', title: 'Assault Specialist', role: 'Close-Quarters Brawler', passive: 'Close Quarters',
+    short: 'AST', desc: '+15% pistol damage against enemies within 160 px. Bullet Storm: each pistol hit restores 1.5 HP (up to 30 HP per Storm, never above max).',
+  },
 };
 export const ELITE_SPEC_IDS = Object.keys(ELITE_SPECS) as EliteSpecId[];
 /** The two branches of each class, in display order. */
@@ -99,6 +109,7 @@ export const CLASS_BRANCHES: Record<SoldierClassId, [EliteSpecId, EliteSpecId]> 
   heavy: ['hvy-juggernaut', 'hvy-weapons'],
   medic: ['med-surgeon', 'med-commander'],
   sniper: ['snp-ghost', 'snp-deadeye'],
+  commando: ['com-gunslinger', 'com-assault'],
 };
 export const eliteSpec = (id: unknown): EliteSpecDef | null => (typeof id === 'string' && id in ELITE_SPECS ? ELITE_SPECS[id as EliteSpecId] : null);
 /** A valid spec id for this class (save validation, promotion). */
@@ -133,6 +144,7 @@ export const ELITE_PROGRESSION = {
     heavy: { spreadMul: 0.9 }, // -10% weapon spread (tighter bursts)
     medic: { healMul: 1.1 }, // +10% Field Treatment healing
     sniper: { aimTimeMul: 0.9 }, // -10% held-aim time before each shot
+    commando: { spreadMul: 0.9 }, // v0.8A: -10% pistol spread
   } as Record<SoldierClassId, StatModifiers>,
 };
 
@@ -198,6 +210,7 @@ export function eliteModifiers(s: Pick<SoldierIdentity, 'progression' | 'classId
   if (!sp) return null;
   const lv = eliteLevelModifiers(sp.classId, s.progression!.eliteLevel);
   if (sp.id === 'med-surgeon') return { ...lv, reviveTimeMul: 1 / CFG.elite.miracleReviveSpeed };
+  if (sp.id === 'com-gunslinger') return { ...lv, movePenaltyMul: CFG.elite.quickDrawMovePenalty }; // v0.8A Quick Draw
   return lv;
 }
 
@@ -300,6 +313,19 @@ export function onHit(u: Unit | undefined, fireMul: number): { mul: number; pen:
     if (e.hits % Math.max(1, Math.round(E.phantomEvery)) === 0) { e.procs++; return { mul: 1, pen: E.phantomPen }; }
   }
   return { mul: 1, pen: 0 };
+}
+
+/**
+ * v0.8A Assault Specialist Close Quarters: extra pistol damage against a target within CFG.elite.cqRange
+ * of the shooter (decided at the hit, from where the shooter stands then). Goes through the per-shot cap
+ * together with the shot's fire-time multiplier. 1 for everyone else.
+ */
+export function closeQuartersMul(u: Unit | undefined, target: Unit, fireMul: number): number {
+  if (u?.elite?.id !== 'com-assault') return 1;
+  const E = CFG.elite;
+  if (dist(u.pos, target.pos) > E.cqRange) return 1;
+  u.elite.procs++;
+  return Math.min(E.maxShotMul, fireMul * (1 + E.cqBonus)) / fireMul;
 }
 
 /**

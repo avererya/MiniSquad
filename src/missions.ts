@@ -6,7 +6,7 @@ import { CFG } from './config';
 import type { Game } from './game';
 import {
   ARENA, BLACKOUT_MAP, BRIDGE_MAP, BRIDGE_ZONE, CONVOY_MAP, CONVOY_ROUTE, INSTALLATIONS, PRISON_CAPTIVE, PRISON_MAP, PRISON_TOWERS,
-  RELAY_POINTS, STRONGHOLD_MAP,
+  RELAY_POINTS, STRONGHOLD_MAP, RESISTANCE_MAP, SAFEHOUSE_POSTS, SAFEHOUSE_ZONE, VILLAGE_ZONES, ARTILLERY_GUNS, ARTILLERY_MAP,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -18,6 +18,7 @@ import {
   FreeCaptiveObjective, ReachObjective, SurviveObjective,
 } from './objectives';
 import { squadCentre } from './squad';
+import { AlliesAliveOptional, ArtilleryObjective, LiberateZonesObjective, NoArtilleryAlertOptional, SafehouseDefenseObjective } from './chapter3';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -56,7 +57,7 @@ const HEAVY_SUPPORT: MissionScript = {
   optionals: () => [new EliminateOptional('mg-nest', 'Eliminate the guarded MG nest', ['mg-nest'], 'MG NEST')],
   extraction: {
     zone: { x: 2490, y: 1110, w: 270, h: 240 }, countdown: () => 12,
-    finalWave: { points: [{ x: 2760, y: 600 }, { x: 1900, y: 1380 }, { x: 2780, y: 1380 }, { x: 1700, y: 1250 }], size: () => 5 },
+    pressure: { tier: 'light', points: [{ x: 2760, y: 600 }, { x: 1900, y: 1380 }, { x: 2780, y: 1380 }, { x: 1700, y: 1250 }] },
   },
 };
 
@@ -100,7 +101,7 @@ const RED_CANYON: MissionScript = {
   optionals: () => [],
   extraction: {
     zone: { x: 3480, y: 320, w: 260, h: 250 }, countdown: () => 10,
-    finalWave: { points: [{ x: 3770, y: 700 }, { x: 2650, y: 560 }, { x: 3200, y: 230 }], size: () => 4 },
+    pressure: { tier: 'small', points: [{ x: 2400, y: 300 }, { x: 2300, y: 800 }, { x: 2380, y: 450 }] }, // the canyon's far end: the zone's view covers the east, north and south edges
   },
 };
 
@@ -123,7 +124,7 @@ const BRING_THEM_HOME: MissionScript = {
   optionals: () => [new CaptiveUnharmedOptional('captive-unharmed', 'The captive takes no damage')],
   extraction: {
     zone: { x: 110, y: 110, w: 270, h: 230 }, countdown: () => 10, requireNpc: true,
-    finalWave: { points: [{ x: 1200, y: 120 }, { x: 900, y: 700 }, { x: 600, y: 1140 }], size: () => 4 },
+    pressure: { tier: 'small', points: [{ x: 1200, y: 120 }, { x: 900, y: 700 }, { x: 600, y: 1140 }] },
   },
   captive: CAPTIVE_POS,
 };
@@ -163,7 +164,7 @@ const BRIDGEHEAD: MissionScript = {
   optionals: () => [new NoKiaOptional('no-kia', 'No soldier KIA')],
   extraction: {
     zone: { x: 2880, y: 120, w: 260, h: 220 }, countdown: () => 10,
-    finalWave: { points: [{ x: 3150, y: 900 }, { x: 2400, y: 40 }, { x: 3150, y: 1300 }], size: () => 4 },
+    pressure: { tier: 'moderate', points: [{ x: 3150, y: 900 }, { x: 2400, y: 40 }, { x: 3150, y: 1300 }] },
   },
 };
 
@@ -196,7 +197,7 @@ const PRISON_BREAK: MissionScript = {
   optionals: () => [new CaptiveNeverDownedOptional('prisoner-safe', 'The prisoner is never downed')],
   extraction: {
     zone: { x: 110, y: 110, w: 270, h: 230 }, countdown: () => 10, requireNpc: true,
-    finalWave: { points: [{ x: 1300, y: 60 }, { x: 60, y: 760 }, { x: 900, y: 900 }], size: () => 4 },
+    pressure: { tier: 'moderate', points: [{ x: 1300, y: 60 }, { x: 60, y: 760 }, { x: 900, y: 900 }] },
   },
   captive: PRISON_CAPTIVE,
   captiveLabel: 'POW MEDIC',
@@ -218,7 +219,7 @@ const CONVOY_CRUSHER: MissionScript = {
   },
   extraction: {
     zone: { x: 1750, y: 110, w: 260, h: 180 }, countdown: () => 10,
-    finalWave: { points: [{ x: 2600, y: 160 }, { x: 1000, y: 160 }, { x: 3350, y: 600 }], size: () => 4 },
+    pressure: { tier: 'moderate', points: [{ x: 2600, y: 160 }, { x: 1000, y: 160 }, { x: 3350, y: 600 }] },
   },
 };
 
@@ -242,7 +243,7 @@ const BLACKOUT: MissionScript = {
   optionals: () => [new AlarmOptional('alarm', 'Destroy every relay before the alarm maxes out', () => relays)],
   extraction: {
     zone: { x: 2650, y: 110, w: 270, h: 220 }, countdown: () => 10,
-    finalWave: { points: [{ x: 2960, y: 700 }, { x: 2000, y: 40 }, { x: 2960, y: 1200 }], size: () => 3 },
+    pressure: { tier: 'moderate', points: [{ x: 2960, y: 700 }, { x: 2000, y: 40 }, { x: 2960, y: 1200 }] },
   },
 };
 
@@ -272,7 +273,80 @@ const IRON_FIST: MissionScript = {
   },
 };
 
+// ---- v0.8A Mission 11: Resistance Rising (Liberation & Defense, 5 soldiers + 3 resistance allies) ----
+let liberate: LiberateZonesObjective | null = null;
+const liberated = () => liberate?.liberated.size ?? 0;
+const RESISTANCE_RISING: MissionScript = {
+  id: 'resistance-rising', map: RESISTANCE_MAP,
+  groups: () => [
+    // zone defenders (each zone 900+ px from the next: clearing one never alerts another)
+    { tag: 'zone-farm', points: [{ x: 500, y: 680 }, { x: 620, y: 720 }, { x: 560, y: 600 }, { x: 440, y: 760 }, { x: 660, y: 640 }, k(380, 560, 'sniper')], aggro: 420 },
+    { tag: 'zone-church', points: [{ x: 1450, y: 280 }, { x: 1560, y: 300 }, { x: 1500, y: 420 }, { x: 1400, y: 400 }, { x: 1620, y: 420 }, k(1620, 220, 'sniper')], aggro: 440 },
+    { tag: 'zone-market', points: [{ x: 2350, y: 700 }, { x: 2520, y: 760 }, { x: 2460, y: 860 }, { x: 2580, y: 860 }, { x: 2330, y: 820 }, k(2560, 680, 'armored')], aggro: 420 },
+    // patrols on the lanes between the zones
+    { tag: 'patrol-sw', points: [{ x: 760, y: 1180 }, { x: 800, y: 1230 }], aggro: 400 },
+    { tag: 'patrol-se', points: [{ x: 2050, y: 1280 }, { x: 2100, y: 1240 }], aggro: 400 },
+    { tag: 'patrol-ne', points: [{ x: 2100, y: 520 }, { x: 2060, y: 560 }], aggro: 400 },
+  ],
+  // the garrison answers each liberated zone (finite: one group after the first, one after the second)
+  triggers: [
+    { id: 'garrison-1', when: () => liberated() >= 1, points: [{ x: 2960, y: 1500 }, { x: 1500, y: 1760 }, { x: 40, y: 300 }], size: () => 3, banner: 'THE GARRISON RESPONDS — ENEMIES INBOUND' },
+    { id: 'garrison-2', when: () => liberated() >= 2, points: [{ x: 40, y: 300 }, { x: 2960, y: 300 }, { x: 1500, y: 1760 }], size: () => 4, kinds: ['armored', 'rifleman', 'rifleman', 'rifleman'], banner: 'MORE ENEMIES INBOUND' },
+  ],
+  primaries: () => [
+    (liberate = new LiberateZonesObjective('liberate', 'Liberate the village zones', VILLAGE_ZONES)),
+    new SafehouseDefenseObjective('safehouse', 'Defend the safehouse', SAFEHOUSE_ZONE, SAFEHOUSE_POSTS, [
+      { at: 0, from: 'NORTH', points: [{ x: 1500, y: 40 }, { x: 1150, y: 40 }], kinds: ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'rifleman'] },
+      { at: 20, from: 'EAST', points: [{ x: 2960, y: 1000 }, { x: 2960, y: 700 }], kinds: ['rifleman', 'rifleman', 'sniper', 'rifleman', 'rifleman', 'rifleman'] },
+      { at: 40, from: 'WEST', points: [{ x: 40, y: 1000 }, { x: 40, y: 1250 }], kinds: ['armored', 'rifleman', 'rifleman', 'rifleman', 'rifleman', 'armored'] },
+    ]),
+  ],
+  optionals: () => [new AlliesAliveOptional('allies-alive', 'Keep all three resistance allies alive through extraction')],
+  hint: 'Any order: clear a zone\'s defenders, then stand in it to liberate it',
+  extraction: {
+    zone: { x: 2620, y: 90, w: 270, h: 220 }, countdown: () => 12,
+    pressure: { tier: 'restrained', points: [{ x: 2960, y: 1100 }, { x: 1450, y: 60 }, { x: 2400, y: 1250 }] },
+  },
+};
+
+// ---- v0.8A Mission 12: Artillery Hunt (Night search & destroy, 5 soldiers) ----
+let guns: ArtilleryObjective | null = null;
+const gunsDown = () => guns?.destroyed ?? 0;
+const ARTILLERY_HUNT: MissionScript = {
+  id: 'artillery-hunt', map: ARTILLERY_MAP,
+  groups: () => [
+    { tag: 'gun-w', points: [{ x: 760, y: 520 }, { x: 860, y: 540 }, { x: 720, y: 450 }, { x: 640, y: 540 }, { x: 960, y: 560 }, k(560, 430, 'sniper')], aggro: 420 },
+    { tag: 'gun-s', points: [{ x: 1700, y: 980 }, { x: 1820, y: 960 }, { x: 1600, y: 1100 }, { x: 1760, y: 1300 }, { x: 1560, y: 980 }, k(1900, 1140, 'armored')], aggro: 420 },
+    { tag: 'gun-e', points: [{ x: 2480, y: 520 }, { x: 2500, y: 660 }, { x: 2700, y: 400 }, { x: 2420, y: 420 }, k(2860, 560, 'sniper'), k(2620, 720, 'armored')], aggro: 420 },
+    { tag: 'patrol-mid', points: [{ x: 1200, y: 1050 }, { x: 1250, y: 1100 }], aggro: 400 },
+    { tag: 'patrol-east', points: [{ x: 2200, y: 640 }, { x: 2240, y: 680 }], aggro: 400 },
+    { tag: 'patrol-south', points: [{ x: 2400, y: 1600 }, { x: 2450, y: 1560 }], aggro: 400 },
+  ],
+  // each destroyed gun brings a response group (finite; combat only: the artillery itself answers only the searchlights)
+  triggers: [
+    { id: 'response-1', when: () => gunsDown() >= 1, points: [{ x: 3160, y: 1100 }, { x: 1600, y: 40 }, { x: 40, y: 700 }], size: () => 3, banner: 'GUN CREW REINFORCEMENTS INBOUND' },
+    { id: 'response-2', when: () => gunsDown() >= 2, points: [{ x: 1600, y: 40 }, { x: 3160, y: 300 }, { x: 40, y: 1100 }], size: () => 4, kinds: ['armored', 'rifleman', 'rifleman', 'rifleman'], banner: 'MORE ENEMIES INBOUND' },
+  ],
+  primaries: () => [(guns = new ArtilleryObjective('guns', 'Destroy the 3 artillery guns', ARTILLERY_GUNS, 900))],
+  optionals: () => [new NoArtilleryAlertOptional('no-artillery', 'Complete the mission without triggering an artillery alert')],
+  hint: 'About 1 s in a searchlight calls in artillery: cross the beams fast or go around',
+  artillery: {
+    lights: [
+      { pos: { x: 1000, y: 700 }, dir: Math.PI * 0.75, sweep: 0.7, period: 7, phase: 0 },
+      { pos: { x: 600, y: 1050 }, dir: 0, sweep: 0.7, period: 8.5, phase: 3 },
+      { pos: { x: 1500, y: 1350 }, dir: Math.PI, sweep: 0.8, period: 8, phase: 1 },
+      { pos: { x: 2050, y: 900 }, dir: Math.PI / 2, sweep: 0.9, period: 9, phase: 2 },
+      { pos: { x: 2400, y: 760 }, dir: Math.PI, sweep: 0.7, period: 6.5, phase: 0.5 },
+      { pos: { x: 2900, y: 900 }, dir: -Math.PI * 0.75, sweep: 0.6, period: 7.5, phase: 4 },
+    ],
+  },
+  extraction: {
+    zone: { x: 2880, y: 1600, w: 260, h: 220 }, countdown: () => 15,
+    pressure: { tier: 'strong', points: [{ x: 3150, y: 850 }, { x: 1600, y: 1860 }, { x: 2400, y: 800 }, { x: 1500, y: 1300 }] },
+  },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

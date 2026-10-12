@@ -1,19 +1,20 @@
-# MiniSquad development handoff (after v0.7D.1)
+# MiniSquad development handoff (after v0.8A)
 
-Current release: **v0.7D.1 — Accuracy Soft Floor & HUD Touch Areas** (package 0.7.5, label `versionLabel: "0.7D.1"`), a patch on **v0.7D — Squad Training Expansion & Mobile Polish** (package 0.7.4), on top of v0.7C Tactical Support, v0.7B.1 Progression & Training Rebalance, v0.7B Elite Progression and v0.7A Elite Promotions.
-Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)", "Progression & Training Rebalance (v0.7B.1)", "Tactical Support (v0.7C)" and "Squad Training Expansion & Mobile Polish (v0.7D)" and "Accuracy Soft Floor & HUD Touch Areas (v0.7D.1)". This file is what the next step (Chapter 3: Missions 11-15, Commando, Demolitions Expert) needs.
+Current release: **v0.8A — Chapter 3A: The Resistance Begins** (package 0.8.0, label `versionLabel: "0.8A"`), on top of v0.7D.1 Accuracy Soft Floor & HUD Touch Areas, v0.7D Squad Training Expansion & Mobile Polish, v0.7C Tactical Support, v0.7B.1 Progression & Training Rebalance, v0.7B Elite Progression and v0.7A Elite Promotions.
+Rules and numbers: README → "Chapter 3A: The Resistance Begins (v0.8A)", "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)", "Progression & Training Rebalance (v0.7B.1)", "Tactical Support (v0.7C)", "Squad Training Expansion & Mobile Polish (v0.7D)" and "Accuracy Soft Floor & HUD Touch Areas (v0.7D.1)". This file is what the next step (Chapter 3B: Missions 13-15, the sixth slot, Demolitions Expert) needs.
 
 ## Workflow
 
 - Repo `avererya/MiniSquad`. A push to `main` deploys to Cloudflare Workers. Never touch the `prototype-v0.1` tag (the git proxy refuses tag pushes anyway).
 - Serve a build and run the headless suites: `npm run build && npx vite preview --port 4173`, then `node tools/<suite>.cjs` (`URL=` to point elsewhere, `OUT=` for screenshots).
+- Regression set used for v0.8A: `chapter3a` (new), `elite elite-progression logic permadeath recruitment failure-recruit progression campaign-rules barracks chapter2 support (BASE=) squad-training training-rebalance accuracy (BASE=)`, `fps-default`, `fps-parity` (30 / 60 FPS within this build), and the phone suites `mobile chapter2-mobile permadeath-mobile failure-recruit-mobile recruit-mobile`. `fps-parity BASE=<v0.7D.1>` now differs from 5-10 s into prison-break / blackout / iron-fist by design: enemy group awareness changes how guards react (approved in the v0.8A brief). Use the v0.8A build as the new simulation baseline.
 - Regression set used for v0.7D.1: `accuracy` (with `BASE=<v0.7D build>`), `progression`, `training-rebalance` and `squad-training` (with `BASE=`), `fps-parity` (with `BASE=`), `elite-progression` and `support` (with `BASE=`), then the v0.7B set below. Serve the v0.7D base from a worktree on port 4174 as described below.
 - Regression set used for v0.7D: `squad-training` (with `BASE=<v0.7C build>`; `QUICK=1` skips the long runs), `training-rebalance`, `progression`, `support` (with `BASE=`), `elite-progression` and `fps-parity` (with `BASE=`), then the v0.7B set below.
 - Regression set used for v0.7C: `support` (with `BASE=<v0.7B.1 build>`), `fps-parity` (with `BASE=`), `training-rebalance` and `elite-progression` (with `BASE=`), then the v0.7B set below.
 - Regression set used for v0.7B.1: `training-rebalance` (with `BASE=<v0.7B build>`), then the v0.7B set below. `progression.cjs` expectations follow the v0.7B.1 XP / training values.
 - Regression set used for v0.7B: `elite-progression` (with `BASE=<v0.7A build>`), `elite logic permadeath recruitment failure-recruit progression campaign-rules barracks chapter2 fps-default` and `fps-parity` (with `BASE=<previous build>` to prove a change leaves the Recruit-only simulation bit-identical). The suites that check the save version expect v9.
 - To serve a previous build for `BASE=`: `git worktree add /tmp/base <commit> && (cd /tmp/base && npm ci && npm run build)`, then `npx vite preview --port 4174 --outDir /tmp/base/dist`.
-- Known pre-existing flakes: `logic.cjs` Ranger Quick Reflexes move-speed check and the escort-formation timing check fail intermittently on unchanged builds. `support.cjs` F2 (detonation frame < 33 ms under a 4x throttle) is timing-noisy: it also fails on the unchanged v0.7C build (2 of 3 runs passed there in the v0.7D session).
+- Known pre-existing flakes (v0.8A: `elite.cjs` D5 Ironclad-in-the-field failed once with 0 hits while 16 suites ran in parallel, then passed alone 3 of 3; `progression.cjs` UI double-tap checks fail only under that parallel load): `logic.cjs` Ranger Quick Reflexes move-speed check and the escort-formation timing check fail intermittently on unchanged builds. `support.cjs` F2 (detonation frame < 33 ms under a 4x throttle) is timing-noisy: it also fails on the unchanged v0.7C build (2 of 3 runs passed there in the v0.7D session).
 - Headless perf: never render hundreds of frames in one synchronous `page.evaluate`; the rasterizer stalls 1-2.5 s every ~35 frames on any build. `squad-training.cjs` F4 yields between frames.
 
 ## Where Elite lives
@@ -73,6 +74,16 @@ Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0
 | Sounds `jet`, `strike`, `siren`, `beep`, `nuke` | `src/audio.ts` |
 | Suite, genuine v0.7B.1 save | `tools/support.cjs`, `tools/fixtures/v0.7B.1-save.json` |
 
+## Where Chapter 3A lives (v0.8A)
+
+- **Briefings**: `briefingHtml` / `openBriefing` / `briefOpen` in `src/menus.ts`; text in `CampaignMission.brief` (`src/campaign.ts`); CSS `.brief*` at the end of `src/style.css`. Every tool that taps `[data-a="deploy"]` now also taps `[data-a="brief-deploy"]`.
+- **Enemy awareness**: `src/awareness.ts` (`raiseAlert`, `alertUnit`, `alertSteer`, `awareEligible`), wired in `Game.damage` (any squad-sourced hit / kill on an enemy, origin = shooter position at fire time via `Projectile.from` / `DamageOpts.origin`) and the guard wake in `src/enemy.ts`. `Game.alertLog` counts broadcasts for tests. Numbers in `CFG.awareness`.
+- **Extraction pressure**: `pressureGroups` + `Mission.updatePressure` / `pressurePoint` in `src/mission.ts`; per-mission tier and edge points in `ExtractionSpec.pressure` (`src/missions.ts`). Spawned units carry `reinforcement = true`. `Mission.incoming` feeds the off-screen "ENEMIES" arrows (`src/render.ts`).
+- **Mission 11**: `LiberateZonesObjective`, `SafehouseDefenseObjective`, `AlliesAliveOptional` in `src/chapter3.ts`; map `RESISTANCE_MAP`, `VILLAGE_ZONES`, `SAFEHOUSE_*` in `src/map.ts`. Allies are `Unit`s with `team = 'squad'`, `ally = true`, stats `CFG.resistance`, in `Game.allies`; they move with `updateAllies` (`src/squad.ts`), fire through the normal `updateWeapon`, use `updateDowned` and emit `allyDowned` / `allyKia`. They are skipped by settlement, stats, the KIA journal and casualty decisions.
+- **Mission 12**: `src/artillery.ts` (`Artillery`: spotlights, exposure, alert, markers, impact, `drawGround` / `drawLights`), created by `Mission.start` from `MissionScript.artillery`; guns are `structure = 'artillery'` targets of `ArtilleryObjective` (`src/chapter3.ts`); `NoArtilleryAlertOptional`. Numbers in `CFG.artillery`.
+- **Commando**: class in `src/classes.ts`, stats `CFG.commando`, offhand pistol `updateOffhand` + `squadReaction` / `turnMul` in `src/combat.ts`, `BulletStormAbility` in `src/abilities.ts` (`CFG.bulletStorm`), specs `com-gunslinger` / `com-assault` in `src/elite.ts` (`CFG.elite.quickDraw*`, `cq*`, `closeQuartersMul`), recruitment row in `src/recruitment.ts`, unlock text `CLASS_UNLOCK_TEXT.commando`, drawing (`weapon: 'pistols'`, `pack: 'vest'`, `helmet: 'beret'`) in `src/render.ts`, save guard `noCommando` in `src/save.ts`.
+- **Tests**: `tools/chapter3a.cjs` (91 checks: awareness, extraction, briefings, M11, M12, Commando, older saves, phones).
+
 ## Invariants to keep
 
 1. **Elite Level 1 is never weaker than Recruit Level 25** and is exactly the v0.7A soldier. The stat pipeline still reads the Recruit level (25) for Elites; the v0.7B level bonus is one multiplier per stat in `eliteModifiers` (null at Elite 1), next to the trait.
@@ -92,6 +103,11 @@ Rules and numbers: README → "Elite Promotions (v0.7A)", "Elite Progression (v0
 15. (v0.7D) **Squad Training tables are locked** (`SQUAD_BONUS`, ranks 0-10) and prices are fixed (46,250 CR per category, 185,000 in all). Ranks are stored as numbers, so a retune changes the benefit of ranks already bought; keep every rank ≥ its previous value (invariant 8).
 16. (v0.7D) Individual max accuracy (-55%) + squad max (-50%) exceed -100% of the class spread, so fully trained soldiers sit on the 1° floor (Infantry / Heavy / Medic from squad rank 8, Sniper from rank 2). Keep the floor branch in `effectiveStats` that scales the moving penalty in closed form; a new spread bonus must go through the same additive sum.
 17. (v0.7D) HUD controls on small phones use `var(--t44)` for a ≥ 44 CSS px touch area; new HUD buttons should do the same (the stage scales everything by ~0.52 on an iPhone SE).
+18. (v0.8A) **Only searchlights raise the artillery alert.** `src/artillery.ts` reads spotlights only; awareness never touches it, and it never alerts enemies. Keep the two systems separate.
+19. (v0.8A) **Awareness is bounded and event-driven**: received alerts are never re-broadcast, a unit broadcasts at most once per `CFG.awareness.repeat` s, search ends in a dormant guard. No per-frame map scans; it uses no `Math.random` (reaction delay is derived from the unit id).
+20. (v0.8A) **Extraction reinforcements are finite and never required**: a mission has either a scripted `finalWave` or `pressure`, never both; no per-kill rewards exist, so nothing can be farmed. The helicopter countdown is separate and unchanged.
+21. (v0.8A) **Resistance allies never touch the account**: no XP, no stats, no casualty decision, no Memorial, nothing saved. Anything that iterates `Game.soldiers` for rewards must keep ignoring `Game.allies`.
+22. (v0.8A) Spec id `inf-recon` is shown as "Recon Specialist"; titles can change, ids cannot (invariant 3).
 
 ## v0.7B: shipped
 
@@ -163,3 +179,15 @@ Open:
 - **Squad Training at 185,000 CR** is designed for a 50-mission economy; with Chapter 1-2 Credits (~500-1,150 per mission) ranks 6-10 are a long goal. Watch the pace once Chapter 3 Credits exist.
 - Nuke still unreachable in the live campaign until Mission 13 (six-soldier squads); performance with six Elites is measured only in the dev harness (headless, CPU-throttled), not on a phone.
 - Chapter 3 enemy scaling (see v0.7C notes): fully upgraded Elite Heavy Gunners now do ~31% more sustained damage than the v0.7C maximum (172.8 vs 131.8 damage/s per Weapons Specialist before passives), so Missions 11-15 should grow encounter size and mix.
+
+## v0.8A: what shipped and what is open
+
+Shipped: mission briefings (M1-12), enemy group awareness, extraction pressure presets, Mission 11 Resistance Rising (zones in any order, safehouse defence, three resistance allies), Mission 12 Artillery Hunt (three guns, searchlights, artillery alert, markers, shells), the Commando class (dual independent pistols, Bullet Storm, Gunslinger / Assault Specialist), the Recon Specialist rename, 44 CSS px touch areas on every portrait ability button, `tools/chapter3a.cjs`. Red Canyon's pressure points sit at the canyon's west end (the only edge off screen from that extraction zone). Save v9 unchanged; every fixture saves byte-identically to v0.7D.1.
+
+Open:
+- **Mission length**: the autopilot clears M11 in ~2.5 min and M12 in ~1.5-1.7 min at level 12 (M10: ~2.5 min). Real players will be slower, but check on phones whether 4-6 minutes is reached; the levers are zone defender counts, wave sizes (`SafehouseDefenseObjective` waves) and gun HP (900).
+- **Awareness tuning** wants phone playtests: radius 300, reaction 0.3-0.8 s, search 12 s, sniper standoff 0.72 (all live in ⚙).
+- **Target leading** (from v0.7D.1) is still not implemented, by instruction.
+- `fps-parity BASE=` against pre-0.8A builds differs by design (awareness). The 30 / 60 FPS parity within this build passes.
+- Chapter 3B: Missions 13-15, the sixth deployment slot (`CAPACITY_TABLE` already says 6 from Mission 13), Demolitions Expert, Inferno and General Voss are not started. `mission-13` is a non-playable placeholder row.
+- The `alertLog.broadcasts` counter used by the tools also counts hits on enemies outside awareness (waves, structures). Diagnostic only.

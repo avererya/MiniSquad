@@ -372,3 +372,71 @@ export const STRONGHOLD_MAP: MapDef = {
   roads: [[{ x: 0, y: 1500 }, { x: 900, y: 1350 }, { x: 1500, y: 1150 }, { x: 2200, y: 1000 }, { x: 2800, y: 1000 }]],
   props: [{ kind: 'flag', x: 2800, y: 560 }, { kind: 'flag', x: 1550, y: 330 }],
 };
+
+// =====================================================================================
+// v0.8A CHAPTER 3 — THE RESISTANCE
+// =====================================================================================
+
+// Mission 11 "Resistance Rising": an occupied farming village. Three liberation zones (west farmstead, north
+// church square, east market) sit 900+ px apart (well beyond the 300 px enemy alert radius, so freeing one
+// never wakes the others); the resistance safehouse is in the middle, sandbagged, with the safehouse building
+// on its north side. The helicopter lands in the north-east field.
+export const SAFEHOUSE_ZONE: Rect = { x: 1350, y: 830, w: 300, h: 220 };
+export const SAFEHOUSE_POSTS: Vec[] = [{ x: 1420, y: 900 }, { x: 1580, y: 900 }, { x: 1500, y: 1000 }];
+export const VILLAGE_ZONES: { id: string; name: string; short: string; rect: Rect; tag: string }[] = [
+  { id: 'farm', name: 'Farmstead', short: 'FARM', rect: { x: 380, y: 560, w: 340, h: 260 }, tag: 'zone-farm' },
+  { id: 'church', name: 'Church Square', short: 'CHURCH', rect: { x: 1330, y: 220, w: 340, h: 240 }, tag: 'zone-church' },
+  { id: 'market', name: 'Market', short: 'MARKET', rect: { x: 2280, y: 640, w: 340, h: 260 }, tag: 'zone-market' },
+];
+export const RESISTANCE_MAP: MapDef = {
+  id: 'resistance', w: 3000, h: 1800, theme: 'farm',
+  obstacles: [
+    // safehouse (building north, sandbags with gaps west / east / south)
+    B(1400, 700, 200, 110),
+    S(1340, 1066, 120, 16), S(1540, 1066, 120, 16), S(1324, 860, 16, 120), S(1660, 860, 16, 120),
+    // west farmstead: farmhouse, barn, fences
+    B(290, 380, 180, 140), B(760, 600, 150, 170), F(400, 850, 220, 12), F(240, 600, 12, 200), C(470, 640), C(506, 640),
+    // north church square: church, walls with gaps
+    B(1380, 50, 240, 130), W(1250, 240, 18, 160), W(1750, 240, 18, 160), C(1440, 330), C(1560, 380),
+    // east market: stalls and houses
+    B(2250, 450, 200, 140), B(2680, 620, 170, 190), B(2300, 960, 180, 130), C(2400, 720), C(2500, 820), C(2436, 720),
+    // village houses and walls between the zones
+    B(900, 1150, 180, 150), B(1900, 1150, 200, 150), B(950, 250, 170, 130), B(2000, 330, 160, 130), B(600, 1350, 160, 130),
+    W(1100, 650, 18, 180), W(1900, 650, 18, 180), W(1150, 1450, 220, 18), W(2200, 1350, 18, 200), W(2650, 1150, 200, 18),
+    C(1250, 1000), C(1750, 1000), C(1100, 450), C(2150, 700), C(800, 950), C(2550, 1450),
+  ],
+  start: { x: 220, y: 1620 }, startZone: { x: 40, y: 1500, w: 260, h: 260 },
+  medkits: [{ x: 1000, y: 1000 }, { x: 1950, y: 760 }, { x: 1500, y: 1250 }],
+  rapidFire: [{ x: 2100, y: 1100 }],
+  roads: [
+    [{ x: 0, y: 1620 }, { x: 700, y: 1300 }, { x: 1500, y: 1100 }, { x: 2400, y: 900 }, { x: 3000, y: 800 }],
+    [{ x: 550, y: 700 }, { x: 1500, y: 930 }, { x: 1500, y: 340 }],
+    [{ x: 1500, y: 930 }, { x: 2200, y: 600 }, { x: 2750, y: 200 }],
+  ],
+  props: [{ kind: 'tent', x: 1200, y: 1300 }, { kind: 'tent', x: 1760, y: 1240 }],
+};
+
+// Mission 12 "Artillery Hunt": a night gun line. Three sandbagged artillery emplacements (west, south-centre,
+// east), each watched by searchlights that sweep the approaches; concrete blocks, bunkers and walls give
+// alternate routes in the dark. The helicopter lands in the south-east.
+export const ARTILLERY_GUNS: Vec[] = [{ x: 800, y: 420 }, { x: 1750, y: 1110 }, { x: 2650, y: 520 }];
+export const ARTILLERY_MAP: MapDef = {
+  id: 'artillery', w: 3200, h: 1900, theme: 'night',
+  obstacles: [
+    // gun 1 (west): open to the south
+    S(680, 320, 240, 16), S(680, 336, 16, 150), S(904, 336, 16, 150), B(460, 230, 160, 120), W(1100, 300, 18, 220), C(650, 620), C(686, 620),
+    // gun 2 (south-centre): open to the north
+    S(1630, 1220, 240, 16), S(1630, 1030, 16, 190), S(1854, 1030, 16, 190), K(1400, 1160, 120, 90), B(2000, 1260, 200, 150),
+    // gun 3 (east): open to the east
+    S(2530, 410, 16, 220), S(2530, 410, 240, 16), S(2530, 614, 240, 16), B(2300, 240, 180, 140), K(2820, 720, 140, 90, 34),
+    // cover between the guns
+    K(1200, 800, 140, 80, 34), W(1500, 620, 200, 18), B(1300, 330, 200, 140), K(880, 1300, 120, 80, 34), W(600, 1350, 18, 200),
+    C(1100, 1500), C(2300, 1000), C(2336, 1000), K(2500, 1350, 140, 90, 34), W(2200, 800, 18, 180), B(2880, 1240, 180, 130),
+    W(1950, 500, 18, 200), C(1600, 850), C(2050, 1000), K(400, 900, 120, 80, 34), C(1400, 1600),
+  ],
+  start: { x: 220, y: 1700 }, startZone: { x: 40, y: 1580, w: 260, h: 260 },
+  medkits: [{ x: 1250, y: 1100 }, { x: 2150, y: 1150 }, { x: 1050, y: 650 }],
+  rapidFire: [{ x: 2250, y: 650 }],
+  roads: [[{ x: 0, y: 1700 }, { x: 900, y: 1500 }, { x: 1750, y: 1450 }, { x: 2600, y: 1500 }, { x: 3200, y: 1700 }], [{ x: 1750, y: 1450 }, { x: 1750, y: 900 }, { x: 2650, y: 700 }]],
+  props: [{ kind: 'flood', x: 1750, y: 1500 }, { kind: 'radar', x: 1500, y: 470 }],
+};

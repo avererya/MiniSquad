@@ -219,7 +219,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     page.on('pageerror', (e) => errors.push(String(e)));
     const save = () => page.evaluate(() => JSON.parse(localStorage.getItem('minisquad.save')));
     await page.goto(URL); await page.waitForTimeout(200);
-    await page.click('[data-a="deploy"]');
+    await page.click('[data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
     await page.evaluate(() => window.game.win());
     await page.waitForTimeout(100);
     const credUI = await page.textContent('.r-cr');
@@ -237,7 +237,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     check('UI: one-time Tank recruit notice shown after the first clear', await page.isVisible('.rn-notice'), '');
     await page.click('[data-a="rn-later"]'); await page.waitForTimeout(500);
     await page.click('[data-a="csel"][data-id="first-contact"]'); // the campaign moved on to M2: replay M1
-    await page.click('[data-a="deploy"]');
+    await page.click('[data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
     await page.evaluate(() => window.game.win());
     await page.keyboard.press('Enter'); // Retry from Results
     await page.evaluate(() => window.game.win());
@@ -283,7 +283,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.click('.b-slots .slot[data-slot="1"]');
     await page.click('.s-card[data-id="ranger"] .pick');
     await page.click('.b-go');
-    await page.click('.c-btns [data-a="deploy"]');
+    await page.click('.c-btns [data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
     const hasTank = await page.evaluate(() => window.game.soldiers.some((s) => s.identity.id === 'tank'));
     await page.evaluate(() => window.game.toBarracks());
     check('UI: squad change keeps Tank\'s training', !hasTank && (await page.evaluate(() => window.game.roster.get('tank').training.damage)) === 2);
@@ -360,7 +360,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await page.tap('[data-tab="training"]');
     const noDeploy = (await page.$$('[data-a="deploy"]')).length === 0;
     await page.tap('.m-nav.back'); await page.waitForTimeout(100);
-    await page.tap('.c-btns [data-a="deploy"]');
+    await page.tap('.c-btns [data-a="deploy"]'); await page.tap('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
     const dep = await page.evaluate(() => window.game.phase);
     check(`${dev.name}: no Deploy on Training; Campaign ◂ then Deploy starts the mission`, noDeploy && dep === 'playing', dep);
     await page.evaluate(() => { window.game.roster.get('ace').progression.xp = 740; window.game.win(); });

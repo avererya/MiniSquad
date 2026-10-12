@@ -98,7 +98,7 @@ const DEVICES = [
     const OL = await layout('.nr-row .rc-buy, .rc-card .rc-buy, [data-a="refresh"], .m-tab, [data-a="to-campaign"]');
     const sep = await page.evaluate(() => { const s = document.querySelector('.nr-sec').getBoundingClientRect(), c = document.querySelector('.rc-cards').getBoundingClientRect(); return { rows: document.querySelectorAll('.nr-row').length, cards: document.querySelectorAll('.rc-card').length, above: s.bottom <= c.top, title: document.querySelector('.nr-title').textContent }; });
     check(`${dev.name}: office: CAMPAIGN RECRUITS (Tank, Doc) above the 3 random cards, clearly separated`, sep.rows === 2 && sep.cards === 3 && sep.above && /CAMPAIGN RECRUITS/.test(sep.title), JSON.stringify(sep));
-    check(`${dev.name}: office: every Recruit / Refresh / tab button reachable + tappable (>=34px), no clipping, text >= 11px`, OL.n === 2 + 3 + 1 + 4 + 1 && okBoxes(OL) && !OL.hOverflow && OL.clipped.length === 0 && OL.minFont >= 11, desc(OL));
+    check(`${dev.name}: office: every Recruit / Refresh / tab button reachable + tappable (>=34px), no clipping, text >= 11px`, OL.n === 2 + 3 + 1 + 5 + 1 && okBoxes(OL) && !OL.hOverflow && OL.clipped.length === 0 && OL.minFont >= 11, desc(OL));
     await shot('office-campaign-recruits');
     await page.evaluate(() => { document.getElementById('menu').scrollTop = 1e6; });
     await shot('office-scrolled');

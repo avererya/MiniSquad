@@ -13,7 +13,7 @@ const SQUAD = process.env.SQUAD ? process.env.SQUAD.split('+') : null; // e.g. S
   await page.goto(process.env.URL || 'http://localhost:4173/');
   // v0.4: this tool plays the comms-outpost map, now Mission 3 (Field Medicine); unlock all (debug) first
   await page.evaluate(() => { window.__debugUnlockAll(); window.game.selectMission('field-medicine', true); });
-  await page.click('[data-a="deploy"]');
+  await page.click('[data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
   const result = await page.evaluate(async ({ INVULN, SIZE, SQUAD }) => {
     const g = window.game;
     g.reset(SQUAD || SIZE);

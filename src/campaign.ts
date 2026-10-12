@@ -15,17 +15,18 @@
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
-export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault';
+export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery';
 export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
   elimination: 'Elimination', sabotage: 'Sabotage', capture: 'Capture & Hold', survival: 'Survival / Extraction', rescue: 'Rescue / Escort',
   interception: 'Convoy Interception', night: 'Night Sabotage', assault: 'Assault / Boss',
+  liberation: 'Liberation & Defense', artillery: 'Search & Destroy',
 };
 
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
 export const CHAPTERS: { number: number; name: string; from: number; to: number }[] = [
   { number: 1, name: '', from: 1, to: 5 }, // (Chapter 1 was never given a name)
   { number: 2, name: 'Behind Enemy Lines', from: 6, to: 10 },
-  { number: 3, name: 'Coming soon', from: 11, to: Infinity },
+  { number: 3, name: 'The Resistance', from: 11, to: Infinity },
 ];
 export const chapterOf = (missionNumber: number) => CHAPTERS.find((c) => missionNumber >= c.from && missionNumber <= c.to) ?? CHAPTERS[0];
 
@@ -74,6 +75,11 @@ export interface CampaignMission {
   unlocks: Unlocks;
   /** Introduced mechanic, shown on the campaign card. */
   teaches: string;
+  /**
+   * v0.8A pre-deployment briefing (DEPLOY on the Campaign screen opens it): one or two sentences of story, the
+   * primary objective in one line and a short tactical tip. Optional objectives come from `optional`.
+   */
+  brief?: { story: string; objective: string; tip?: string };
   playable: boolean;
   /**
    * v0.1-v0.3 mission id this campaign mission replaces (same map). A legacy first clear of it
@@ -103,6 +109,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Eliminate the three enemy patrols', 'Reach the extraction zone'],
     optional: [], stars: { two: 'fullExtraction', three: 'noDowns' },
     teaches: 'Movement, auto-fire, Grenade, extraction',
+    brief: {
+      story: 'Enemy patrols are probing the valley. Push them back before they report our position, then get out.',
+      objective: 'Eliminate the three enemy patrols, then reach the extraction zone.',
+      tip: 'Your soldiers aim and fire on their own: you steer the squad. Tap a portrait to throw a grenade into a group.',
+    },
     unlocks: { missions: ['heavy-support'], recruits: ['tank'] },
   },
   {
@@ -111,6 +122,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Destroy the enemy supply depot', 'Reach the extraction zone'],
     optional: [{ id: 'mg-nest', label: 'Eliminate the guarded MG nest' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Heavy Gunner: Suppressive Fire',
+    brief: {
+      story: 'An enemy supply depot is feeding the front line. Take it out.',
+      objective: 'Destroy the enemy supply depot, then reach the extraction zone.',
+      tip: "The Heavy Gunner's Suppressive Fire raises his fire rate by 75% for 5 seconds. Save it for when the guards engage.",
+    },
     unlocks: { missions: ['field-medicine'], recruits: ['doc'] },
   },
   {
@@ -119,6 +135,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Clear the outpost defenders', 'Hold the outpost', 'Survive until extraction'],
     optional: [{ id: 'all-extracted', label: 'Extract every soldier', replaces: 'fullExtraction' }], stars: { two: 'optionals', three: 'noDowns' },
     teaches: 'Medic: Field Treatment and fast revives',
+    brief: {
+      story: 'The enemy communications outpost watches the whole sector. Take it and hold it until the helicopter arrives.',
+      objective: 'Clear the outpost defenders, hold the outpost, then survive until extraction.',
+      tip: "The Medic's Field Treatment heals everyone close to them, and Medics revive faster. Keep the squad together while you hold.",
+    },
     unlocks: { missions: ['red-canyon'], recruits: [] },
     legacyId: 'comms-outpost',
   },
@@ -128,6 +149,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Advance into the canyon', 'Survive the ambush', 'Reach the extraction zone'],
     optional: [], stars: { two: 'fullExtraction', three: 'noDowns' },
     teaches: 'Revive under fire: 20 s bleed-out',
+    brief: {
+      story: 'The canyon road is the only way out of the valley, and the enemy knows it.',
+      objective: 'Advance into the canyon, survive the ambush, then reach the extraction zone.',
+      tip: 'A downed soldier bleeds out in 20 seconds. The revive only runs while a squadmate stays next to them.',
+    },
     unlocks: { missions: ['bring-them-home'], recruits: [] },
   },
   {
@@ -136,6 +162,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Clear the compound guards', 'Free the captive', 'Escort the captive to extraction'],
     optional: [{ id: 'captive-unharmed', label: 'The captive takes no damage' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Escort and positioning',
+    brief: {
+      story: 'One of our scouts was captured and is being held in the village compound.',
+      objective: 'Clear the compound guards, free the captive, then escort them to the extraction zone.',
+      tip: 'Once freed, the captive walks in the middle of the squad. Clear the way ahead before you move them.',
+    },
     unlocks: { missions: ['bridgehead'], recruits: ['havoc'], capacityNote: 'Squad size 4 for Mission 6' },
   },
   // ---- v0.6.2 Chapter 2: Behind Enemy Lines ----
@@ -145,6 +176,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Clear the bridgehead defenders', 'Hold the bridge', 'Reach the extraction zone'],
     optional: [{ id: 'no-kia', label: 'No soldier KIA', replaces: 'fullExtraction' }], stars: { two: 'optionals', three: 'noDowns' },
     teaches: 'Chokepoints and enemy Snipers (watch the red laser)',
+    brief: {
+      story: "The only bridge over the river is the key to the enemy's rear. Seize it and hold it against the counterattack.",
+      objective: 'Clear the bridgehead defenders, hold the bridge, then reach the extraction zone.',
+      tip: 'A red laser means an enemy Sniper is aiming. Step off the line or break line of sight before it fires.',
+    },
     unlocks: { missions: ['prison-break'], recruits: [], capacityNote: 'Squad size 5 from Mission 7' },
   },
   {
@@ -153,6 +189,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Clear the camp guards', 'Free the captured medic', 'Escort the medic to extraction'],
     optional: [{ id: 'prisoner-safe', label: 'The prisoner is never downed' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Watchtowers and protective escort formation',
+    brief: {
+      story: 'A captured field medic is held in a guarded prison camp. Break in and bring them out alive.',
+      objective: 'Clear the camp guards, free the captured medic, then escort them to the extraction zone.',
+      tip: 'Watchtower guards never leave their towers. Use the walls to break their line of sight, or come at them from the side.',
+    },
     unlocks: { missions: ['convoy-crusher'], recruits: ['patch'] },
   },
   {
@@ -161,6 +202,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Destroy at least 2 of the 3 supply trucks', 'Reach the extraction zone'],
     optional: [{ id: 'all-trucks', label: 'Destroy all three trucks' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Moving targets and Armored Troopers (flank them)',
+    brief: {
+      story: 'Three supply trucks are crossing the canyon under escort. Stop them before they get through.',
+      objective: 'Destroy at least 2 of the 3 supply trucks, then reach the extraction zone.',
+      tip: 'Armored Troopers shrug off rounds to their front plate. Flank them, or use grenades.',
+    },
     unlocks: { missions: ['blackout'], recruits: [] },
   },
   {
@@ -169,6 +215,11 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Destroy the 3 communication relays', 'Reach the extraction zone'],
     optional: [{ id: 'alarm', label: 'Destroy every relay before the alarm maxes out' }], stars: { two: 'optionals', three: 'noKia' },
     teaches: 'Reinforcement pressure and the alarm',
+    brief: {
+      story: "Under cover of night, cut the garrison's communications before the alarm brings every soldier in the area.",
+      objective: 'Destroy the 3 communication relays, then reach the extraction zone.',
+      tip: 'Every relay still standing pushes the alarm and its reinforcements faster. Move quickly from relay to relay.',
+    },
     unlocks: { missions: ['iron-fist'], recruits: [], classes: ['sniper'] },
   },
   {
@@ -177,11 +228,43 @@ export const CAMPAIGN: CampaignMission[] = [
     primary: ['Destroy the 2 enemy installations', 'Storm the stronghold', 'Defeat the Iron Warden', 'Reach the extraction zone'],
     optional: [{ id: 'no-kia', label: 'No soldier KIA', replaces: 'fullExtraction' }], stars: { two: 'optionals', three: 'noDowns' },
     teaches: 'Boss fight: dodge the machine gun and the rocket circle',
-    unlocks: { missions: [], recruits: [] },
+    brief: {
+      story: "The stronghold is the heart of the enemy's defences, and its commander leads from the front.",
+      objective: 'Destroy the 2 installations, storm the stronghold, defeat the Iron Warden, then reach the extraction zone.',
+      tip: "Watch the Iron Warden's tells: a sweeping machine-gun line and a red rocket circle. Keep moving out of both.",
+    },
+    unlocks: { missions: ['resistance-rising'], recruits: [] },
+  },
+  // ---- v0.8A Chapter 3: The Resistance ----
+  {
+    id: 'resistance-rising', number: 11, name: 'Resistance Rising', type: 'liberation', playable: true,
+    briefing: 'Liberate an occupied village and help the local resistance hold its safehouse.',
+    primary: ['Liberate the 3 village zones (any order)', 'Defend the resistance safehouse', 'Reach the extraction zone'],
+    optional: [{ id: 'allies-alive', label: 'Keep all three resistance allies alive through extraction' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Resistance allies fight beside you and can be revived',
+    brief: {
+      story: 'An occupied village has become a rallying point for local resistance fighters. Liberate its key positions and help the resistance hold off the enemy counterattack.',
+      objective: 'Liberate three village zones, then defend the resistance safehouse.',
+      tip: 'Clear the village in any order, but regroup before the counterattack begins.',
+    },
+    unlocks: { missions: ['artillery-hunt'], recruits: [] },
   },
   {
-    id: 'mission-11', number: 11, name: 'Coming soon', type: 'elimination', playable: false,
-    briefing: 'Chapter 3 is being planned.', primary: ['Not available in v0.6.2'], optional: [],
+    id: 'artillery-hunt', number: 12, name: 'Artillery Hunt', type: 'artillery', playable: true,
+    briefing: 'Destroy three artillery guns at night without being caught in the searchlights.',
+    primary: ['Destroy the 3 artillery guns (any order)', 'Reach the extraction zone'],
+    optional: [{ id: 'no-artillery', label: 'Complete the mission without triggering an artillery alert' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Searchlights and artillery: keep moving, use solid cover',
+    brief: {
+      story: 'Enemy artillery is threatening resistance positions across the region. Infiltrate the gun emplacements, avoid the searchlights, and destroy all three artillery pieces.',
+      objective: 'Destroy three enemy artillery guns.',
+      tip: 'Keep moving when artillery marks your position. Solid cover reduces incoming blast damage.',
+    },
+    unlocks: { missions: [], recruits: [], classes: ['commando'] },
+  },
+  {
+    id: 'mission-13', number: 13, name: 'Coming soon', type: 'elimination', playable: false,
+    briefing: 'The next part of Chapter 3 is coming in a future update.', primary: ['Not available yet'], optional: [],
     stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: 'Chapter 3', unlocks: { missions: [], recruits: [] },
   },
 ];
@@ -245,6 +328,11 @@ export const CLASS_UNLOCK_TEXT: Record<string, { title: string; body: string; un
     title: 'NEW CLASS UNLOCKED! SNIPER',
     body: 'Long-range precision specialists are now available in the Recruitment Office.',
     unlockText: 'Unlock the Sniper class for recruitment',
+  },
+  commando: {
+    title: 'NEW CLASS UNLOCKED! COMMANDO',
+    body: 'Fast dual-pistol close-assault specialists are now available in the Recruitment Office.',
+    unlockText: 'Unlock the Commando class for recruitment',
   },
 };
 

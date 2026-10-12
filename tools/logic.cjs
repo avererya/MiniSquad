@@ -6,7 +6,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(process.env.URL || 'http://localhost:4173/');
-  await page.click('[data-a="deploy"]');
+  await page.click('[data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
   const res = await page.evaluate(async () => {
     const g = window.game; const out = [];
     // v0.4: these rule checks use the comms-outpost map, which is now Mission 3 (Field Medicine)

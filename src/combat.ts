@@ -5,7 +5,7 @@ import type { Team, Unit } from './unit';
 import { DEG, dist, rand, segCircle, turnToward, angleDiff, type Vec } from './util';
 import { sfx } from './audio';
 import { sniperShouldSwitch } from './targeting';
-import { onFire, onHit, penetrate } from './elite';
+import { closeQuartersMul, onFire, onHit, penetrate } from './elite';
 
 export interface Projectile {
   pos: Vec;
@@ -24,6 +24,8 @@ export interface Projectile {
   mul?: number;
   /** v0.7A: a Perfect Aim charged shot (drawn brighter). */
   charged?: boolean;
+  /** v0.8A: where the shooter stood when the round left the barrel (enemy group awareness). */
+  from?: Vec;
 }
 
 export interface Particle { pos: Vec; vel: Vec; life: number; maxLife: number; color: string; size: number; z?: number; vz?: number }
@@ -83,18 +85,18 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   // v0.6.2 squad Sniper: may trade up to a higher-priority target before committing to a shot
   if (u.target && u.classDef?.id === 'sniper' && !u.target.structure) {
     const t = u.targeting.select(u, hostiles, game);
-    if (t && t !== u.target && sniperShouldSwitch(u, u.target, t)) { u.target = t; u.reactionLeft = 0.08; }
+    if (t && t !== u.target && sniperShouldSwitch(u, u.target, t)) { u.target = t; u.reactionLeft = squadReaction(u); }
   }
   // an objective structure is only shot when no enemy soldier is in sight: re-check each step
   if (u.target?.structure) {
     const t = u.targeting.select(u, hostiles, game);
-    if (t && t !== u.target && !t.structure) { u.target = t; u.reactionLeft = 0.08; }
+    if (t && t !== u.target && !t.structure) { u.target = t; u.reactionLeft = squadReaction(u); }
   }
   if (!u.target) {
     const t = u.targeting.select(u, hostiles, game);
     if (t) {
       u.target = t;
-      u.reactionLeft = u.team === 'enemy' ? u.reactionTime : 0.08;
+      u.reactionLeft = u.team === 'enemy' ? u.reactionTime : squadReaction(u);
     }
   }
   if (u.target !== prevTarget) u.aimHeld = 0;
@@ -102,7 +104,7 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   let desired = u.aim;
   if (u.target) desired = Math.atan2(u.target.pos.y - u.pos.y, u.target.pos.x - u.pos.x);
   else if (Math.hypot(u.vel.x, u.vel.y) > 20) desired = Math.atan2(u.vel.y, u.vel.x);
-  u.aim = turnToward(u.aim, desired, st.turnRate * dt);
+  u.aim = turnToward(u.aim, desired, st.turnRate * turnMul(u) * dt);
 
   const aimNeed = aimTimeOf(u);
   // held aim (Sniper): accrues while the barrel is on the target (also during the cooldown)
@@ -121,11 +123,13 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   const a = u.aim + rand(-half, half);
   const dx = Math.cos(a), dy = Math.sin(a);
   const speed = st.projectileSpeed;
+  // v0.8A Commando: the right-hand pistol fires from the right side of the body
+  const side = u.offhand ? 5 : 0, sx = -Math.sin(u.aim) * side, sy = Math.cos(u.aim) * side;
   const vis = u.classDef?.visual;
   // v0.7A Elite passives decided when the round leaves the barrel (Rally, Perfect Aim charge)
   const el = u.team === 'squad' && (u.elite || u.rallied) ? onFire(u) : null;
   game.projectiles.push({
-    pos: { x: u.pos.x + dx * 6, y: u.pos.y + dy * 6 },
+    pos: { x: u.pos.x + dx * 6 + sx, y: u.pos.y + dy * 6 + sy },
     vel: { x: dx * speed, y: dy * speed },
     team: u.team,
     damage: el ? st.damage * el.mul : st.damage,
@@ -137,12 +141,82 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
     len: vis?.tracerLen,
     hot: u.suppressing,
     precise: aimNeed > 0,
+    ...(u.team === 'squad' ? { from: { x: u.pos.x, y: u.pos.y } } : {}),
   });
   u.aimHeld = 0;
   u.shots++;
   u.fireCooldown = (1 / u.fireRate) * (u.team === 'enemy' ? rand(0.85, 1.2) : rand(0.95, 1.05));
   u.muzzle = CFG.feel.muzzleFlash;
   if (u.team === 'squad') sfx(aimNeed > 0 ? 'snipe' : 'shot'); else sfx('eshot');
+}
+
+/** Reaction before a squad unit's first shot on a new target (0.08 s; v0.8A Quick Draw / Enhanced Bullet Storm: faster). */
+function squadReaction(u: Unit): number {
+  if (u.elite?.id === 'com-gunslinger') return u.ability?.activeLeft && u.ability.id === 'bulletStorm' ? 0 : CFG.elite.quickDrawReaction;
+  return 0.08;
+}
+/** Turn-rate multiplier (v0.8A Quick Draw: x1.4; 1 for everyone else). */
+function turnMul(u: Unit): number { return u.elite?.id === 'com-gunslinger' ? CFG.elite.quickDrawTurn : 1; }
+
+/** Widest angle between the body's aim and the left-hand pistol (arms can't point backwards). */
+const OFFHAND_ARC = 75 * DEG;
+
+/**
+ * v0.8A COMMANDO LEFT-HAND PISTOL. The right-hand pistol is the ordinary weapon (updateWeapon); this second
+ * pistol has its own target, aim, reaction and cooldown (offset half a period at spawn so the two alternate).
+ * It prefers a DIFFERENT visible enemy than the right hand and falls back to the same one (both may focus a
+ * target). Same stats as the right hand (damage, fire rate incl. Bullet Storm, cone incl. the moving penalty,
+ * range, projectile). It only fires within OFFHAND_ARC of where the body aims.
+ */
+export function updateOffhand(u: Unit, game: Game, dt: number, hostiles: Unit[]) {
+  const o = u.offhand!;
+  o.cooldown -= dt; o.reaction -= dt; o.muzzle -= dt;
+  if (o.target && (!u.targeting.isValid(u, o.target, game) || (o.target === u.target && o.cooldown <= 0 && o.reaction <= 0 && offhandPick(u, hostiles, game, true)))) o.target = null;
+  if (!o.target) {
+    const t = offhandPick(u, hostiles, game, false);
+    if (t) { o.target = t; o.reaction = squadReaction(u); }
+  }
+  const st = u.stats;
+  let desired = u.aim;
+  if (o.target) desired = Math.atan2(o.target.pos.y - u.pos.y, o.target.pos.x - u.pos.x);
+  // the arm stays within the arc of the body's aim
+  const off = angleDiff(u.aim, desired);
+  if (Math.abs(off) > OFFHAND_ARC) desired = u.aim + Math.sign(off) * OFFHAND_ARC;
+  o.aim = turnToward(o.aim, desired, st.turnRate * turnMul(u) * dt);
+  if (!o.target || o.reaction > 0 || o.cooldown > 0) return;
+  if (Math.abs(angleDiff(o.aim, Math.atan2(o.target.pos.y - u.pos.y, o.target.pos.x - u.pos.x))) > st.aimTolerance * DEG) return;
+  const half = (u.cone * DEG) / 2;
+  const a = o.aim + rand(-half, half);
+  const dx = Math.cos(a), dy = Math.sin(a);
+  const sx = Math.sin(u.aim) * 5, sy = -Math.cos(u.aim) * 5; // left side of the body
+  const vis = u.classDef?.visual;
+  const el = u.elite || u.rallied ? onFire(u) : null;
+  game.projectiles.push({
+    pos: { x: u.pos.x + dx * 6 + sx, y: u.pos.y + dy * 6 + sy },
+    vel: { x: dx * st.projectileSpeed, y: dy * st.projectileSpeed },
+    team: 'squad',
+    damage: el ? st.damage * el.mul : st.damage,
+    ...(el ? { mul: el.mul, charged: el.charged } : {}),
+    life: (st.range * 1.25) / st.projectileSpeed,
+    trail: { x: u.pos.x, y: u.pos.y },
+    owner: u, width: vis?.tracerWidth, len: vis?.tracerLen,
+    from: { x: u.pos.x, y: u.pos.y },
+  });
+  u.shots++;
+  o.cooldown = (1 / u.fireRate) * rand(0.95, 1.05);
+  o.muzzle = CFG.feel.muzzleFlash;
+  sfx('shot');
+}
+
+/** Left-hand target: a visible enemy other than the right hand's (or, unless `otherOnly`, the same one). */
+function offhandPick(u: Unit, hostiles: Unit[], game: Game, otherOnly: boolean): Unit | null {
+  const main = u.target;
+  if (main) {
+    const other = u.targeting.select(u, hostiles.filter((h) => h !== main), game);
+    if (other && !other.structure) return other;
+    if (otherOnly) return null;
+  }
+  return otherOnly ? null : u.targeting.select(u, hostiles, game);
 }
 
 /**
@@ -215,7 +289,12 @@ export function updateProjectiles(game: Game, dt: number) {
       const eh = p.owner?.elite && p.team === 'squad' ? onHit(p.owner, p.mul ?? 1) : null;
       const dmg = eh && eh.mul !== 1 ? p.damage * eh.mul : p.damage;
       if (eh && eh.mul !== 1 && p.owner?.elite) p.owner.elite.effect += dmg - p.damage;
-      game.damage(hitUnit, dmg, p.owner, { dir: p.vel, precise: p.precise, at: { x: hx, y: hy }, ...(eh && eh.pen ? { pen: eh.pen } : {}) });
+      // v0.8A Commando Close Quarters (+15% inside 160 px, within the Elite shot cap) / Assault Storm heal on hit
+      const cq = p.owner?.elite?.id === 'com-assault' ? closeQuartersMul(p.owner, hitUnit, (p.mul ?? 1) * (eh?.mul ?? 1)) : 1;
+      const dmg2 = cq !== 1 ? dmg * cq : dmg;
+      if (cq !== 1 && p.owner?.elite) p.owner.elite.effect += dmg2 - dmg;
+      game.damage(hitUnit, dmg2, p.owner, { dir: p.vel, precise: p.precise, at: { x: hx, y: hy }, ...(p.from ? { origin: p.from } : {}), ...(eh && eh.pen ? { pen: eh.pen } : {}) });
+      if (p.team === 'squad' && p.owner?.ability?.heal && hitUnit.team === 'enemy' && !hitUnit.structure) { const h = p.owner.ability.heal(p.owner); if (h > 0) p.owner.healFlash = 0.3; }
       if (eh && (eh.mul !== 1 || eh.pen)) game.fx.burst({ x: hx, y: hy }, 6, eh.pen ? '#bfe8ff' : '#9fd0ff', 170, 0.25, 3);
       game.fx.burst({ x: hx, y: hy }, 4, hitUnit.team === 'squad' ? '#ffd1a0' : '#ffe08a', 120, 0.2, 2.5);
       continue;
@@ -232,13 +311,13 @@ export function updateProjectiles(game: Game, dt: number) {
 }
 
 /** Area damage to one team only (grenades never hurt friendlies). */
-export function explode(game: Game, pos: Vec, radius: number, damage: number, edgeFrac: number, victims: Unit[], source?: Unit, grenade = false) {
+export function explode(game: Game, pos: Vec, radius: number, damage: number, edgeFrac: number, victims: Unit[], source?: Unit, grenade = false, origin?: Vec) {
   for (const u of victims) {
     if (!u.active) continue;
     const d = dist(pos, u.pos);
     if (d > radius + u.radius) continue;
     const f = Math.min(1, d / radius);
-    game.damage(u, damage * (1 - f * (1 - edgeFrac)), source, { grenade });
+    game.damage(u, damage * (1 - f * (1 - edgeFrac)), source, origin ? { grenade, origin } : { grenade });
   }
   game.fx.ring(pos, radius, 'rgba(255,220,120,0.9)', 0.35, 6);
   game.fx.burst(pos, 26, '#ffb347', 380, 0.45, 5);
@@ -261,6 +340,8 @@ export interface DamageOpts {
   pen?: number;
   /** v0.7C tactical support (support.ts): the amount is already final (explicit per target class); Game.damage applies the boss / objective floors. */
   support?: 'airstrike' | 'nuke';
+  /** v0.8A: where the attack came from (the shooter at firing time / the thrower); enemy group awareness. */
+  origin?: Vec;
 }
 
 /**

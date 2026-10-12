@@ -50,7 +50,7 @@ const OUT = process.env.OUT || '';
   await page.click('[data-a="unlockAll"]');
   await page.keyboard.press('Backquote');
   sv = await save();
-  check('debug unlock all: labelled "modifies save", 2 taps, saved', /modifies save/i.test(lbl0) && /again/i.test(armedTxt) && stillLocked === 2 && sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.length === 10, `${lbl0} / ${armedTxt} / ${sv.unlockedSoldiers.length} soldiers, ${sv.account.campaign.unlockedMissions.length} missions`);
+  check('debug unlock all: labelled "modifies save", 2 taps, saved', /modifies save/i.test(lbl0) && /again/i.test(armedTxt) && stillLocked === 2 && sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.length === 12, `${lbl0} / ${armedTxt} / ${sv.unlockedSoldiers.length} soldiers, ${sv.account.campaign.unlockedMissions.length} missions`);
   // pick Mission 3 (squad cap 3) on the Campaign screen, then back to the Barracks
   await page.click('[data-a="to-campaign"]');
   await page.click('[data-a="csel"][data-id="field-medicine"]');
@@ -112,7 +112,7 @@ const OUT = process.env.OUT || '';
   const stacks = [];
   for (let i = 0; i < 3; i++) {
     await reload();
-    await page.click('[data-a="deploy"]');
+    await page.click('[data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
     for (let k = 0; k < 2; k++) await page.evaluate(() => window.game.reset());
     stacks.push(await page.evaluate(() => window.game.soldiers.map((s) => `${s.identity.id}:${s.maxHp}:${Math.round(s.fireRate * 1000) / 1000}:${s.stats.accuracy}`).join(' ')));
   }
@@ -135,7 +135,7 @@ const OUT = process.env.OUT || '';
   if (OUT) await page.screenshot({ path: `${OUT}/results-defeat-desktop.png` });
   await page.click('[data-a="campaign"]');
   check('results: Campaign button', await page.isVisible('#menu.campaign') && (await page.evaluate(() => window.game.phase)) === 'start');
-  await page.click('[data-a="deploy"]');
+  await page.click('[data-a="deploy"]'); await page.click('[data-a="brief-deploy"]'); // v0.8A: DEPLOY opens the briefing
   await page.evaluate(() => { const g = window.game; g.mission.failReason = 'Objective failed.'; g.fail(); });
   await page.waitForTimeout(100);
   await page.click('[data-a="barracks"]');

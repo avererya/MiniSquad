@@ -50,7 +50,7 @@ const DEVICES = [
     await page.tap('[data-a="tab"][data-tab="recruit"]'); await page.waitForTimeout(80);
     const checkOffice = async (tag) => {
       const L = await layout('.rc-buy, [data-a="refresh"], .m-tab, [data-a="to-campaign"]');
-      check(`${dev.name} ${tag}: 3 cards, Recruit/Refresh/tabs on screen + tappable (>=34px)`, L.n === 3 + 1 + 4 + 1 && okBoxes(L) && !L.hOverflow, `out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}, min h ${Math.min(...L.boxes.map((b) => b.h))}`);
+      check(`${dev.name} ${tag}: 3 cards, Recruit/Refresh/5 tabs (v0.7C Support) on screen + tappable (>=34px)`, L.n === 3 + 1 + 5 + 1 && okBoxes(L) && !L.hOverflow, `out ${L.boxes.filter((b) => !b.inside).length}, misaligned ${L.boxes.filter((b) => !b.aligned).length}, min h ${Math.min(...L.boxes.map((b) => b.h))}`);
       check(`${dev.name} ${tag}: no clipped text, header fits, text >= 11px, no vertical scroll`, L.clipped.length === 0 && L.headOut.length === 0 && L.minFont >= 11 && !L.vscroll, `clipped ${L.clipped.join('|')} head ${L.headOut.join('|')} font ${L.minFont} vscroll ${L.vscroll}`);
       const info = await page.evaluate(() => ({ cr: document.querySelector('.m-credits').textContent, ro: document.querySelector('.rc-bar .b-count').textContent }));
       check(`${dev.name} ${tag}: credits + roster count visible`, /\d,\d{3}/.test(info.cr) && /ROSTER\s*\d+ \/ 12/.test(info.ro), `${info.cr.trim()} · ${info.ro}`);

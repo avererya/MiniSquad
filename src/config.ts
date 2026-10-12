@@ -49,6 +49,9 @@ function makeDefaults() {
     medic: soldierClassStats({ hp: 80, damage: 7, fireRate: 2.5, accuracy: 10, movePenalty: 18, moveSpeed: 157.5, projectileSpeed: 700, reviveTime: 5 }),
     // v0.6.2 Sniper: long range, slow, hard-hitting, fragile. Shots need a brief held aim (aimTime).
     sniper: soldierClassStats({ hp: 75, damage: 32, fireRate: 0.8, accuracy: 2.5, movePenalty: 16, moveSpeed: 145, projectileSpeed: 1500, reviveTime: 10, range: 560, aimTime: 0.45 }),
+    // v0.8A Commando: dual pistols (each pistol fires on its own: 2 x 7 dmg x 2.5/s = 35 DPS in theory),
+    // 115% of the Infantry move speed, short-medium range (340 px: inside the rifleman's 380, so he has to close in).
+    commando: soldierClassStats({ hp: 85, damage: 7, fireRate: 2.5, accuracy: 10, movePenalty: 14, moveSpeed: 172.5, projectileSpeed: 760, reviveTime: 10, range: 340 }),
     enemy: {
       hp: 40,
       damage: 7,
@@ -157,6 +160,16 @@ function makeDefaults() {
       fireRateMul: 1.5, // own fire rate while focused (does not stack with Rapid Fire: the larger applies)
       aimMul: 0.35, // aim time while focused
     },
+    // v0.8A Commando: Bullet Storm (both pistols). The cooldown starts when the effect ENDS.
+    bulletStorm: {
+      duration: 8, // s
+      cooldown: 40, // s, after the effect ends
+      fireRateMul: 1.75, // both pistols (Gunslinger's Enhanced Bullet Storm: gunslingerMul)
+      gunslingerMul: 2,
+      movePenaltyMul: 0.6, // moving-fire spread penalty x this while active
+      assaultHealPerHit: 1.5, // Assault Specialist: HP per successful pistol hit while active...
+      assaultHealCap: 30, // ...at most this much per activation (never above max HP)
+    },
     fieldTreatment: {
       healFrac: 0.25, // fraction of each healed soldier's own max HP
       radius: 140, // world px around the Medic (Medic included)
@@ -186,7 +199,7 @@ function makeDefaults() {
     elite: {
       adrenalineThreshold: 0.35, // Elite Trooper: Adrenaline Rush below this fraction of max HP...
       adrenalineReduction: 0.25, // ...cuts incoming damage by this much
-      deadeyeEvery: 5, // Recon Commando: every Nth successful rifle hit...
+      deadeyeEvery: 5, // Recon Specialist: every Nth successful rifle hit...
       deadeyeBonus: 0.5, // ...deals this much extra damage
       ironcladReduction: 0.2, // Juggernaut: incoming damage cut, always on
       overdriveMax: 0.25, // Weapons Specialist: max fire-rate bonus (fraction of base, added on top of abilities)
@@ -203,6 +216,12 @@ function makeDefaults() {
       perfectAimCharge: 3, // Deadeye: s of stationary aim with a target to charge the next shot...
       perfectAimBonus: 0.75, // ...which deals this much extra damage
       perfectAimMoveTol: 0.15, // smoothed move fraction above which the soldier counts as moving (charge resets)
+      // v0.8A Commando specializations
+      quickDrawReaction: 0.03, // Gunslinger Quick Draw: s from a new target to the first shot (everyone else 0.08)
+      quickDrawTurn: 1.4, // ...and aim turn speed x this
+      quickDrawMovePenalty: 0.75, // ...and moving-fire spread penalty x this (always on)
+      cqRange: 160, // Assault Specialist Close Quarters: targets within this many px...
+      cqBonus: 0.15, // ...take this much extra pistol damage
       maxDamageReduction: 0.4, // cap on all incoming-damage reductions together
       maxShotMul: 2, // cap on all per-shot damage multipliers together
     },
@@ -233,6 +252,49 @@ function makeDefaults() {
     support: {
       bossFloor: 0.1, // tactical support never takes a boss below this share of its max HP
       objectiveFloor: 1, // ...nor a mission objective below this many HP
+    },
+    // v0.8A ENEMY GROUP AWARENESS (awareness.ts). A shot / kill / sighting alerts nearby enemies once.
+    awareness: {
+      radius: 300, // world px around the enemy that was hit / killed / that saw the squad
+      reactMin: 0.3, // s before an alerted enemy reacts (per enemy, deterministic in this range)
+      reactMax: 0.8,
+      sightRange: 460, // an alerted enemy that sees a soldier this close (clear line) updates the last known position
+      sightEvery: 0.25, // s between sight checks per alerted enemy
+      searchTime: 12, // s spent searching around the last known position before settling again
+      searchSpread: 130, // px: search points around the last known position
+      coverDist: 150, // px: a rifleman looks for cover this far around its route
+      sniperStandoff: 0.72, // enemy snipers reposition to this fraction of their range from the threat
+      stuckTime: 3, // s without progress before an enemy gives up a leg of its route
+      repeat: 0.5, // s: the same enemy re-alerts its neighbours at most this often
+    },
+    // v0.8A resistance fighters (Mission 11): friendly NPC riflemen. Same fields as a soldier class.
+    resistance: soldierClassStats({ hp: 110, damage: 8, fireRate: 1.8, accuracy: 9, movePenalty: 14, moveSpeed: 140, projectileSpeed: 700, reviveTime: 10, range: 380 }),
+    // v0.8A Mission 12 artillery + spotlights (artillery.ts)
+    artillery: {
+      exposure: 1, // s of continuous spotlight exposure that triggers an artillery alert
+      exposureDecay: 3, // exposure drains this many times faster than it builds (brief crossings never trigger)
+      warn: 2.5, // s between the red danger circle and the impact
+      interval: 11, // s between shells while alerted (10-12: alternates interval -1 / +1)
+      radius: 105, // px blast radius
+      damage: 40, // exposed hit at the centre
+      edge: 0.5, // share of the damage at the rim
+      coverMul: 0.4, // solid cover between the blast and the soldier: -60%
+      maxMarkers: 2,
+      clearAfter: 20, // s without spotlight detection before the alert clears
+      beamRange: 430, // spotlight reach
+      beamHalf: 13, // deg, half-width of the beam
+    },
+    // v0.8A extraction pressure (mission.ts): finite reinforcement groups once extraction is called. They come
+    // from map-edge points off screen and at least minDist from every squad member, advance on the squad and are
+    // never required kills. Tier per mission (missions.ts): M1 none, M2 light, M3-5 small (M3 keeps its scripted
+    // wave), M6-10 moderate (M10 keeps its boss-fight wave), M11 restrained, M12 strong.
+    extractionPressure: {
+      minDist: 500,
+      light: 3, // one group
+      small: 4, // one group
+      moderateA: 3, moderateB: 2, moderateDelay: 6, // two groups, the second this many s later from another edge
+      restrained: 3, restrainedDelay: 2, // M11: one small group (the defence was the fight)
+      strongA: 4, strongB: 3, strongDelay: 7, strongArmored: 1, // M12: two groups, the second led by armored troopers
     },
     pickups: {
       medkitHealFrac: 0.2, // each living, standing soldier heals this fraction of max HP

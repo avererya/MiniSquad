@@ -5,13 +5,13 @@ import type { MapDef } from './map';
 import { Unit, nextStatEpoch } from './unit';
 import { EscortTargeting, ExposedTargeting, NearestVisible, SniperTargeting } from './targeting';
 import type { EnemyKind } from './unit';
-import { Effects, modifyDamage, updateEnemySniper, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
+import { Effects, modifyDamage, updateEnemySniper, updateOffhand, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
 import { updateGrenades, type Grenade } from './abilities';
 import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, cloneIdentity, createGeneric, type SoldierClassId, type SoldierIdentity } from './classes';
 import { MissionStats } from './missionstats';
 import { Roster } from './roster';
 import { Medkit, RapidFire, updatePickups, type Pickup } from './pickups';
-import { updateSquad, updateEscort, squadCentre } from './squad';
+import { updateSquad, updateEscort, updateAllies, squadCentre } from './squad';
 import { updateEnemyMovement } from './enemy';
 import { Mission } from './mission';
 import { scriptFor } from './missions';
@@ -26,6 +26,7 @@ import { journalKia, newRunId, recoverInterruptedRun, settleMission, type Persis
 import { decisionBlock } from './casualties';
 import { eliteAuras, eliteTick, incomingMul, reviveHpFrac } from './elite';
 import { Support, supportRoom } from './support';
+import { raiseAlert, type AlertLog } from './awareness';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -74,6 +75,8 @@ export class Game implements InputHandler {
   soldiers: Unit[] = [];
   /** Escort NPCs (Mission 5 captive). Team 'squad' but not soldiers: no panel, no rewards. */
   npcs: Unit[] = [];
+  /** v0.8A resistance allies (Mission 11+): team 'squad', fight and can be downed / revived; never soldiers (no panel, XP or permadeath). */
+  allies: Unit[] = [];
   enemies: Unit[] = [];
   projectiles: Projectile[] = [];
   grenades: Grenade[] = [];
@@ -126,6 +129,8 @@ export class Game implements InputHandler {
   support = new Support(0);
   /** Short feedback line (e.g. why an ability can't be used). */
   notice: { text: string; life: number } | null = null;
+  /** v0.8A enemy group awareness: alert broadcasts this mission (tests / balance). */
+  alertLog: AlertLog = { broadcasts: 0, received: 0 };
   input: Input;
   ui!: GameUI;
   private flowTimer = 0;
@@ -240,7 +245,7 @@ export class Game implements InputHandler {
     this.abandonRunning(); // v0.6: leaving a running roster mission (dev panel) settles its journaled deaths now
     this.phase = 'start';
     this.paused = false; this.targeting = null;
-    this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.soldiers = []; this.npcs = []; this.allies = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.ui.rebuildPanels();
   }
 
@@ -265,7 +270,8 @@ export class Game implements InputHandler {
     this.stats = new MissionStats();
     this.runId = newRunId();
     this.lastReward = null; this.lastStars = null; this.escortRescues = 0; this.bossDamage = new Map();
-    this.soldiers = []; this.npcs = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.soldiers = []; this.npcs = []; this.allies = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.alertLog = { broadcasts: 0, received: 0 };
     this.scorches = []; this.fx = new Effects(); this.banners = [];
     this.eliteCount = 0; this.eliteCommanders = 0;
     const start = script.map.start;
@@ -346,6 +352,8 @@ export class Game implements InputHandler {
     const s = new Unit('squad', pos, cls === 'sniper' ? SniperTargeting : NearestVisible, identity ?? createGeneric(r.name, cls));
     s.speedMul = r.speedMul; s.slot = r.offset;
     s.ability = ABILITY_FACTORIES[CLASSES[cls].abilityId]();
+    // v0.8A Commando: the left-hand pistol, half a shot period behind the right so the two alternate
+    if (CLASSES[cls].visual.weapon === 'pistols') s.offhand = { target: null, cooldown: 0.5 / Math.max(0.1, s.fireRate), reaction: 0, aim: s.aim, muzzle: 0 };
     if (s.elite) { this.eliteCount++; if (s.elite.id === 'med-commander') this.eliteCommanders++; }
     this.soldiers.push(s);
     this.stats.register(s);
@@ -363,8 +371,20 @@ export class Game implements InputHandler {
     return n;
   }
 
-  /** What enemy riflemen can shoot at: soldiers and an escorted (freed) captive. */
-  enemyVictims(): Unit[] { return this.npcs.length ? [...this.soldiers, ...this.npcs.filter((n) => n.escorting)] : this.soldiers; }
+  /** v0.8A resistance ally (Mission 11): a rifle-armed fighter beside the squad. */
+  spawnAlly(pos: Vec, name: string): Unit {
+    const a = new Unit('squad', this.findOpenNear(pos, 24), NearestVisible);
+    a.ally = true; a.name = name; a.label = name;
+    a.hp = a.maxHp; a.aim = -Math.PI / 2;
+    this.allies.push(a);
+    return a;
+  }
+
+  /** What enemy riflemen can shoot at: soldiers, resistance allies and an escorted (freed) captive. */
+  enemyVictims(): Unit[] {
+    if (!this.npcs.length && !this.allies.length) return this.soldiers;
+    return [...this.soldiers, ...this.allies, ...this.npcs.filter((n) => n.escorting)];
+  }
 
   spawnEnemy(pos: Vec, kind: EnemyKind = 'rifleman'): Unit {
     const e = new Unit('enemy', pos, kind === 'sniper' ? ExposedTargeting : NearestVisible);
@@ -456,6 +476,12 @@ export class Game implements InputHandler {
       if (u.kind === 'boss' && source.identity) this.bossDamage.set(source.identity.id, (this.bossDamage.get(source.identity.id) ?? 0) + removed);
     }
     if (u.npc && removed > 0) this.mission.emit(this, { type: 'npcDamaged', unit: u, amount: removed });
+    // v0.8A group awareness: a hit (or kill) on an enemy alerts it and its neighbours to where it came from
+    // (never the nuke; an airstrike points them at the squad). Separate from the M12 artillery (spotlights only).
+    if (u.team === 'enemy' && opts.support !== 'nuke') {
+      const from = opts.origin ?? (source?.team === 'squad' ? source.pos : opts.support ? squadCentre(this.soldiers) : null);
+      if (from) raiseAlert(this, u, from);
+    }
     sfx('hit');
     if (u.hp > 0) return;
     if (u.team === 'squad') this.downSoldier(u);
@@ -479,7 +505,7 @@ export class Game implements InputHandler {
   downSoldier(s: Unit) {
     if (!s.active) return;
     s.state = 'downed';
-    if (!s.npc) this.stats.down(s);
+    if (!s.npc && !s.ally) this.stats.down(s);
     s.hp = 0;
     s.bleed = CFG.revive.bleedOut;
     s.reviveProgress = 0;
@@ -490,7 +516,7 @@ export class Game implements InputHandler {
     if (this.targeting === s) this.targeting = null;
     this.banner(`${s.name} DOWN!`, '#ff4040', 2.8);
     sfx('down');
-    this.mission.emit(this, s.npc ? { type: 'npcDowned', unit: s } : { type: 'soldierDowned', unit: s });
+    this.mission.emit(this, s.ally ? { type: 'allyDowned', unit: s } : s.npc ? { type: 'npcDowned', unit: s } : { type: 'soldierDowned', unit: s });
   }
 
   /**
@@ -505,11 +531,11 @@ export class Game implements InputHandler {
     s.bleed = 0;
     s.reviving = false; s.reviver = null; s.reviveProgress = 0;
     this.banner(`${s.name} KIA`, '#ff4040', 3);
-    if (!s.npc && s.identity && this.deployment.kind === 'roster' && this.phase === 'playing') {
+    if (!s.npc && !s.ally && s.identity && this.deployment.kind === 'roster' && this.phase === 'playing') {
       journalKia(getAccount(), this.runId, this.mission.id, s.identity.id, cause);
       this.persist?.();
     }
-    const ev: MissionEvent = s.npc ? { type: 'npcKia', unit: s } : { type: 'soldierKia', unit: s };
+    const ev: MissionEvent = s.ally ? { type: 'allyKia', unit: s } : s.npc ? { type: 'npcKia', unit: s } : { type: 'soldierKia', unit: s };
     this.mission.emit(this, ev);
   }
   /**
@@ -656,6 +682,7 @@ export class Game implements InputHandler {
     // movement intents
     updateSquad(this, this.input.move(), dt);
     for (const n of this.npcs) updateEscort(this, n, dt);
+    if (this.allies.length) updateAllies(this, dt);
     this.flowTimer -= dt;
     if (this.flowTimer <= 0) {
       const src = this.soldiers.filter((s) => s.active).map((s) => s.pos);
@@ -667,7 +694,7 @@ export class Game implements InputHandler {
     this.mission.unitStep(this, dt);
 
     // integrate + collide (structures, fixed guards and trucks are pushed by nobody; they push others out)
-    const movers = [...this.soldiers, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure && !u.fixed && !u.vehicle);
+    const movers = [...this.soldiers, ...this.allies, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure && !u.fixed && !u.vehicle);
     for (const u of movers) { u.pos.x += u.vel.x * dt; u.pos.y += u.vel.y * dt; }
     const soft = movers.filter((u) => !(u.team === 'enemy' && u.kind === 'boss'));
     for (let i = 0; i < soft.length; i++) {
@@ -700,7 +727,8 @@ export class Game implements InputHandler {
     }
 
     // weapons
-    for (const s of this.soldiers) if (s.active) updateWeapon(s, this, dt, this.enemies);
+    for (const s of this.soldiers) if (s.active) { updateWeapon(s, this, dt, this.enemies); if (s.offhand) updateOffhand(s, this, dt, this.enemies); }
+    for (const a of this.allies) if (a.active) updateWeapon(a, this, dt, this.enemies);
     eliteTick(this, dt); // v0.7A Overdrive / Perfect Aim (no-op without Elites)
     const victims = this.enemyVictims();
     for (const e of this.enemies) {
@@ -713,7 +741,7 @@ export class Game implements InputHandler {
     this.support.update(this, dt); // v0.7C airstrike delay / nuke countdown (simulation time)
     updatePickups(this, dt);
 
-    for (const u of [...this.soldiers, ...this.npcs, ...this.enemies]) {
+    for (const u of [...this.soldiers, ...this.allies, ...this.npcs, ...this.enemies]) {
       u.hitFlash = Math.max(0, u.hitFlash - dt);
       u.rapidFire = Math.max(0, u.rapidFire - dt);
       u.healFlash = Math.max(0, u.healFlash - dt);
@@ -758,7 +786,7 @@ export class Game implements InputHandler {
    */
   private updateDowned(dt: number) {
     const R = CFG.revive;
-    for (const s of [...this.soldiers, ...this.npcs]) {
+    for (const s of [...this.soldiers, ...this.allies, ...this.npcs]) {
       if (s.state !== 'downed') continue;
       let best: Unit | null = null;
       for (const o of this.soldiers) {

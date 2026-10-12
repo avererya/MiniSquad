@@ -11,20 +11,20 @@
 // Adding a class (Sniper, Commando...) = a CFG group + an entry in CLASSES + an ability
 // factory. No class checks are scattered through gameplay code: it reads the def.
 import { CFG, type SoldierStats } from './config';
-import { FieldTreatmentAbility, FocusAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
+import { BulletStormAbility, FieldTreatmentAbility, FocusAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
 import { TRAITS, applyModifiers, combineModifiers, type EffectiveStats, type StatModifiers, type TraitId } from './traits';
 import { NO_PROGRESSION, PROGRESSION, bonusFractions, clean, getAccount, grownStats, newTraining, softFloor, type ProgressionInputs, type TrainingRanks } from './progression';
 import { CLASS_BRANCHES, eliteModifiers } from './elite';
 
-export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper';
-export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment' | 'focus';
-export type WeaponKind = 'rifle' | 'mg' | 'smg' | 'sniper';
+export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper' | 'commando';
+export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment' | 'focus' | 'bulletStorm';
+export type WeaponKind = 'rifle' | 'mg' | 'smg' | 'sniper' | 'pistols';
 
 export interface ClassVisual {
   bodyW: number; // torso width (Infantry 14)
   weapon: WeaponKind;
-  pack: 'none' | 'ammo' | 'medical';
-  helmet: 'standard' | 'heavy' | 'medic' | 'boonie';
+  pack: 'none' | 'ammo' | 'medical' | 'vest';
+  helmet: 'standard' | 'heavy' | 'medic' | 'boonie' | 'beret' | 'cap';
   tracerWidth: number; // bullet streak width
   tracerLen: number;
 }
@@ -44,9 +44,10 @@ export const ABILITY_FACTORIES: Record<AbilityId, () => Ability> = {
   suppressive: () => new SuppressiveFireAbility(),
   fieldTreatment: () => new FieldTreatmentAbility(),
   focus: () => new FocusAbility(),
+  bulletStorm: () => new BulletStormAbility(),
 };
 
-export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', suppressive: 'Suppressive Fire', fieldTreatment: 'Field Treatment', focus: 'Focus' };
+export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', suppressive: 'Suppressive Fire', fieldTreatment: 'Field Treatment', focus: 'Focus', bulletStorm: 'Bullet Storm' };
 
 export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
   infantry: {
@@ -65,6 +66,12 @@ export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
   sniper: {
     id: 'sniper', label: 'Sniper', short: 'SNP', abilityId: 'focus',
     visual: { bodyW: 13, weapon: 'sniper', pack: 'none', helmet: 'boonie', tracerWidth: 2.5, tracerLen: 46 }, eliteBranches: CLASS_BRANCHES.sniper,
+  },
+  // v0.8A: unlocked by Mission 12's first clear (Artillery Hunt), recruited in the Recruitment Office only.
+  // Dual pistols: two independent weapons (combat.ts updateOffhand), blue uniform + black tactical vest.
+  commando: {
+    id: 'commando', label: 'Commando', short: 'CDO', abilityId: 'bulletStorm',
+    visual: { bodyW: 13, weapon: 'pistols', pack: 'vest', helmet: 'beret', tracerWidth: 2.5, tracerLen: 13 }, eliteBranches: CLASS_BRANCHES.commando,
   },
 };
 

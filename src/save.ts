@@ -268,12 +268,17 @@ export function mergeSoldier(def: SoldierIdentity, v: Record<string, unknown>, n
 
 /** v0.6.2: set by parseSave: the save predates the Sniper class (v1-v6), so a 'sniper' recruit is invalid (no free Sniper). */
 let preSniper = false;
+/**
+ * v0.8A: set by parseSave: the save holds no Commando unlock (no stored class unlock, no Mission 12 clear), so a
+ * 'commando' recruit is invalid (no free Commando from an older or hand-edited save; it becomes Infantry).
+ */
+let noCommando = false;
 
 /** A saved recruit: own class + trait (validated), progression, training. Never dropped for a bad field. */
 function cleanRecruit(v: Record<string, unknown>, notes: string[], keepKia = false): SoldierIdentity {
   const id = v.id as string;
   let classId = v.classId as SoldierIdentity['classId'];
-  if (!(CLASS_IDS as string[]).includes(classId) || (preSniper && classId === 'sniper')) { notes.push(`Recruit ${id}: class ${String(v.classId)} invalid, set to Infantry.`); classId = 'infantry'; }
+  if (!(CLASS_IDS as string[]).includes(classId) || (preSniper && classId === 'sniper') || (noCommando && classId === 'commando')) { notes.push(`Recruit ${id}: class ${String(v.classId)} invalid, set to Infantry.`); classId = 'infantry'; }
   let traitId = v.traitId as SoldierIdentity['traitId'];
   if (!isTraitValidFor(traitId, classId)) { notes.push(`Recruit ${id}: trait ${String(v.traitId)} invalid, set to Sharpshooter.`); traitId = 'sharpshooter'; }
   const base: SoldierIdentity = { id, name: '', classId, traitId, mods: {}, progression: newProgression(), training: newTraining(), status: 'active', resurrections: 0, service: newService() };
@@ -541,6 +546,12 @@ export function parseSave(raw: string | null): LoadResult {
   if (!known) notes.push(`Save version ${String(data.version)} not recognised: read best-effort (backup kept).`);
 
   const rawAccount = version === 1 ? undefined : data.account;
+  {
+    const cu = isObj(rawAccount) && isObj(rawAccount.classUnlocks) && Array.isArray(rawAccount.classUnlocks.unlocked) ? rawAccount.classUnlocks.unlocked : [];
+    const ms = isObj(rawAccount) && isObj(rawAccount.missions) ? rawAccount.missions : {};
+    const cleared = (id: string) => { const r = (ms as Record<string, unknown>)[id]; return isObj(r) && typeof r.completions === 'number' && r.completions > 0; };
+    noCommando = !cu.includes('commando') && !CAMPAIGN.some((m) => (m.unlocks.classes ?? []).includes('commando') && cleared(m.id));
+  }
   const rawRec = isObj(rawAccount) ? rawAccount.recruitment : undefined;
   const dismissedIds = new Set(isObj(rawRec) && Array.isArray(rawRec.dismissed) ? rawRec.dismissed.filter(isObj).map((d) => d.id).filter((x): x is string => typeof x === 'string') : []);
   // v5 Memorial: honored soldiers never come back (not restored from the defaults, a roster copy is dropped)
@@ -589,7 +600,7 @@ export function parseSave(raw: string | null): LoadResult {
     if (memorialIds.has(id)) { notes.push(`Recruit ${id} is in the Memorial: roster copy dropped.`); continue; }
     soldiers.push(cleanRecruit(saved.get(id)!, notes, v5));
   }
-  const account = cleanAccount(rawAccount, notes, legacy, version !== null && version < 7 ? ['bridgehead'] : []);
+  const account = cleanAccount(rawAccount, notes, legacy, [...(version !== null && version < 7 ? ['bridgehead'] : []), 'resistance-rising']) // v0.8A: no older build could list Mission 11;
   account.memorial = memorial;
   account.promotions = promotions;
   if (v5 && isObj(rawAccount)) {

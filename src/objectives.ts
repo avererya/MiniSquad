@@ -26,7 +26,9 @@ export type MissionEvent =
   | { type: 'npcKia'; unit: Unit }
   | { type: 'vehicleDestroyed'; unit: Unit }
   | { type: 'vehicleEscaped'; unit: Unit }
-  | { type: 'bossDefeated'; unit: Unit };
+  | { type: 'bossDefeated'; unit: Unit }
+  | { type: 'allyDowned'; unit: Unit }
+  | { type: 'allyKia'; unit: Unit };
 
 /** v0.6.2 compact HUD widgets under the objective line (trucks, relays) and a meter (alarm). */
 export interface HudChip { label: string; frac: number; state: 'idle' | 'live' | 'done' | 'lost' }
@@ -368,7 +370,7 @@ export class MultiDestroyObjective extends Objective {
     if (this.left > 0) g.banner(`${this.pointLabel} DESTROYED — ${this.left} LEFT`, '#7dff8a', 2.5);
   }
   chips(): HudChip[] { return this.targets.map((t, i) => ({ label: `${this.pointLabel[0]}${i + 1}`, frac: t.active ? clamp(t.hp / t.maxHp, 0, 1) : 0, state: t.active ? 'live' : 'done' })); }
-  hud() { return { text: this.label, sub: `${this.left} of ${this.targets.length} left · shoot or grenade them`, chips: this.chips() }; }
+  hud(_m?: Mission, _g?: Game): HudLine { return { text: this.label, sub: `${this.left} of ${this.targets.length} left · shoot or grenade them`, chips: this.chips() }; }
   point(_m: Mission, g: Game): ObjPoint | null {
     const c = squadCentre(g.soldiers) ?? g.cam;
     const alive = this.targets.filter((t) => t.active).sort((a, b) => dist(a.pos, c) - dist(b.pos, c));

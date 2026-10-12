@@ -5,7 +5,8 @@
 import { CFG } from './config';
 import type { Game } from './game';
 import type { Unit } from './unit';
-import { dist } from './util';
+import { dist, type Vec } from './util';
+import { alertSteer, raiseAlert, steerToward } from './awareness';
 
 // v0.6.2 kinds: Snipers hold back at long range; Armored Troopers always advance on the nearest
 // (frontline) soldier; convoy escorts walk with their truck until soldiers come close; tower
@@ -23,8 +24,28 @@ export function updateEnemyMovement(game: Game, e: Unit, dt: number) {
     return;
   }
   if (e.guard) {
-    const near = game.soldiers.some((s) => s.active && dist(s.pos, e.pos) < (e.aggro ?? E.aggroRadius));
-    if (near || e.hp < e.maxHp) e.guard = false;
+    const R = e.aggro ?? E.aggroRadius;
+    let near: Unit | null = null;
+    for (const s of game.soldiers) if (s.active && dist(s.pos, e.pos) < R) { near = s; break; }
+    if (near) {
+      // v0.8A: a guard that detects the squad alerts its group (awareness.ts) and engages at once
+      if (game.phase === 'playing' && !e.escortOf) raiseAlert(game, e, near.pos);
+      e.guard = false;
+    } else if (e.hp < e.maxHp && !e.alert) e.guard = false; // hit without awareness (escorts): wakes as before
+  }
+
+  // v0.8A group awareness: an alerted enemy with nobody in its sights investigates instead of homing in
+  const st = e.alert;
+  if (st && st.stage !== 'settled' && !e.escortOf) {
+    if (!e.target) {
+      const goal = alertSteer(game, e, dt);
+      const dir = goal ? steerToward(game, e, goal, dt) : null;
+      // armored troopers push straight in, everyone else a little more carefully
+      const sp = e.maxSpeed * (e.kind === 'armored' || !dir ? 1 : 0.9);
+      steer(game, e, dir ? { x: dir.x * sp, y: dir.y * sp } : { x: 0, y: 0 }, dt);
+      return;
+    }
+    if (st.stage === 'pending') alertSteer(game, e, dt); // in a fight already: the reaction delay still runs out
   }
 
   let wantMove = !e.guard;
@@ -63,6 +84,12 @@ export function updateEnemyMovement(game: Game, e: Unit, dt: number) {
     }
   }
 
+  steer(game, e, { x: vx, y: vy }, dt);
+}
+
+/** Separation from other enemies + acceleration-limited velocity change toward `want`. */
+function steer(game: Game, e: Unit, want: Vec, dt: number) {
+  let vx = want.x, vy = want.y;
   // separation from other riflemen
   for (const o of game.enemies) {
     if (o === e || !o.active || o.vehicle || o.structure) continue;

@@ -8,6 +8,7 @@ import type { EffectiveStats } from './traits';
 import type { TargetingStrategy } from './targeting';
 import type { Vec } from './util';
 import { eliteStateFor, overdriveAdd, type EliteState } from './elite';
+import type { AlertState } from './awareness';
 
 export type Team = 'squad' | 'enemy';
 export type UnitState = 'active' | 'downed' | 'kia' | 'dead';
@@ -100,6 +101,13 @@ export class Unit {
   /** Mission group tag (objectives count kills per tag). */
   tag: string | null = null;
   /**
+   * v0.8A enemy group awareness (awareness.ts): null = never alerted. Placed guards are managed by it once
+   * woken (they investigate and search instead of homing in on the squad); scripted waves are not.
+   */
+  alert: AlertState | null = null;
+  /** v0.8A: spawned by extraction pressure (finite, never required kills). */
+  reinforcement = false;
+  /**
    * Destructible objective structure (team 'enemy'): never moves or shoots, soldiers shoot it
    * only when no enemy soldier is in sight, grenades damage it. Not counted as a kill.
    */
@@ -110,6 +118,14 @@ export class Unit {
    * CFG.support.objectiveFloor HP. Structures and vehicles always count (protectedObjective).
    */
   objective = false;
+
+  // v0.8A Commando: the second pistol (independent target and cooldown; see combat.updateOffhand)
+  offhand: { target: Unit | null; cooldown: number; reaction: number; aim: number; muzzle: number } | null = null;
+
+  // v0.8A resistance ally (team 'squad', not a soldier: no identity, no XP; has a rifle, can be downed / revived)
+  ally = false;
+  /** Ally: where to hold during a defence (null = follow the squad). */
+  post: Vec | null = null;
 
   // escort NPC (team 'squad', not a soldier: no identity, no weapon, no ability)
   npc = false;
@@ -131,7 +147,7 @@ export class Unit {
   /** Class definition (squad soldiers only). */
   get classDef(): SoldierClassDef | null { return this.identity ? CLASSES[this.identity.classId] : null; }
   /** Live stats: the soldier's EFFECTIVE stats (class + trait + individual mods), or CFG.enemy. */
-  get stats(): StatBlock { return this.identity ? this.soldierStats : this.team === 'enemy' ? KIND_CFG[this.kind]() : CFG.enemy; }
+  get stats(): StatBlock { return this.identity ? this.soldierStats : this.team === 'enemy' ? KIND_CFG[this.kind]() : this.ally ? (CFG.resistance as EffectiveStats) : CFG.enemy; }
   /**
    * Squad soldier's effective stats (throws for enemies). v0.6.3: computed once per simulation
    * step (statEpoch) instead of on every read (radius / fireRate / cone are read many times a
@@ -151,6 +167,7 @@ export class Unit {
   get radius() { return this.stats.radius; }
   get maxSpeed() {
     if (this.npc) return CFG.escort.moveSpeed * this.catchUp;
+    if (this.ally) return CFG.resistance.moveSpeed * this.catchUp;
     if (this.structure || this.fixed) return 0;
     return this.team === 'squad' ? this.stats.moveSpeed * this.speedMul * this.rallyMul * this.catchUp : this.stats.moveSpeed * this.speedRand;
   }
@@ -186,8 +203,11 @@ export class Unit {
       abilityActive: this.ability?.activeLeft ?? 0,
     };
   }
-  /** Current full cone angle in degrees. */
-  get cone() { return this.stats.accuracy + this.stats.movePenalty * this.moveFrac; }
+  /** Current full cone angle in degrees. v0.8A: Bullet Storm cuts the moving part (x1 for everyone else). */
+  get cone() {
+    const k = this.ability?.movePenaltyMul?.() ?? 1;
+    return this.stats.accuracy + (k === 1 ? this.stats.movePenalty * this.moveFrac : this.stats.movePenalty * k * this.moveFrac);
+  }
 
   /** Can act: move, shoot, be targeted, take damage. */
   get active() { return this.state === 'active'; }

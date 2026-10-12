@@ -59,7 +59,7 @@ const FX = (n) => fs.readFileSync(`${__dirname}/fixtures/${n}`, 'utf8');
   check('campaign progress = highest unlocked mission (not the selected one)', rules.progress === 3, rules.progress);
   check('recruitable classes: Infantry; +Heavy after Tank; +Medic after Doc; Havoc/Patch add none', rules.classes.join('|') === 'infantry|infantry+heavy|infantry+heavy+medic|infantry+heavy+medic', rules.classes.join('|'));
   check('trait pool: start = Sharpshooter/Quick Reflexes; Healer only for Medics (after Patch)', rules.traits[0] === 'sharpshooter+quickReflexes' && rules.traits[1] === 'sharpshooter+quickReflexes' && !rules.traits[2].includes('healer') && rules.traits[3] === 'sharpshooter+quickReflexes+tough+firstResponder+triggerHappy+healer', rules.traits.join(' | '));
-  check('prices 750/1000/1000/1250, refunds 200/250/250/300, refresh 100; price > refund (no credit loop)', rules.prices === 'infantry:750/200 heavy:1000/250 medic:1000/250 sniper:1250/300' && rules.refresh === 100, rules.prices);
+  check('prices 750/1000/1000/1250/1250 (v0.8A Commando), refunds 200/250/250/300/300, refresh 100; price > refund (no credit loop)', rules.prices === 'infantry:750/200 heavy:1000/250 medic:1000/250 sniper:1250/300 commando:1250/300' && rules.refresh === 100, rules.prices);
   check('name pool: 100+ unique, none reserved, all <= 8 chars', rules.pool >= 100 && rules.poolUnique === rules.pool && rules.poolReserved === 0 && rules.poolMax <= 8, `${rules.pool} names, max ${rules.poolMax}`);
   check('rename validation (trim, 1-12, charset, unique, own name/case ok, reserved no)', rules.names.join(',') === "no,ok:Ghost,ok:ghost,no,no,no,no,ok:Abcdefghijkl,no,no,ok:O'Neil Jr.-2,ok:Big Mo,no,no", rules.names.join(','));
 

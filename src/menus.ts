@@ -83,6 +83,8 @@ export class Menus {
   private lastBuy = { key: '', t: -1e9 };
   /** Campaign screen: the New Campaign confirmation is open. */
   resetOpen = false;
+  /** v0.8A: the pre-deployment briefing of the selected mission is open (Campaign screen). */
+  briefOpen = false;
   /** Mission highlighted on the Campaign screen. */
   campaignSel = '';
   /** Soldiers unlocked since the Barracks was last opened ("NEW" badge). */
@@ -145,6 +147,7 @@ export class Menus {
     if (decisionBlock(getAccount())) { this.showDecisions(notice); return; }
     if (this.screen === 'barracks') this.newSoldiers.clear();
     if (this.screen !== 'campaign') this.resetOpen = false;
+    this.briefOpen = false;
     this.screen = 'campaign';
     this.root.className = 'campaign';
     const acc = getAccount();
@@ -202,7 +205,7 @@ export class Menus {
           ${this.missionDetailHtml(m)}
         </div>
       </div>
-      ${this.resetOpen ? this.resetHtml() : this.recruitNoticeHtml()}`;
+      ${this.resetOpen ? this.resetHtml() : this.briefOpen ? this.briefingHtml(m) : this.recruitNoticeHtml()}`;
     this.drawPortraits(); // the recruit notice's portrait
   }
 
@@ -254,6 +257,35 @@ export class Menus {
           <div class="d-btns">
             <button class="m-big alt" data-a="rn-later" data-id="${n.key}">LATER</button>
             <button class="m-big" data-a="rn-visit" data-id="${n.key}">VISIT RECRUITMENT OFFICE</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /**
+   * v0.8A MISSION BRIEFING (Missions 1-12): opened by DEPLOY on the Campaign screen, before anything is deployed.
+   * Mission number and title, chapter, a short story, the primary objective, the optional objectives, a tactical
+   * tip, and DEPLOY / BACK. Compact enough for a phone in landscape without scrolling (style.css .brief).
+   */
+  private briefingHtml(m: CampaignMission) {
+    const b = m.brief;
+    const ch = chapterOf(m.number);
+    const chap = `CHAPTER ${ch.number}${ch.name ? `: ${esc(ch.name.toUpperCase())}` : ''}`;
+    const opts = m.optional.length ? m.optional.map((o) => `<li>${esc(o.label)}</li>`).join('') : '<li class="dim">None</li>';
+    return `
+      <div class="m-modal brief-bg" data-a="brief-back-bg">
+        <div class="d-card x-card brief" role="dialog" aria-label="${esc(`Mission ${m.number} briefing: ${m.name}`)}">
+          <div class="brief-kicker">${chap} · MISSION ${m.number}</div>
+          <div class="brief-title">${esc(m.name)}</div>
+          <div class="brief-story">${esc(b?.story ?? m.briefing)}</div>
+          <div class="brief-grid">
+            <div><h4>OBJECTIVE</h4><p>${esc(b?.objective ?? m.primary.join(', '))}</p></div>
+            <div><h4>OPTIONAL</h4><ul>${opts}</ul></div>
+          </div>
+          ${b?.tip ? `<div class="brief-tip"><b>TIP</b> ${esc(b.tip)}</div>` : ''}
+          <div class="d-btns">
+            <button class="m-big alt" data-a="brief-back" title="Back to the Campaign (Esc)">BACK</button>
+            <button class="m-big" data-a="brief-deploy" title="Deploy the selected squad (Enter)">DEPLOY</button>
           </div>
         </div>
       </div>`;
@@ -495,8 +527,8 @@ export class Menus {
     type Row = [string, number, number, string, Parameters<Menus['sources']>[1]];
     const rows: Row[] = [
       ['Max HP', base.hp, eff.hp, '', 'hp'],
-      ['Damage per shot', base.damage, eff.damage, '', 'damage'],
-      ['Fire rate', base.fireRate, eff.fireRate, '/s', 'fireRate'],
+      [s.classId === 'commando' ? 'Damage per shot (each pistol)' : 'Damage per shot', base.damage, eff.damage, '', 'damage'],
+      [s.classId === 'commando' ? 'Fire rate (each pistol)' : 'Fire rate', base.fireRate, eff.fireRate, '/s', 'fireRate'],
       ['Spread, standing', base.accuracy, eff.accuracy, '°', 'spread'],
       ['Spread, moving', base.accuracy + base.movePenalty, eff.accuracy + eff.movePenalty, '°', 'spread'],
       ['Move speed', base.moveSpeed, eff.moveSpeed, ' px/s', 'moveSpeed'],
@@ -1144,7 +1176,7 @@ export class Menus {
           <button class="m-nav back" data-a="manage-back">◂ BACK TO ${esc(fallen.name.toUpperCase())}</button>
           <span class="k-need">Resurrect ${esc(fallen.name)}: <b>${cr(cost)} CR</b> · ${short ? `<b class="warn">${cr(short)} CR short</b>` : '<b class="okc">affordable ✓</b>'}</span>
         </div>
-        <div class="k-help">Dismiss reserve soldiers for their refund (Infantry 200 · Heavy Gunner 250 · Medic 250 · Sniper 300; training is not refunded). Dismissal is permanent. ${living <= 1 ? 'Your last living soldier can\'t be dismissed.' : ''}</div>
+        <div class="k-help">Dismiss reserve soldiers for their refund (Infantry 200 · Heavy Gunner 250 · Medic 250 · Sniper 300 · Commando 300; training is not refunded). Dismissal is permanent. ${living <= 1 ? 'Your last living soldier can\'t be dismissed.' : ''}</div>
         <div class="k-list t-scroll">${rows}</div>
       </div>`;
   }
@@ -1450,13 +1482,16 @@ export class Menus {
         return;
       }
       case 'settings': this.openSettings(); return;
-      case 'deploy': this.deploy(); return;
+      case 'deploy': this.openBriefing(); return;
+      case 'brief-deploy': this.deploy(); return;
+      case 'brief-back': this.briefOpen = false; this.renderCampaign(); return;
+      case 'brief-back-bg': if (e.target === el) { this.briefOpen = false; this.renderCampaign(); } return;
       case 'retry': g.reset(); return;
       case 'barracks': g.toBarracks(); return;
       case 'campaign': g.toCampaign(); return;
       case 'to-barracks': if (el.dataset.tab) { this.tab = el.dataset.tab as BarracksTab; this.detailsId = null; this.targetSlot = null; } this.showBarracks(); return;
       case 'to-campaign': this.showCampaign(); return;
-      case 'reset-open': this.resetOpen = true; this.renderCampaign(); return;
+      case 'reset-open': this.resetOpen = true; this.briefOpen = false; this.renderCampaign(); return;
       case 'reset-cancel': this.resetOpen = false; this.renderCampaign(); return;
       case 'reset-cancel-bg': if (e.target === el) { this.resetOpen = false; this.renderCampaign(); } return;
       case 'reset-confirm': {
@@ -1546,12 +1581,23 @@ export class Menus {
     this.notice(`${label} rank ${res.rank} (−${cr(res.cost)} CR)${res.saved ? '' : ' · not saved (no storage)'}`);
   }
 
-  private deploy() {
-    // v0.6.1: deployment happens only from the Campaign screen (the mission briefing)
+  /** v0.8A: DEPLOY on the Campaign screen opens the briefing (only when the squad could deploy right now). */
+  private openBriefing() {
     if (this.screen !== 'campaign') return;
     if (this.campaignSel !== this.game.missionId) { this.notice('This mission is locked.'); return; }
+    const why = this.game.deployBlock();
+    if (why) { this.notice(why); return; }
+    this.briefOpen = true;
+    this.renderCampaign();
+  }
+
+  private deploy() {
+    // v0.6.1: deployment happens only from the Campaign screen (v0.8A: from its mission briefing)
+    if (this.screen !== 'campaign') return;
+    this.briefOpen = false;
+    if (this.campaignSel !== this.game.missionId) { this.notice('This mission is locked.'); return; }
     const res = this.game.deploySelected();
-    if (!res.ok) this.notice(res.reason);
+    if (!res.ok) { this.renderCampaign(); this.notice(res.reason); }
   }
 
   private onKey(e: KeyboardEvent) {
@@ -1579,8 +1625,9 @@ export class Menus {
       } else if (this.dismissId || this.renameId || this.promoteId || this.ceremonyId) { /* dialogs: buttons only (no Enter shortcut for a dismissal or a promotion) */ }
       else if (e.code === 'KeyC' && !this.detailsId) this.showCampaign();
     } else if (this.screen === 'campaign') {
-      if (e.code === 'Enter' && !this.resetOpen) { e.preventDefault(); this.deploy(); }
+      if (e.code === 'Enter' && !this.resetOpen) { e.preventDefault(); if (this.briefOpen) this.deploy(); else this.openBriefing(); }
       else if (this.resetOpen) { if (e.code === 'Escape') { this.resetOpen = false; this.renderCampaign(); } }
+      else if (this.briefOpen) { if (e.code === 'Escape') { this.briefOpen = false; this.renderCampaign(); } }
       else if (e.code === 'KeyB') this.showBarracks();
       else if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
         const open = CAMPAIGN.filter((m) => m.playable && this.missionState(m) !== 'locked');

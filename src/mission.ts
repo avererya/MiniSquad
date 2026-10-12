@@ -12,6 +12,7 @@ import { campaignMission, type CampaignMission } from './campaign';
 import type { MissionEvent, ObjPoint, Objective } from './objectives';
 import { Convoy } from './convoy';
 import { BossFight } from './boss';
+import { Artillery, type SpotlightDef } from './artillery';
 import type { EnemyKind } from './unit';
 import { pointInRect, type Rect, type Vec } from './util';
 import { squadCentre } from './squad';
@@ -89,10 +90,30 @@ export interface TriggerSpec {
   /** v0.6.2: enemy kinds of the wave in order (missing = rifleman). */
   kinds?: EnemyKind[];
 }
+/** v0.8A extraction pressure tiers (sizes in CFG.extractionPressure; see pressureGroups). */
+export type PressureTier = 'light' | 'small' | 'moderate' | 'restrained' | 'strong';
+export interface PressureGroup { size: number; delay: number; kinds?: EnemyKind[] }
+/** Reinforcement groups of a tier: sizes / delays read live from CFG.extractionPressure. */
+export function pressureGroups(tier: PressureTier): PressureGroup[] {
+  const P = CFG.extractionPressure;
+  switch (tier) {
+    case 'light': return [{ size: P.light, delay: 0 }];
+    case 'small': return [{ size: P.small, delay: 0 }];
+    case 'moderate': return [{ size: P.moderateA, delay: 0 }, { size: P.moderateB, delay: P.moderateDelay }];
+    case 'restrained': return [{ size: P.restrained, delay: P.restrainedDelay }];
+    case 'strong': return [{ size: P.strongA, delay: 0 }, { size: P.strongB, delay: P.strongDelay, kinds: Array.from({ length: P.strongArmored }, () => 'armored' as const) }];
+  }
+}
 export interface ExtractionSpec {
   zone: Rect;
   countdown: () => number;
+  /** A scripted final wave (Missions 3 and 10 keep theirs; split over the two nearest off-screen points). */
   finalWave?: { points: Vec[]; size: () => number };
+  /**
+   * v0.8A extraction pressure (instead of a scripted final wave, never both): finite groups from these map-edge
+   * points once extraction is called (see Mission.updatePressure).
+   */
+  pressure?: { tier: PressureTier; points: Vec[] };
   /** The escorted captive must be in the zone (and standing) too. */
   requireNpc?: boolean;
 }
@@ -114,6 +135,8 @@ export interface MissionScript {
   convoy?: { route: Vec[]; escorts: EnemyKind[][]; gap: number; delay: number };
   /** v0.6.2 Mission 10: boss arena and the reinforcement gates. */
   boss?: { arena: Rect; gates: Vec[] };
+  /** v0.8A Mission 12: searchlights; the guns are the 'artillery' structures of the primary objective (artillery.ts). */
+  artillery?: { lights: SpotlightDef[] };
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -139,6 +162,8 @@ export class Mission {
   convoy: Convoy | null = null;
   /** v0.6.2: Mission 10 boss fight (null until it starts). */
   boss: BossFight | null = null;
+  /** v0.8A: Mission 12 searchlights + artillery (null elsewhere). */
+  artillery: Artillery | null = null;
   failReason = '';
   private ended = false;
   /**
@@ -162,6 +187,20 @@ export class Mission {
   warnAt = 0;
   /** Seconds the squad has not been all in the zone (an attempt ends after EXTRACT_REARM_S). */
   private outT = 0;
+  /**
+   * v0.8A EXTRACTION PRESSURE. Once extraction is called (countdown starts) the tier's groups enter, each ONCE,
+   * at its delay (simulation time): never more, never again (no farming), never for a retried attempt. Each
+   * spawns at a map-edge point that is off screen and at least CFG.extractionPressure.minDist from every
+   * standing squad member and resistance ally (open ground: findOpenNear), a different point than the group
+   * before when possible, and advances on the squad (flow field). Untagged: no objective counts them; the
+   * helicopter keeps its countdown. A banner, the alarm and an edge marker announce each group.
+   */
+  pressureT = -1;
+  pressureSpawned = 0;
+  pressureGroupsFired = 0;
+  private pressureUsed: Vec[] = [];
+  /** Edge markers for incoming groups (render.ts: off-screen arrows). */
+  incoming: { pos: Vec; life: number }[] = [];
 
   constructor(readonly script: MissionScript) {
     this.id = script.id;
@@ -188,6 +227,10 @@ export class Mission {
       if (grp.defender) this.defenders.push(...units);
     }
     if (this.script.captive) this.npc = game.spawnNpc(this.script.captive, this.script.captiveLabel ?? 'CAPTIVE');
+    if (this.script.artillery) {
+      const guns = () => this.primaries.flatMap((o) => ('targets' in o && (o as unknown as { kind: string }).kind === 'artillery' ? (o as unknown as { targets: Unit[] }).targets : []));
+      this.artillery = new Artillery(this.script.artillery.lights, guns);
+    }
     for (const o of this.optionals) o.activate(this, game);
     this.activateCurrent(game);
   }
@@ -213,6 +256,7 @@ export class Mission {
     if (this.ended) return;
     this.convoy?.update(game, dt);
     this.boss?.update(game, dt);
+    this.artillery?.update(game, dt);
   }
 
   /** v0.6.2 Mission 10: the Iron Warden enters. */
@@ -286,7 +330,46 @@ export class Mission {
     this.updateExtraction(game, dt);
   }
 
+  private updatePressure(game: Game, dt: number) {
+    for (const m of this.incoming) m.life -= dt;
+    if (this.incoming.length) this.incoming = this.incoming.filter((m) => m.life > 0);
+    const P = this.script.extraction.pressure;
+    if (!P || this.pressureT < 0) return;
+    this.pressureT += dt;
+    const groups = pressureGroups(P.tier);
+    while (this.pressureGroupsFired < groups.length && groups[this.pressureGroupsFired].delay <= this.pressureT) {
+      const g = groups[this.pressureGroupsFired++];
+      if (g.size <= 0) continue;
+      const pt = this.pressurePoint(game, P.points);
+      if (!pt) continue;
+      for (let i = 0; i < g.size; i++) {
+        const e = game.spawnEnemy(game.findOpenNear(pt, 70), g.kinds?.[i] ?? 'rifleman');
+        e.reinforcement = true;
+        this.pressureSpawned++;
+      }
+      this.pressureUsed.push(pt);
+      this.incoming.push({ pos: { ...pt }, life: 5 });
+      const dir = compass(squadCentre(game.soldiers) ?? game.cam, pt);
+      game.banner(this.pressureGroupsFired === 1 ? `ENEMY REINFORCEMENTS INBOUND FROM THE ${dir} — HOLD UNTIL EXTRACTION` : `MORE ENEMIES INBOUND FROM THE ${dir}`, '#ffb347', 3);
+      sfx('alarm');
+    }
+  }
+
+  /** A map-edge spawn point for the next pressure group (see pressureT), or null if the list is empty. */
+  private pressurePoint(game: Game, points: Vec[]): Vec | null {
+    if (!points.length) return null;
+    const squad = [...game.soldiers, ...game.allies].filter((s) => s.active);
+    const c = squadCentre(game.soldiers) ?? game.cam;
+    const minD = CFG.extractionPressure.minDist;
+    const far = (p: Vec) => squad.every((s) => Math.hypot(s.pos.x - p.x, s.pos.y - p.y) >= minD);
+    const ok = points.filter((p) => !game.isOnScreen(p, 80) && far(p));
+    const fresh = ok.filter((p) => !this.pressureUsed.some((u) => u.x === p.x && u.y === p.y));
+    const byNear = (a: Vec, b: Vec) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y);
+    return [...fresh].sort(byNear)[0] ?? [...ok].sort(byNear)[0] ?? [...points].sort((a, b) => -byNear(a, b))[0];
+  }
+
   private updateExtraction(game: Game, dt: number) {
+    this.updatePressure(game, dt);
     const X = this.script.extraction;
     const active = game.soldiers.filter((s) => s.active);
     const npc = X.requireNpc ? this.npc : null;
@@ -299,10 +382,11 @@ export class Mission {
           const fw = X.finalWave;
           if (fw) {
             const n = fw.size(), a = Math.ceil(n / 2);
-            this.spawnWave(game, fw.points, a);
-            this.spawnWave(game, fw.points, n - a, true);
-            if (n > 0) game.banner('ENEMY REINFORCEMENTS INBOUND — HOLD UNTIL EXTRACTION', '#ffb347', 3);
+            const units = [...this.spawnWave(game, fw.points, a), ...this.spawnWave(game, fw.points, n - a, true)];
+            for (const u of units) u.reinforcement = true;
+            if (n > 0) { game.banner('ENEMY REINFORCEMENTS INBOUND — HOLD UNTIL EXTRACTION', '#ffb347', 3); sfx('alarm'); }
           }
+          if (X.pressure && this.pressureT < 0) this.pressureT = 0;
         }
         break;
       }
@@ -397,7 +481,15 @@ export class Mission {
   draw(ctx: CanvasRenderingContext2D, game: Game) {
     for (const o of this.primaries) o.draw(ctx, this, game);
     for (const w of this.wrecks) drawWreck(ctx, w.pos, w.kind);
+    this.artillery?.drawGround(ctx, game);
   }
+}
+
+/** Compass word for the direction from `from` to `to` (screen up = NORTH). */
+function compass(from: Vec, to: Vec): string {
+  const a = Math.atan2(to.y - from.y, to.x - from.x) / Math.PI * 4; // -4..4, 0 = east
+  const k = ((Math.round(a) % 8) + 8) % 8;
+  return ['EAST', 'SOUTHEAST', 'SOUTH', 'SOUTHWEST', 'WEST', 'NORTHWEST', 'NORTH', 'NORTHEAST'][k];
 }
 
 function drawWreck(ctx: CanvasRenderingContext2D, p: Vec, kind = '') {

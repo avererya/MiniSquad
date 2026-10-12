@@ -494,7 +494,7 @@ function installHelpers() {
     return ev(() => {
       const P = window.__progression, CS = window.__casualties, EL = window.__elite, out = {};
       const cp = window.__campaign;
-      out.rewards = cp.CAMPAIGN.filter((m) => m.playable).map((m) => [true, false].map((fc) => JSON.stringify(P.computeMissionRewards({ missionId: m.id, runId: 'x', won: true, deployed: [{ id: 'a', status: 'Standing', downs: 0 }, { id: 'b', status: 'Downed', downs: 1 }], optional: { total: 2, completed: 1 } }, fc))).join('|')).join('#');
+      out.rewards = cp.CAMPAIGN.filter((m) => m.playable && m.number <= 10).map((m) => [true, false].map((fc) => JSON.stringify(P.computeMissionRewards({ missionId: m.id, runId: 'x', won: true, deployed: [{ id: 'a', status: 'Standing', downs: 0 }, { id: 'b', status: 'Downed', downs: 1 }], optional: { total: 2, completed: 1 } }, fc))).join('|')).join('#');
       out.xp = Array.from({ length: 25 }, (_, i) => P.xpForLevel(i + 1)).join() + '/' + Array.from({ length: 30 }, (_, i) => EL.eliteXpForLevel(i + 1)).join();
       out.kia = ['infantry', 'heavy', 'medic', 'sniper'].flatMap((c) => [1, 10, 25].map((l) => { try { return CS.costFor({ classId: c, progression: { level: l, tier: 'recruit', eliteLevel: 0 }, resurrections: 0 }); } catch (e) { return 'n/a'; } })).join();
       window.__debugUnlockAll();
@@ -512,7 +512,10 @@ function installHelpers() {
     check('E5 [37][39] XP curves (Recruit 1-25, Elite 1-30) identical to v0.7B.1', a.xp === b.xp, a.xp.slice(0, 80));
     check('E6 [38] resurrection prices identical to v0.7B.1', a.kia === b.kia, a.kia);
     check('E7 [39] trained / Elite effective stats and individual training tables identical to v0.7B.1 (squad tables: v0.7D)', a.train === b.train && a.training === b.training, a.train.slice(0, 100));
-    check('E8 enemy, boss, grenade, revive and Elite passive numbers identical to v0.7B.1 (no unrelated balance change)', a.enemies === b.enemies, '');
+    // v0.8A adds Commando-only Elite keys (Quick Draw, Close Quarters): every older key must keep its value, new keys are allowed
+    const sub = (x, y) => y !== null && typeof y === 'object' ? Object.keys(y).every((k) => sub(x && x[k], y[k])) : x === y;
+    const addKeys = (x, y) => x && typeof x === 'object' ? Object.keys(x).flatMap((k) => y && k in y ? addKeys(x[k], y[k]).map((n) => k + '.' + n) : [k]) : [];
+    check('E8 enemy, boss, grenade, revive and Elite passive numbers identical to v0.7B.1 (no unrelated balance change; v0.8A only ADDS Commando Elite keys)', sub(JSON.parse(a.enemies), JSON.parse(b.enemies)), 'added: ' + addKeys(JSON.parse(a.enemies), JSON.parse(b.enemies)).join());
   } else console.log('SKIP  E4-E8 (set BASE= to a v0.7B.1 build to compare rewards, XP, KIA prices, training and enemy numbers)');
 
   // [38] KIA with support in play; [43] victory / failure transitions
