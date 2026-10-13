@@ -104,7 +104,7 @@ function installHelpers() {
     };
   });
   check('A1 airstrike radius 120 world px (a radius), ~2 s delay; nuke 30 s countdown; floors boss 10% / objective 1 HP', data.air.join() === '120,2' && data.nuke === 30 && data.floors.join() === '0.1,1', JSON.stringify(data));
-  check('A2 deployment caps unchanged (M1-12 at most 5, six from Mission 13); every playable mission <= 5', data.caps === '2,2,3,3,3,4,5,5,5,5,5,5,6,6' && Math.max(...data.live) === 5, data.caps);
+  check('A2 deployment caps unchanged (M1-12 at most 5, six from Mission 13); v0.8B: Missions 13 / 14 playable at 6', data.caps === '2,2,3,3,3,4,5,5,5,5,5,5,6,6' && Math.max(...data.live) === 6 && data.live.filter((c) => c === 6).length === 2, data.caps + ' / ' + data.live.join());
 
   // ================= B. ELIGIBILITY =================
   const elig = await ev(() => {

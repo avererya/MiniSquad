@@ -27,6 +27,8 @@ function installPilot() {
   g.input.move = () => P.mv;
   P.step = () => {
     const m = g.mission, b = m.boss, n = P.n++;
+    // v0.8B Mission 14: the gunner prompt (first candidate: deterministic)
+    if (g.modal === 'gunner') { const c = g.gunnerCandidates(); g.chooseGunner(c.length ? c[0].id : null); }
     const downed = g.soldiers.find((s) => s.state === 'downed');
     const npc = g.npcs?.[0];
     let goal = null;

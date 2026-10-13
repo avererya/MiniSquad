@@ -79,6 +79,8 @@ function buildGround(map: MapDef): HTMLCanvasElement {
   // v0.6.2 water (flat, part of the ground): banks, water, ripples; then bridge decks over the gaps
   for (const o of map.obstacles) {
     if (!isLowObstacle(o)) continue;
+    if (o.kind === 'gate') continue; // v0.8B gates are drawn live (open / closed: drawGates)
+    if (o.kind === 'wire') { drawWire(g, o); continue; }
     g.fillStyle = '#6b5a3c'; g.fillRect(o.x - 8, o.y, o.w + 16, o.h); // muddy banks
     g.fillStyle = '#3f86b8'; g.fillRect(o.x, o.y, o.w, o.h);
     g.fillStyle = 'rgba(30,70,120,0.35)'; g.fillRect(o.x + o.w * 0.3, o.y, o.w * 0.4, o.h); // deep channel
@@ -139,7 +141,14 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   const inView = (r: Rect) => r.x + r.w > vx - 80 && r.x < vx + VIEW_W + 80 && r.y + r.h > vy - 80 && r.y - 80 < vy + VIEW_H + 80;
   for (const o of OBSTACLES) if (inView(o) && !isLowObstacle(o)) items.push({ y: o.y + o.h, draw: () => drawObstacle(ctx, o, game.clock) });
   for (const p of game.map.props ?? []) if (p.kind !== 'flood') items.push({ y: p.y, draw: () => drawProp(ctx, p, game.clock) });
+  for (const u of game.assets) {
+    if (u.state === 'dead') continue;
+    if (u.asset === 'command') items.push({ y: u.pos.y + 20, draw: () => drawCommandCenter(ctx, u, game) });
+    else if (u.asset === 'turret') items.push({ y: u.pos.y, draw: () => drawTurret(ctx, u, game) });
+    else if (u.asset === 'truck') items.push({ y: u.pos.y, draw: () => drawEscortTruck(ctx, u, game) });
+  }
   for (const u of [...game.soldiers, ...game.allies, ...game.npcs, ...game.enemies]) {
+    if (u.mount) continue; // v0.8B the truck's gunner is drawn on the truck (drawEscortTruck)
     if (u.structure) items.push({ y: u.pos.y, draw: () => drawStructure(ctx, u, game) });
     else if (u.npc) items.push({ y: u.pos.y, draw: () => drawCaptive(ctx, u, game) });
     else if (u.vehicle) items.push({ y: u.pos.y, draw: () => drawTruck(ctx, u, game) });
@@ -885,6 +894,14 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game) {
       ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
       continue;
     }
+    if (p.mounted) {
+      // v0.8B truck machine gun: heavy orange tracer with a dark outline (one stroke pair per round, no extra objects)
+      ctx.strokeStyle = 'rgba(60,30,0,0.5)'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(tx, ty - 22); ctx.lineTo(p.pos.x, p.pos.y - 22); ctx.stroke();
+      ctx.strokeStyle = '#ffb040'; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.moveTo(tx, ty - 22); ctx.lineTo(p.pos.x, p.pos.y - 22); ctx.stroke();
+      continue;
+    }
     ctx.strokeStyle = sq ? (p.hot ? '#ffc070' : COL.squadBullet) : COL.enemyBullet;
     ctx.lineWidth = (p.width ?? (sq ? 3.5 : 4)) + (p.hot ? 0.5 : 0);
     ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
@@ -923,6 +940,20 @@ function drawFx(ctx: CanvasRenderingContext2D, game: Game) {
 
 function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // v0.8B friendly assets: blue bars (command center / truck: wide, with exact HP), name above
+  for (const a of game.assets) {
+    if (a.state !== 'active' || !a.live) continue;
+    const big = a.asset !== 'turret';
+    const w = a.asset === 'command' ? 120 : big ? 80 : 44, f = clamp(a.hp / a.maxHp, 0, 1);
+    const bx = a.pos.x - w / 2, byy = a.pos.y - (a.asset === 'command' ? 128 : big ? 74 : 62);
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(bx - 2, byy - 2, w + 4, big ? 10 : 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(bx, byy, w, big ? 6 : 4);
+    ctx.fillStyle = a.hitFlash > 0 ? '#ffffff' : f > 0.5 ? '#5ab8ff' : f > 0.25 ? '#ffb347' : '#ff5a4a'; ctx.fillRect(bx, byy, w * f, big ? 6 : 4);
+    ctx.font = `bold ${big ? 12 : 11}px sans-serif`;
+    const tag = big ? `${a.label} ${Math.ceil(a.hp)}/${Math.round(a.maxHp)}` : a.label;
+    ctx.fillStyle = '#000'; ctx.fillText(tag, a.pos.x + 1, byy - 9 + 1);
+    ctx.fillStyle = '#9fd8ff'; ctx.fillText(tag, a.pos.x, byy - 9);
+  }
   for (const e of game.enemies) {
     if (!e.active || e.kind === 'boss') continue; // the boss has the big HUD bar
     const big = e.structure || e.vehicle;
@@ -954,9 +985,9 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
   }
   for (const s of game.soldiers) {
     if (s.state === 'active') {
-      // green health bar (enemies' bars are red), name tag just above it
+      // green health bar (enemies' bars are red), name tag just above it (v0.8B: the gunner's sits above the truck's)
       const w = 32, f = clamp(s.hp / s.maxHp, 0, 1);
-      const bx = s.pos.x - w / 2, byy = s.pos.y - 60;
+      const bx = s.pos.x - w / 2, byy = s.pos.y - (s.mount ? 108 : 60);
       ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 1, byy - 1, w + 2, 7);
       ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(bx, byy, w, 5);
       ctx.fillStyle = s.hitFlash > 0 ? '#ffffff' : f > 0.3 ? '#46d65a' : '#2fa040'; ctx.fillRect(bx, byy, w * f, 5);
@@ -965,9 +996,10 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
         ctx.strokeStyle = '#9dff9a'; ctx.lineWidth = 2; ctx.strokeRect(bx - 2.5, byy - 2.5, w + 5, 10);
         ctx.globalAlpha = 1;
       }
-      const tag = s.elite ? `★ ${s.name}` : s.name; // v0.7A: Elite star on the name tag
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(tag, s.pos.x + 1, s.pos.y - 70 + 1);
-      ctx.fillStyle = s.elite ? '#8fc0ff' : '#cfe6ff'; ctx.fillText(tag, s.pos.x, s.pos.y - 70);
+      const tag0 = s.elite ? `★ ${s.name}` : s.name; // v0.7A: Elite star on the name tag
+      const tag = s.mount ? `${tag0} · GUNNER` : tag0;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(tag, s.pos.x + 1, byy - 10 + 1);
+      ctx.fillStyle = s.mount ? '#ffd27a' : s.elite ? '#8fc0ff' : '#cfe6ff'; ctx.fillText(tag, s.pos.x, byy - 10);
       if (s.rallied) { ctx.fillStyle = 'rgba(110,170,255,0.95)'; ctx.fillRect(bx + w + 3, byy, 3, 5); } // Rally pip
     } else if (s.state === 'downed') {
       drawDownedMarker(ctx, s, game);
@@ -1311,6 +1343,143 @@ function drawTruck(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
     const fl = 0.6 + 0.4 * Math.sin(game.clock * 22 + x);
     ctx.fillStyle = `rgba(255,140,40,${fl})`; ctx.beginPath(); ctx.ellipse(x - ca * 8, y - 26 - sa * 4, 9, 13 * fl, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = `rgba(255,230,120,${fl})`; ctx.beginPath(); ctx.ellipse(x - ca * 8, y - 22 - sa * 4, 4.5, 7 * fl, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v0.8B friendly mission assets (defense.ts / escort.ts) and Mission 13 wire / gates
+
+/** Barbed wire (ground bitmap): posts with crossing strands; low, so it blocks movement but not fire. */
+function drawWire(g: CanvasRenderingContext2D, o: Obstacle) {
+  const horiz = o.w >= o.h, len = horiz ? o.w : o.h;
+  g.fillStyle = 'rgba(60,50,35,0.35)'; g.fillRect(o.x - 2, o.y - 2, o.w + 4, o.h + 4);
+  g.strokeStyle = '#4a4a46'; g.lineWidth = 1.5;
+  for (let k = 0; k < len; k += 9) {
+    const x0 = horiz ? o.x + k : o.x, y0 = horiz ? o.y : o.y + k;
+    g.beginPath();
+    if (horiz) { g.moveTo(x0, y0); g.lineTo(x0 + 9, y0 + o.h); g.moveTo(x0 + 9, y0); g.lineTo(x0, y0 + o.h); }
+    else { g.moveTo(x0, y0); g.lineTo(x0 + o.w, y0 + 9); g.moveTo(x0, y0 + 9); g.lineTo(x0 + o.w, y0); }
+    g.stroke();
+  }
+  g.fillStyle = '#5b4630';
+  for (let k = 0; k <= len; k += 46) g.fillRect(horiz ? o.x + k - 2 : o.x + o.w / 2 - 2, horiz ? o.y + o.h / 2 - 2 : o.y + k - 2, 5, 5);
+}
+
+/** Mission 13 gates: posts with an open gap during the preparation, steel bars once closed. */
+export function drawGates(ctx: CanvasRenderingContext2D, gates: Obstacle[], closed: boolean) {
+  for (const o of gates) {
+    const horiz = o.w >= o.h;
+    ctx.fillStyle = '#3c4148';
+    if (horiz) { ctx.fillRect(o.x - 6, o.y - 10, 8, o.h + 14); ctx.fillRect(o.x + o.w - 2, o.y - 10, 8, o.h + 14); }
+    else { ctx.fillRect(o.x - 4, o.y - 6, o.w + 8, 8); ctx.fillRect(o.x - 4, o.y + o.h - 2, o.w + 8, 8); }
+    if (!closed) {
+      ctx.strokeStyle = 'rgba(255,216,74,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+      ctx.strokeRect(o.x, o.y, o.w, o.h); ctx.setLineDash([]);
+      continue;
+    }
+    ctx.fillStyle = '#6d757e'; ctx.fillRect(o.x, o.y - 6, o.w, o.h + 2);
+    ctx.strokeStyle = '#2b3036'; ctx.lineWidth = 2;
+    ctx.strokeRect(o.x, o.y - 6, o.w, o.h + 2);
+    for (let k = 10; k < (horiz ? o.w : o.h); k += 12) {
+      ctx.beginPath();
+      if (horiz) { ctx.moveTo(o.x + k, o.y - 6); ctx.lineTo(o.x + k, o.y + o.h - 4); } else { ctx.moveTo(o.x, o.y + k); ctx.lineTo(o.x + o.w, o.y + k); }
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ffd84a'; ctx.fillRect(o.x + (horiz ? o.w / 2 - 6 : 2), o.y - 3, 12, 4); // hazard plate
+  }
+}
+
+/** The resistance command center: a sandbagged bunker with a radio mast and the resistance colours. */
+function drawCommandCenter(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos, flash = u.hitFlash > 0, f = clamp(u.hp / u.maxHp, 0, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 22, 74, 26, 0, 0, Math.PI * 2); ctx.fill();
+  // sandbag ring
+  ctx.fillStyle = flash ? '#fff' : '#bba673';
+  for (let k = 0; k < 14; k++) { const a = (k / 14) * Math.PI * 2; ctx.beginPath(); ctx.ellipse(x + Math.cos(a) * 64, y + 6 + Math.sin(a) * 26, 12, 7, a, 0, Math.PI * 2); ctx.fill(); }
+  // bunker body + roof
+  ctx.fillStyle = flash ? '#eee' : '#5d6a4c'; ctx.fillRect(x - 46, y - 40, 92, 52);
+  ctx.fillStyle = flash ? '#fff' : '#7f8c6a'; ctx.fillRect(x - 50, y - 56, 100, 18);
+  ctx.strokeStyle = '#2f3826'; ctx.lineWidth = 2; ctx.strokeRect(x - 46, y - 40, 92, 52); ctx.strokeRect(x - 50, y - 56, 100, 18);
+  ctx.fillStyle = '#1d2219'; ctx.fillRect(x - 34, y - 26, 68, 7); // firing slit
+  ctx.fillStyle = '#3c3324'; ctx.fillRect(x - 10, y - 12, 20, 24); // door
+  // radio mast with a blinking light, resistance flag
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 30, y - 56); ctx.lineTo(x + 30, y - 104); ctx.stroke();
+  ctx.fillStyle = Math.sin(game.clock * 5) > 0 ? '#7dff8a' : '#245a2c'; ctx.beginPath(); ctx.arc(x + 30, y - 106, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#5b4630'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 32, y - 56); ctx.lineTo(x - 32, y - 92); ctx.stroke();
+  const wv = Math.sin(game.clock * 4) * 2;
+  ctx.fillStyle = COL.ally; ctx.beginPath(); ctx.moveTo(x - 32, y - 92); ctx.lineTo(x - 6, y - 88 + wv); ctx.lineTo(x - 32, y - 78); ctx.closePath(); ctx.fill();
+  // damage: smoke below 60%, fire below 30%
+  if (f < 0.6) {
+    const t = game.clock * 1.6;
+    for (let k = 0; k < 3; k++) { const ph = (t + k / 3) % 1; ctx.fillStyle = `rgba(70,70,70,${0.45 * (1 - ph)})`; ctx.beginPath(); ctx.arc(x - 20 + k * 18 + Math.sin(t * 2 + k) * 5, y - 62 - ph * 50, 9 + ph * 12, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if (f < 0.3) { const fl = 0.6 + 0.4 * Math.sin(game.clock * 20); ctx.fillStyle = `rgba(255,140,40,${fl})`; ctx.beginPath(); ctx.ellipse(x + 14, y - 60, 10, 15 * fl, 0, 0, Math.PI * 2); ctx.fill(); }
+}
+
+/** Friendly automated turret: blue-striped base, rotating twin barrel, muzzle flash. */
+function drawTurret(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos, flash = u.hitFlash > 0, a = u.aim, ca = Math.cos(a), sa = Math.sin(a);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 24, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = flash ? '#fff' : '#4d5866'; ctx.fillRect(x - 18, y - 16, 36, 20);
+  ctx.fillStyle = '#3d8cff'; ctx.fillRect(x - 18, y - 6, 36, 4); // friendly stripe
+  ctx.strokeStyle = '#22282f'; ctx.lineWidth = 2; ctx.strokeRect(x - 18, y - 16, 36, 20);
+  // head + barrels
+  const hx = x, hy = y - 22;
+  ctx.strokeStyle = '#1b1f24'; ctx.lineWidth = 4;
+  for (const off of [-3, 3]) { ctx.beginPath(); ctx.moveTo(hx - sa * off, hy + ca * off * 0.6); ctx.lineTo(hx + ca * 26 - sa * off, hy + sa * 16 + ca * off * 0.6); ctx.stroke(); }
+  ctx.fillStyle = flash ? '#fff' : '#6b7889'; ctx.beginPath(); ctx.arc(hx, hy, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#9fd8ff'; ctx.beginPath(); ctx.arc(hx - ca * 3, hy - 3, 3, 0, Math.PI * 2); ctx.fill();
+  if (u.muzzle > 0) { ctx.fillStyle = '#ffe9a0'; ctx.beginPath(); ctx.arc(hx + ca * 29, hy + sa * 18, 6, 0, Math.PI * 2); ctx.fill(); }
+}
+
+/** The captured supply truck: the enemy truck's shape in resistance olive with a blue cab stripe, MG on the bed and its gunner. */
+function drawEscortTruck(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const v = game.mission.escort;
+  const { x, y } = u.pos, f = clamp(u.hp / u.maxHp, 0, 1), flash = u.hitFlash > 0;
+  const a = u.aim, ca = Math.cos(a), sa = Math.sin(a);
+  const ours = u.live;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 6, 50, 24, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y - 12); ctx.scale(1, 0.82); ctx.rotate(a);
+  ctx.fillStyle = '#1b1b1b';
+  for (const wx of [-30, -12, 24]) { ctx.fillRect(wx - 7, -24, 14, 7); ctx.fillRect(wx - 7, 17, 14, 7); }
+  ctx.fillStyle = flash ? '#fff' : f > 0.33 ? '#59623a' : '#41472c'; roundRect(ctx, -44, -19, 56, 38, 4); ctx.fill();
+  ctx.fillStyle = flash ? '#eee' : f > 0.33 ? '#6f7a48' : '#4f5734'; roundRect(ctx, -41, -16, 50, 32, 5); ctx.fill();
+  ctx.fillStyle = flash ? '#fff' : ours ? '#3a4a2a' : '#7a3b2a'; roundRect(ctx, 14, -17, 28, 34, 5); ctx.fill();
+  if (ours) { ctx.fillStyle = '#3d8cff'; ctx.fillRect(14, -3, 28, 6); } // resistance blue stripe once captured
+  ctx.fillStyle = '#9fd3e6'; ctx.fillRect(33, -12, 7, 24);
+  // gun pintle on the bed
+  ctx.fillStyle = '#2a2f36'; ctx.beginPath(); ctx.arc(-16, 0, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // machine gun (world space: it turns independently of the truck)
+  if (v && (v.gun.gunner || !v.gun.assigned)) {
+    const p = v.seat(), ga = v.gun.aim, gx = p.x, gy = p.y - 22;
+    ctx.strokeStyle = '#15181c'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(ga) * 30, gy + Math.sin(ga) * 20); ctx.stroke();
+    ctx.fillStyle = '#3a4048'; ctx.fillRect(gx - 6, gy - 5, 12, 10);
+    if (v.gun.muzzle > 0) {
+      const mx = gx + Math.cos(ga) * 34, my = gy + Math.sin(ga) * 23;
+      ctx.fillStyle = 'rgba(255,220,120,0.95)'; ctx.beginPath(); ctx.arc(mx, my, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    const s = v.gun.gunner;
+    if (s && s.state === 'active') {
+      ctx.save(); ctx.translate(0, -14); drawUnit(ctx, s, game); ctx.restore();
+      ctx.strokeStyle = 'rgba(255,210,122,0.85)'; ctx.lineWidth = 2; // gunner ring: clearly not the truck
+      ctx.beginPath(); ctx.ellipse(s.pos.x, s.pos.y - 14, 16, 7, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+  if (f < 0.66) {
+    const t = game.clock * 2 + x * 0.01;
+    for (let k = 0; k < 3; k++) {
+      const ph = (t + k / 3) % 1, sx = x + ca * 14 + Math.sin(t * 3 + k) * 6, sy = y - 30 - ph * 46;
+      ctx.fillStyle = `rgba(${f < 0.33 ? 40 : 90},${f < 0.33 ? 40 : 90},${f < 0.33 ? 40 : 90},${0.45 * (1 - ph)})`;
+      ctx.beginPath(); ctx.arc(sx, sy, 8 + ph * 10, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  if (f < 0.33) {
+    const fl = 0.6 + 0.4 * Math.sin(game.clock * 22 + x);
+    ctx.fillStyle = `rgba(255,140,40,${fl})`; ctx.beginPath(); ctx.ellipse(x + ca * 20, y - 26 + sa * 4, 9, 13 * fl, 0, 0, Math.PI * 2); ctx.fill();
   }
 }
 

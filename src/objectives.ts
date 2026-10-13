@@ -28,11 +28,13 @@ export type MissionEvent =
   | { type: 'vehicleEscaped'; unit: Unit }
   | { type: 'bossDefeated'; unit: Unit }
   | { type: 'allyDowned'; unit: Unit }
-  | { type: 'allyKia'; unit: Unit };
+  | { type: 'allyKia'; unit: Unit }
+  /** v0.8B a friendly mission asset (command center, turret, escort truck) was destroyed. */
+  | { type: 'assetDestroyed'; unit: Unit };
 
 /** v0.6.2 compact HUD widgets under the objective line (trucks, relays) and a meter (alarm). */
 export interface HudChip { label: string; frac: number; state: 'idle' | 'live' | 'done' | 'lost' }
-export interface HudMeter { label: string; frac: number; hot: boolean }
+export interface HudMeter { label: string; frac: number; hot: boolean; /** v0.8B: exact readout ("640/1000"). */ value?: string }
 export interface HudLine { text: string; sub?: string; progress?: number; chips?: HudChip[]; meter?: HudMeter }
 export interface ObjPoint { pos: Vec; label: string; color: string }
 

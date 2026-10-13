@@ -459,8 +459,10 @@ function installHelpers() {
   // ================= F. REGRESSION + PERFORMANCE [35-38] =================
   const data = await both(() => {
     const C = window.__CFG, cp = window.__campaign;
-    const enemyCfg = Object.fromEntries(Object.entries(C).filter(([k]) => /enemy|boss|sniper_|armored|turret|mortar|rifleman|grenadier|bunker|escort/i.test(k)));
-    return JSON.stringify({ enemyCfg, enemy: C.enemy, missions: cp.CAMPAIGN.map((m) => JSON.stringify(m)), caps: Array.from({ length: 14 }, (_, i) => cp.capacityFor(i + 1)), air: C.airstrike, nuke: C.nuke, support: C.support, elite: C.elite, items: window.__supportItems.map((i) => [i.id, i.cost]) });
+    // v0.8B only ADDS (friendly asset config, Missions 13 / 14, the M12 -> M13 unlock): compare everything older
+    const NEW_8B = ['turret', 'commandCenter', 'defense', 'escortTruck', 'mountedGun']; const m12 = (m) => (m.id === 'artillery-hunt' ? { ...m, unlocks: { ...m.unlocks, missions: [], capacityNote: undefined } } : m);
+    const enemyCfg = Object.fromEntries(Object.entries(C).filter(([k]) => !NEW_8B.includes(k) && /enemy|boss|sniper_|armored|turret|mortar|rifleman|grenadier|bunker|escort/i.test(k)));
+    return JSON.stringify({ enemyCfg, enemy: C.enemy, missions: cp.CAMPAIGN.filter((m) => m.number <= 12).map((m) => JSON.stringify(m12(m))), caps: Array.from({ length: 14 }, (_, i) => cp.capacityFor(i + 1)), air: C.airstrike, nuke: C.nuke, support: C.support, elite: C.elite, items: window.__supportItems.map((i) => [i.id, i.cost]) });
   });
   check('F1 [36] no mission difficulty change: enemy / boss config, Missions 1-10 data, deployment caps, airstrike / nuke / Elite numbers identical to v0.7C', !BASE || data.now === data.base, BASE ? (data.now === data.base ? 'identical' : 'DIFFERS') : 'no BASE: skipped');
 

@@ -23,6 +23,12 @@ export function updateEnemyMovement(game: Game, e: Unit, dt: number) {
     e.vel.x = (vx / vl) * e.maxSpeed * 1.2; e.vel.y = (vy / vl) * e.maxSpeed * 1.2;
     return;
   }
+  // v0.8B roadblock: hold this spot on the road (still turns and fires; updateWeapon)
+  if (e.holdPos) {
+    const dx = e.holdPos.x - e.pos.x, dy = e.holdPos.y - e.pos.y, d = Math.hypot(dx, dy);
+    steer(game, e, d > 24 ? { x: (dx / d) * e.maxSpeed, y: (dy / d) * e.maxSpeed } : { x: 0, y: 0 }, dt);
+    return;
+  }
   if (e.guard) {
     const R = e.aggro ?? E.aggroRadius;
     let near: Unit | null = null;

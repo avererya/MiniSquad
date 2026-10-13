@@ -18,6 +18,9 @@ import { pointInRect, type Rect, type Vec } from './util';
 import { squadCentre } from './squad';
 import { sfx } from './audio';
 import { EXTRACT_REARM_S, EXTRACT_WARN_ARM_S } from './casualties';
+import { EscortVehicle } from './escort';
+import { assetMeter } from './defense';
+import { drawGates } from './render';
 
 /** Anything that can extract the squad (timer + helicopter now; trucks/boats later). */
 export interface Extraction {
@@ -137,6 +140,14 @@ export interface MissionScript {
   boss?: { arena: Rect; gates: Vec[] };
   /** v0.8A Mission 12: searchlights; the guns are the 'artillery' structures of the primary objective (artillery.ts). */
   artillery?: { lights: SpotlightDef[] };
+  /** v0.8B resistance allies placed at mission start (Mission 13), each holding its post until the defense is over. */
+  allies?: { posts: Vec[]; names: string[] };
+  /** v0.8B a protected asset spawned at mission start (Mission 13 command center): destroyed = mission failed. */
+  protect?: { pos: Vec; label: string; failReason: string };
+  /** v0.8B the map's collision / nav world once the gates close (Mission.closeGates); drawn by the gates' objective. */
+  gated?: MapDef;
+  /** v0.8B escort vehicle route (Mission 14 truck; escort.ts). */
+  escort?: { route: Vec[] };
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -201,6 +212,25 @@ export class Mission {
   private pressureUsed: Vec[] = [];
   /** Edge markers for incoming groups (render.ts: off-screen arrows). */
   incoming: { pos: Vec; life: number }[] = [];
+  /** v0.8B the protected asset (Mission 13 command center; null elsewhere). */
+  protected: Unit | null = null;
+  /** v0.8B extra flow-field sources (enemies converge on them as well as on the squad): the asset under attack. */
+  flowExtra: Vec[] = [];
+  /** v0.8B the gates are closed (Mission 13 assault). */
+  gatesClosed = false;
+  /** v0.8B Mission 14 escort truck (null elsewhere). */
+  escort: EscortVehicle | null = null;
+  /** v0.8B the gunner was chosen: the truck starts following the squad. */
+  escortStarted = false;
+  /**
+   * v0.8B WRECK AFTERMATH. The escort truck was destroyed: the mission has failed, but the gunner was thrown clear
+   * downed (never killed outright), so the failure is held for a short, controlled aftermath (both sides hold fire,
+   * no ambush fires) in which downed soldiers can still be revived. It ends as soon as nobody is downed (after
+   * CFG.escortTruck.wreckEarly s), or after wreckTime s while no revive is running (hard cap wreckCap s); then the
+   * mission fails ('The supply truck was destroyed.') and the established failure rule applies (whoever is still
+   * downed is KIA). Nothing can repeat it, pay for it or damage the truck again.
+   */
+  aftermath: { t: number } | null = null;
 
   constructor(readonly script: MissionScript) {
     this.id = script.id;
@@ -227,6 +257,12 @@ export class Mission {
       if (grp.defender) this.defenders.push(...units);
     }
     if (this.script.captive) this.npc = game.spawnNpc(this.script.captive, this.script.captiveLabel ?? 'CAPTIVE');
+    if (this.script.protect) this.protected = game.spawnAsset('command', this.script.protect.pos, this.script.protect.label);
+    if (this.script.allies) {
+      const A = this.script.allies;
+      A.posts.forEach((p, i) => { const a = game.spawnAlly(p, A.names[i % A.names.length]); a.post = { ...p }; });
+    }
+    if (this.script.escort) { this.escort = new EscortVehicle(this.script.escort.route); this.escort.spawn(game); }
     if (this.script.artillery) {
       const guns = () => this.primaries.flatMap((o) => ('targets' in o && (o as unknown as { kind: string }).kind === 'artillery' ? (o as unknown as { targets: Unit[] }).targets : []));
       this.artillery = new Artillery(this.script.artillery.lights, guns);
@@ -257,6 +293,32 @@ export class Mission {
     this.convoy?.update(game, dt);
     this.boss?.update(game, dt);
     this.artillery?.update(game, dt);
+    this.escort?.update(game, dt);
+  }
+
+  /** v0.8B Mission 13: the gates close (collision / nav switch to the gated map; nobody is left inside a gate). */
+  closeGates(game: Game) {
+    if (this.gatesClosed || !this.script.gated) return;
+    this.gatesClosed = true;
+    game.swapWorld(this.script.gated);
+  }
+
+  /** v0.8B the escort truck was wrecked: hold the failure for the aftermath (see `aftermath`). */
+  private startAftermath(game: Game) {
+    if (this.aftermath || this.ended) return;
+    this.aftermath = { t: 0 };
+    this.failReason = 'The supply truck was destroyed.';
+    game.banner('THE SUPPLY TRUCK IS DESTROYED — MISSION FAILED', '#ff4040', 4);
+    sfx('alarm');
+  }
+  private updateAftermath(game: Game, dt: number) {
+    const A = this.aftermath!, T = CFG.escortTruck;
+    A.t += dt;
+    const downed = game.soldiers.filter((s) => s.state === 'downed');
+    const reviving = downed.some((s) => s.reviving);
+    const done = (A.t >= T.wreckEarly && !downed.length) || (A.t >= T.wreckTime && !reviving) || A.t >= T.wreckCap;
+    game.setObjective('The supply truck was destroyed.', downed.length ? `Revive ${downed.map((s) => s.name).join(', ')} before the squad pulls out` : 'Pulling out…');
+    if (done) game.fail();
   }
 
   /** v0.6.2 Mission 10: the Iron Warden enters. */
@@ -296,6 +358,10 @@ export class Mission {
     if (ev.type === 'vehicleDestroyed') this.convoy?.onDestroyed(game, ev.unit);
     for (const o of [...this.primaries, ...this.optionals]) if (o.state === 'active') o.onEvent(this, game, ev);
     if (ev.type === 'npcKia') { this.failReason = 'The captive was lost.'; game.fail(); }
+    if (ev.type === 'assetDestroyed') {
+      if (ev.unit === this.protected) { this.failReason = this.script.protect?.failReason ?? 'The command center was destroyed.'; game.fail(); }
+      else if (this.escort && ev.unit === this.escort.unit) { this.escort.onDestroyed(game); this.startAftermath(game); }
+    }
   }
 
   /** Mission over: end-evaluated optionals decide now (once). */
@@ -307,6 +373,9 @@ export class Mission {
 
   update(game: Game, dt: number) {
     if (this.phase === 'done') return;
+    for (const m of this.incoming) m.life -= dt;
+    if (this.incoming.length) this.incoming = this.incoming.filter((m) => m.life > 0);
+    if (this.aftermath) { this.updateAftermath(game, dt); return; }
     const centre = squadCentre(game.soldiers);
     for (const t of this.script.triggers) {
       if (this.fired.has(t.id) || !centre || !t.when(this, game)) continue;
@@ -331,8 +400,6 @@ export class Mission {
   }
 
   private updatePressure(game: Game, dt: number) {
-    for (const m of this.incoming) m.life -= dt;
-    if (this.incoming.length) this.incoming = this.incoming.filter((m) => m.life > 0);
     const P = this.script.extraction.pressure;
     if (!P || this.pressureT < 0) return;
     this.pressureT += dt;
@@ -424,6 +491,9 @@ export class Mission {
         break;
       }
     }
+    // v0.8B: the protected asset's / truck's HP stays on screen through extraction
+    const asset = this.protected ?? this.escort?.unit ?? null;
+    if (asset && this.phase !== 'done') game.objective.meter = assetMeter(asset, this.protected ? 'COMMAND' : 'TRUCK');
   }
 
   private complete(game: Game) {
@@ -479,6 +549,7 @@ export class Mission {
 
   /** Ground-level mission drawing: objective zones, wrecks. */
   draw(ctx: CanvasRenderingContext2D, game: Game) {
+    if (this.script.gated) drawGates(ctx, this.script.gated.obstacles.filter((o) => o.kind === 'gate'), this.gatesClosed);
     for (const o of this.primaries) o.draw(ctx, this, game);
     for (const w of this.wrecks) drawWreck(ctx, w.pos, w.kind);
     this.artillery?.drawGround(ctx, game);

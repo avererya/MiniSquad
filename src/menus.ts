@@ -279,7 +279,7 @@ export class Menus {
           <div class="brief-title">${esc(m.name)}</div>
           <div class="brief-story">${esc(b?.story ?? m.briefing)}</div>
           <div class="brief-grid">
-            <div><h4>OBJECTIVE</h4><p>${esc(b?.objective ?? m.primary.join(', '))}</p></div>
+            <div><h4>OBJECTIVE</h4>${b?.objectives ? `<ul>${b.objectives.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : `<p>${esc(b?.objective ?? m.primary.join(', '))}</p>`}</div>
             <div><h4>OPTIONAL</h4><ul>${opts}</ul></div>
           </div>
           ${b?.tip ? `<div class="brief-tip"><b>TIP</b> ${esc(b.tip)}</div>` : ''}

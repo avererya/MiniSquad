@@ -7,6 +7,8 @@ import type { Game } from './game';
 import {
   ARENA, BLACKOUT_MAP, BRIDGE_MAP, BRIDGE_ZONE, CONVOY_MAP, CONVOY_ROUTE, INSTALLATIONS, PRISON_CAPTIVE, PRISON_MAP, PRISON_TOWERS,
   RELAY_POINTS, STRONGHOLD_MAP, RESISTANCE_MAP, SAFEHOUSE_POSTS, SAFEHOUSE_ZONE, VILLAGE_ZONES, ARTILLERY_GUNS, ARTILLERY_MAP,
+  HOLD_CACHES, HOLD_CC, HOLD_COMMAND_ZONE, HOLD_GATED_MAP, HOLD_MAP, HOLD_TURRET_SLOTS, HOLD_ALLY_POSTS, HOLD_WAVE_POINTS,
+  SUPPLY_DEPOTS, SUPPLY_EXTRACTION, SUPPLY_MAP, SUPPLY_ROUTE,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -18,7 +20,9 @@ import {
   FreeCaptiveObjective, ReachObjective, SurviveObjective,
 } from './objectives';
 import { squadCentre } from './squad';
-import { AlliesAliveOptional, ArtilleryObjective, LiberateZonesObjective, NoArtilleryAlertOptional, SafehouseDefenseObjective } from './chapter3';
+import { ALLY_NAMES, AlliesAliveOptional, ArtilleryObjective, LiberateZonesObjective, NoArtilleryAlertOptional, SafehouseDefenseObjective } from './chapter3';
+import { AssetHpOptional, PrepareDefenseObjective, WaveDefenseObjective, type DefenseWaveDef, type TurretCache } from './defense';
+import { CaptureVehicleObjective, CountDestroyObjective, EscortObjective, type AmbushDef } from './escort';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -346,7 +350,100 @@ const ARTILLERY_HUNT: MissionScript = {
   },
 };
 
+// ---- v0.8B Mission 13: Hold the Line (Defense / finite waves, 6 soldiers + 3 resistance allies) ----
+// Enemy budget (never all at once): cache defenders 5 + 7, cache responses 3 + 4 (each once, only if that cache is
+// secured), waves 8 + 10 + 12 + 14 = 44. Max 63.
+const R = 'rifleman' as const, A = 'armored' as const, SN = 'sniper' as const;
+const HP = HOLD_WAVE_POINTS;
+export const HOLD_WAVES: DefenseWaveDef[] = [
+  { from: 'NORTH', groups: [{ at: 0, points: HP.north, kinds: [R, R, R, R] }, { at: 4, points: [HP.north[1], HP.north[2]], kinds: [R, R, R, R] }] },
+  { from: 'WEST', groups: [{ at: 0, points: HP.west, kinds: [R, R, R, A] }, { at: 4, points: [HP.west[1], HP.west[0]], kinds: [R, R, A] }, { at: 8, points: [HP.west[2], HP.west[0]], kinds: [R, R, A] }] },
+  { from: 'EAST', groups: [{ at: 0, points: HP.east, kinds: [R, R, R, SN] }, { at: 4, points: [HP.east[1], HP.east[0]], kinds: [R, A, R, SN] }, { at: 8, points: [HP.east[2], HP.east[0]], kinds: [R, A, R, SN] }] },
+  { from: 'NORTH, WEST AND EAST', groups: [
+    { at: 0, points: HP.north, kinds: [R, R, A, SN, R] },
+    { at: 3, points: HP.west, kinds: [R, R, A, SN, R] },
+    { at: 6, points: HP.east, kinds: [R, A, SN, R] },
+  ] },
+];
+export const HOLD_CACHE_DEFS: TurretCache[] = [
+  { ...HOLD_CACHES[0], slot: HOLD_TURRET_SLOTS[0], response: { points: [{ x: 40, y: 400 }, { x: 700, y: 40 }], kinds: [R, R, R] } },
+  { ...HOLD_CACHES[1], slot: HOLD_TURRET_SLOTS[1], response: { points: [{ x: 3160, y: 1750 }, { x: 2500, y: 2160 }], kinds: [R, A, R, R] } },
+];
+const HOLD_THE_LINE: MissionScript = {
+  id: 'hold-the-line', map: HOLD_MAP,
+  groups: () => [
+    // cache A (south-west): 4 riflemen + 1 armored
+    { tag: 'cache-a', points: [{ x: 500, y: 1660 }, { x: 600, y: 1700 }, { x: 470, y: 1760 }, { x: 760, y: 1640 }, k(560, 1520, 'armored')], aggro: 400 },
+    // cache B (north-east ridge): 5 riflemen + 2 armored
+    { tag: 'cache-b', points: [{ x: 2640, y: 460 }, { x: 2760, y: 470 }, { x: 2700, y: 540 }, { x: 2620, y: 640 }, { x: 2800, y: 640 }, k(2500, 520, 'armored'), k(2720, 360, 'armored')], aggro: 400 },
+  ],
+  triggers: [],
+  primaries: () => [
+    new PrepareDefenseObjective('prepare', 'Prepare the defenses', HOLD_CACHE_DEFS, HOLD_COMMAND_ZONE, (m, g) => {
+      m.closeGates(g);
+      g.banner('GATES CLOSED — PROTECT THE COMMAND CENTER', '#ffd84a', 3);
+    }),
+    new WaveDefenseObjective('waves', 'Survive four waves', HOLD_WAVES, 'COMMAND'),
+  ],
+  optionals: () => [new AssetHpOptional('cc-half', 'Command center finishes with at least 50% HP', (m) => m.protected)],
+  hint: 'Optional: secure the turret caches (A south-west, B north-east). Stand in the command zone 5 s to start',
+  protect: { pos: HOLD_CC, label: 'COMMAND CENTER', failReason: 'The command center was destroyed.' },
+  allies: { posts: HOLD_ALLY_POSTS, names: [...ALLY_NAMES] },
+  gated: HOLD_GATED_MAP,
+  // the assault is over: the helicopter lands south-east of the compound (no extraction wave)
+  extraction: { zone: { x: 2260, y: 1500, w: 260, h: 220 }, countdown: () => 10 },
+};
+
+// ---- v0.8B Mission 14: Supply Line Sabotage (sabotage + vehicle capture + escort, 6 soldiers) ----
+// Enemy budget: depot guards 6 + 6 + 6, truck yard 5, two patrols of 2, ambushes 6 + 9 + 12 = 27 (each once, keyed
+// to the truck's progress along the road). Max 54.
+export const SUPPLY_AMBUSHES: AmbushDef[] = [
+  {
+    at: 480, delay: 2.5, banner: 'AMBUSH! ENEMIES IN THE ROADSIDE COVER',
+    groups: [
+      { kinds: [R, R, R], points: [{ x: 2150, y: 1050 }, { x: 2240, y: 1050 }, { x: 2320, y: 1060 }], hunter: true },
+      { kinds: [R, R, R], points: [{ x: 2200, y: 1480 }, { x: 2300, y: 1480 }, { x: 2400, y: 1460 }] },
+    ],
+  },
+  {
+    at: 1230, delay: 2.5, banner: 'ROADBLOCK AHEAD! CLEAR THE ROAD FOR THE TRUCK',
+    groups: [
+      { kinds: [R, A, R, A, R, R], road: [{ s: 1660, side: -26 }, { s: 1670, side: 26 }, { s: 1710, side: 0 }, { s: 1740, side: -26 }, { s: 1750, side: 26 }, { s: 1790, side: 0 }], hold: true },
+      { kinds: [R, A, R], points: [{ x: 2610, y: 960 }, { x: 2960, y: 1040 }, { x: 2700, y: 820 }] },
+    ],
+  },
+  {
+    at: 2030, delay: 3, banner: 'FINAL AMBUSH! ENEMIES ON BOTH RIDGES AND BEHIND',
+    groups: [
+      { kinds: [R, R, R, R, SN], points: [{ x: 3250, y: 480 }, { x: 3350, y: 480 }, { x: 3150, y: 500 }, { x: 3430, y: 500 }, { x: 3300, y: 290 }] },
+      { kinds: [R, R, R, A], points: [{ x: 3300, y: 1100 }, { x: 3400, y: 1090 }, { x: 3230, y: 1120 }, { x: 3350, y: 1130 }] },
+      { kinds: [R, A, R], points: [{ x: 2600, y: 800 }, { x: 2560, y: 760 }, { x: 2640, y: 740 }], hunter: true },
+    ],
+  },
+];
+const SUPPLY_LINE: MissionScript = {
+  id: 'supply-line', map: SUPPLY_MAP,
+  groups: () => [
+    { tag: 'depot-1', points: [{ x: 620, y: 700 }, { x: 790, y: 690 }, { x: 700, y: 770 }, { x: 560, y: 640 }, { x: 760, y: 600 }, k(820, 470, 'sniper')], aggro: 400 },
+    { tag: 'depot-2', points: [{ x: 1430, y: 1500 }, { x: 1580, y: 1500 }, { x: 1500, y: 1630 }, { x: 1650, y: 1560 }, { x: 1560, y: 1420 }, k(1440, 1620, 'armored')], aggro: 400 },
+    { tag: 'depot-3', points: [{ x: 1880, y: 480 }, { x: 2020, y: 520 }, { x: 1950, y: 570 }, { x: 2100, y: 560 }, k(2050, 440, 'armored'), k(1890, 300, 'sniper')], aggro: 400 },
+    { tag: 'yard', points: [{ x: 1300, y: 930 }, { x: 1320, y: 1070 }, { x: 1180, y: 1010 }, { x: 1250, y: 915 }, k(1420, 1000, 'armored')], aggro: 380 },
+    { tag: 'patrol-w', points: [{ x: 1050, y: 700 }, { x: 1090, y: 740 }], aggro: 380 },
+    { tag: 'patrol-s', points: [{ x: 1150, y: 1400 }, { x: 1190, y: 1360 }], aggro: 380 },
+  ],
+  triggers: [],
+  primaries: () => [
+    new CountDestroyObjective('depots', 'Destroy three depots', SUPPLY_DEPOTS, 'depot', 800, 'DEPOT', 'Depots destroyed'),
+    new CaptureVehicleObjective('capture', 'Capture the truck'),
+    new EscortObjective('escort', 'Escort it to extraction', SUPPLY_AMBUSHES),
+  ],
+  optionals: () => [new AssetHpOptional('truck-half', 'Truck finishes with at least 50% HP', (m) => m.escort?.unit ?? null, 0.5, 'Truck not captured yet')],
+  hint: 'Any order: destroy the three depots, then capture the truck in the yard',
+  escort: { route: SUPPLY_ROUTE },
+  extraction: { zone: SUPPLY_EXTRACTION, countdown: () => 12 },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

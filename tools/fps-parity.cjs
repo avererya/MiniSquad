@@ -38,7 +38,9 @@ function hashState() {
   const u = (x) => [r(x.pos.x), r(x.pos.y), r(x.hp), x.state, r(x.bleed ?? 0), r(x.reviveProgress ?? 0), r(x.aim), r(x.fireCooldown), x.ability ? r(x.ability.cooldownLeft) : 0, x.shots, x.hits];
   const st = JSON.stringify([r(g.time), g.phase, m.phase, m.boss ? [m.boss.phase, m.boss.rockets, m.boss.bursts] : 0,
     g.soldiers.map(u), g.npcs.map(u), g.enemies.map(u), g.projectiles.map((p) => [r(p.pos.x), r(p.pos.y)]), g.grenades.length,
-    m.primaries.map((o) => o.state), m.optionals.map((o) => o.state)]);
+    m.primaries.map((o) => o.state), m.optionals.map((o) => o.state),
+    // v0.8B (absent on older builds: hashes the same there): mission assets, the escort truck's progress
+    (g.assets || []).map(u), m.escort ? [r(m.escort.s), r(m.escort.v), m.escort.state, m.escort.gun.shots] : 0]);
   let h = 2166136261; for (let i = 0; i < st.length; i++) { h ^= st.charCodeAt(i); h = Math.imul(h, 16777619); }
   return (h >>> 0).toString(16);
 }

@@ -9,6 +9,7 @@ import type { TargetingStrategy } from './targeting';
 import type { Vec } from './util';
 import { eliteStateFor, overdriveAdd, type EliteState } from './elite';
 import type { AlertState } from './awareness';
+import type { MountedGun } from './escort';
 
 export type Team = 'squad' | 'enemy';
 export type UnitState = 'active' | 'downed' | 'kia' | 'dead';
@@ -23,6 +24,15 @@ const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
   tower: () => CFG.tower,
   boss: () => CFG.boss,
   truck: () => CFG.truck,
+};
+
+/** v0.8B friendly assets: the turret fires (CFG.turret); the command center and the truck only need hp / radius. */
+const cmdStats = { ...CFG.enemy, range: 0, fireRate: 0, damage: 0 };
+const truckStats = { ...CFG.enemy, range: 0, fireRate: 0, damage: 0 };
+const ASSET_CFG: Record<'command' | 'turret' | 'truck', () => EnemyStats> = {
+  turret: () => CFG.turret as unknown as EnemyStats,
+  command: () => { cmdStats.hp = CFG.commandCenter.hp; cmdStats.radius = CFG.commandCenter.radius; return cmdStats; },
+  truck: () => { truckStats.hp = CFG.escortTruck.hp; truckStats.radius = CFG.escortTruck.radius; return truckStats; },
 };
 
 let nextId = 1;
@@ -127,6 +137,20 @@ export class Unit {
   /** Ally: where to hold during a defence (null = follow the squad). */
   post: Vec | null = null;
 
+  /**
+   * v0.8B friendly mission object (team 'squad', never a soldier: no identity, XP, training, casualty record or
+   * deployment slot): the Mission 13 command center, an automated turret, the Mission 14 escort truck. Enemies can
+   * shoot it (when `live`), squad rounds pass through it, it never moves on its own and pushes movers out like a
+   * structure. A turret fires through updateWeapon with CFG.turret stats.
+   */
+  asset: 'command' | 'turret' | 'truck' | null = null;
+  /** Asset: false while it can't be attacked yet (the parked truck before its capture). */
+  live = true;
+  /** v0.8B: this soldier mans the escort truck's machine gun (escort.ts); null on foot. */
+  mount: MountedGun | null = null;
+  /** v0.8B enemy: hold this spot (roadblock) instead of pursuing; still turns and fires. */
+  holdPos: Vec | null = null;
+
   // escort NPC (team 'squad', not a soldier: no identity, no weapon, no ability)
   npc = false;
   /** False while the captive is still held: enemies ignore it and it can't be hit. */
@@ -147,7 +171,13 @@ export class Unit {
   /** Class definition (squad soldiers only). */
   get classDef(): SoldierClassDef | null { return this.identity ? CLASSES[this.identity.classId] : null; }
   /** Live stats: the soldier's EFFECTIVE stats (class + trait + individual mods), or CFG.enemy. */
-  get stats(): StatBlock { return this.identity ? this.soldierStats : this.team === 'enemy' ? KIND_CFG[this.kind]() : this.ally ? (CFG.resistance as EffectiveStats) : CFG.enemy; }
+  get stats(): StatBlock {
+    if (this.identity) return this.soldierStats;
+    if (this.team === 'enemy') return KIND_CFG[this.kind]();
+    if (this.ally) return CFG.resistance as EffectiveStats;
+    if (this.asset) return ASSET_CFG[this.asset]();
+    return CFG.enemy;
+  }
   /**
    * Squad soldier's effective stats (throws for enemies). v0.6.3: computed once per simulation
    * step (statEpoch) instead of on every read (radius / fireRate / cone are read many times a
@@ -168,7 +198,7 @@ export class Unit {
   get maxSpeed() {
     if (this.npc) return CFG.escort.moveSpeed * this.catchUp;
     if (this.ally) return CFG.resistance.moveSpeed * this.catchUp;
-    if (this.structure || this.fixed) return 0;
+    if (this.structure || this.fixed || this.asset) return 0;
     return this.team === 'squad' ? this.stats.moveSpeed * this.speedMul * this.rallyMul * this.catchUp : this.stats.moveSpeed * this.speedRand;
   }
   /** v0.7A Rally: move-speed multiplier while inside a Field Commander's aura (1 otherwise). */
@@ -212,7 +242,7 @@ export class Unit {
   /** Can act: move, shoot, be targeted, take damage. */
   get active() { return this.state === 'active'; }
   /** Can be shot at right now (a held captive can't). */
-  get targetable() { return this.state === 'active' && (!this.npc || this.escorting); }
+  get targetable() { return this.state === 'active' && (!this.npc || this.escorting) && this.live; }
 
   /** v0.7C: protected from being destroyed by tactical support (see `objective`). */
   get protectedObjective() { return this.objective || !!this.structure || this.vehicle; }

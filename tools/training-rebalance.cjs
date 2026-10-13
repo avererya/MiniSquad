@@ -221,7 +221,7 @@ function installHelpers() {
     const oc = (missionId, statuses = ['Standing', 'Standing'], downs = [0, 0], optional = { total: 0, completed: 0 }) => ({ missionId, runId: 'r', won: true, deployed: statuses.map((s, i) => ({ id: 'a' + i, status: s, downs: downs[i] })), optional });
     const played = C.CAMPAIGN.map((m) => ({ id: m.id, n: m.number, first: P.computeMissionRewards(oc(m.id, ['Standing'], [1]), true), replay: P.computeMissionRewards(oc(m.id, ['Standing'], [1]), false) }));
     const allCredits = [];
-    for (const m of C.CAMPAIGN) for (const fc of [true, false]) for (const [st, dn] of [[['Standing', 'Standing'], [0, 0]], [['Standing', 'KIA'], [0, 1]], [['Standing', 'Standing'], [1, 0]]]) for (const opt of [{ total: 0, completed: 0 }, { total: 2, completed: 1 }, { total: 1, completed: 1 }]) allCredits.push(P.computeMissionRewards(oc(m.id, st, dn, opt), fc).credits);
+    for (const m of C.CAMPAIGN.filter((x) => x.number <= 12)) for (const fc of [true, false]) for (const [st, dn] of [[['Standing', 'Standing'], [0, 0]], [['Standing', 'KIA'], [0, 1]], [['Standing', 'Standing'], [1, 0]]]) for (const opt of [{ total: 0, completed: 0 }, { total: 2, completed: 1 }, { total: 1, completed: 1 }]) allCredits.push(P.computeMissionRewards(oc(m.id, st, dn, opt), fc).credits);
     return { curve, played, allCredits, lines: P.computeMissionRewards(oc('iron-fist', ['Standing', 'Standing'], [0, 0], { total: 1, completed: 1 }), true).xpLines };
   });
   const c = xp.curve;
@@ -252,7 +252,7 @@ function installHelpers() {
       const P = window.__progression, C = window.__campaign, EL = window.__elite;
       const oc = (missionId, statuses, downs, optional) => ({ missionId, runId: 'r', won: true, deployed: statuses.map((s, i) => ({ id: 'a' + i, status: s, downs: downs[i] })), optional });
       const allCredits = [];
-      for (const m of C.CAMPAIGN) for (const fc of [true, false]) for (const [st, dn] of [[['Standing', 'Standing'], [0, 0]], [['Standing', 'KIA'], [0, 1]], [['Standing', 'Standing'], [1, 0]]]) for (const opt of [{ total: 0, completed: 0 }, { total: 2, completed: 1 }, { total: 1, completed: 1 }]) allCredits.push(P.computeMissionRewards(oc(m.id, st, dn, opt), fc).credits);
+      for (const m of C.CAMPAIGN.filter((x) => x.number <= 12)) for (const fc of [true, false]) for (const [st, dn] of [[['Standing', 'Standing'], [0, 0]], [['Standing', 'KIA'], [0, 1]], [['Standing', 'Standing'], [1, 0]]]) for (const opt of [{ total: 0, completed: 0 }, { total: 2, completed: 1 }, { total: 1, completed: 1 }]) allCredits.push(P.computeMissionRewards(oc(m.id, st, dn, opt), fc).credits);
       return { allCredits, credits: JSON.stringify(P.PROGRESSION.credits), recruit: Array.from({ length: 26 }, (_, l) => P.xpForLevel(l)), elite: Array.from({ length: 31 }, (_, l) => EL.eliteXpForLevel(l)), growth: JSON.stringify(P.PROGRESSION.growth), promo: EL.PROMOTION_COST ?? null };
     });
     const nx = await page.evaluate(() => { const P = window.__progression, EL = window.__elite; return { credits: JSON.stringify(P.PROGRESSION.credits), recruit: Array.from({ length: 26 }, (_, l) => P.xpForLevel(l)), elite: Array.from({ length: 31 }, (_, l) => EL.eliteXpForLevel(l)), growth: JSON.stringify(P.PROGRESSION.growth), promo: EL.PROMOTION_COST ?? null }; });
@@ -301,7 +301,7 @@ function installHelpers() {
       return JSON.stringify(await basePage.evaluate(f)) === JSON.stringify(await page.evaluate(f));
     })();
     check('E4 rank 1 of every individual category identical to v0.7B (v0.7D squad rank 1 is stronger by design)', r1same, '');
-    const enemies = async (p) => p.evaluate(() => { const C = window.__CFG; return JSON.stringify(Object.fromEntries(Object.entries(C).filter(([k]) => !['infantry', 'heavy', 'medic', 'sniper', 'debug', 'perf', 'airstrike', 'nuke', 'support'].includes(k)))); });
+    const enemies = async (p) => p.evaluate(() => { const C = window.__CFG; return JSON.stringify(Object.fromEntries(Object.entries(C).filter(([k]) => !['infantry', 'heavy', 'medic', 'sniper', 'debug', 'perf', 'airstrike', 'nuke', 'support', 'turret', 'commandCenter', 'defense', 'escortTruck', 'mountedGun'].includes(k)))); });
     check('E5 enemies, bosses, abilities and Elite passives tuning identical to v0.7B (no Mission 1-10 difficulty change)', (await enemies(page)) === (await enemies(basePage)), '');
   }
   await fresh();

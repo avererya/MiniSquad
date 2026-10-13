@@ -4,11 +4,14 @@
 // objectives and triggers live in missions.ts, so a map can be reused by another mission.
 import type { Rect, Vec } from './util';
 
-export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag' | 'water' | 'fence' | 'concrete';
+export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag' | 'water' | 'fence' | 'concrete' | 'wire' | 'gate';
 export interface Obstacle extends Rect { kind: ObstacleKind; height: number }
 export type MapTheme = 'grass' | 'farm' | 'canyon' | 'dusk' | 'river' | 'prison' | 'desert' | 'night' | 'fortress';
-/** v0.6.2: water blocks movement and navigation but not bullets or line of sight (you can shoot across a river). */
-export const isLowObstacle = (o: Obstacle) => o.kind === 'water';
+/**
+ * v0.6.2: water blocks movement and navigation but not bullets or line of sight (you can shoot across a river).
+ * v0.8B: so do barbed-wire perimeters and defensive gates (you can shoot through them, not walk through them).
+ */
+export const isLowObstacle = (o: Obstacle) => o.kind === 'water' || o.kind === 'wire' || o.kind === 'gate';
 /** Decoration only (never collides): floodlights light the night map, radar dishes / flags dress the set. */
 export interface MapProp { kind: 'flood' | 'radar' | 'flag' | 'tent'; x: number; y: number; dir?: number }
 
@@ -38,6 +41,8 @@ const S = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, 
 const Wt = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'water', height: 0 });
 const F = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'fence', height: 26 });
 const K = (x: number, y: number, w: number, h: number, height = 30): Obstacle => ({ x, y, w, h, kind: 'concrete', height });
+const Wr = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'wire', height: 0 });
+const G = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'gate', height: 0 });
 
 // =====================================================================================
 // "Comms Outpost" map (v0.1-v0.3 "Secure the Communications Outpost"; now Mission 3).
@@ -439,4 +444,105 @@ export const ARTILLERY_MAP: MapDef = {
   rapidFire: [{ x: 2250, y: 650 }],
   roads: [[{ x: 0, y: 1700 }, { x: 900, y: 1500 }, { x: 1750, y: 1450 }, { x: 2600, y: 1500 }, { x: 3200, y: 1700 }], [{ x: 1750, y: 1450 }, { x: 1750, y: 900 }, { x: 2650, y: 700 }]],
   props: [{ kind: 'flood', x: 1750, y: 1500 }, { kind: 'radar', x: 1500, y: 470 }],
+};
+
+// =====================================================================================
+// v0.8B CHAPTER 3B
+// =====================================================================================
+
+// Mission 13 "Hold the Line": the resistance command center in a barbed-wire compound (wire blocks movement,
+// not fire). Three openings stay open (north / west / east: the assault routes); three gates (north-west,
+// north-east, south) close when the assault starts (HOLD_GATED_MAP: same ground, the gates added as obstacles).
+// Turret caches: A in the south-west fields, B on the north-east ridge. The helicopter lands south-east.
+export const HOLD_CC: Vec = { x: 1600, y: 940 };
+export const HOLD_COMMAND_ZONE: Rect = { x: 1530, y: 1040, w: 140, h: 100 };
+export const HOLD_TURRET_SLOTS: Vec[] = [{ x: 1300, y: 790 }, { x: 1900, y: 790 }];
+export const HOLD_ALLY_POSTS: Vec[] = [{ x: 1440, y: 860 }, { x: 1760, y: 860 }, { x: 1600, y: 1230 }];
+export const HOLD_CACHES: { id: string; name: string; short: string; rect: Rect; tag: string }[] = [
+  { id: 'a', name: 'Cache A', short: 'CACHE A', rect: { x: 430, y: 1600, w: 220, h: 180 }, tag: 'cache-a' },
+  { id: 'b', name: 'Cache B', short: 'CACHE B', rect: { x: 2590, y: 400, w: 220, h: 190 }, tag: 'cache-b' },
+];
+export const HOLD_GATES: Obstacle[] = [G(1300, 650, 120, 14), G(1780, 650, 120, 14), G(1520, 1336, 160, 14)];
+export const HOLD_WAVE_POINTS = {
+  north: [{ x: 1600, y: 40 }, { x: 1250, y: 40 }, { x: 1950, y: 40 }],
+  west: [{ x: 40, y: 1000 }, { x: 40, y: 760 }, { x: 40, y: 1240 }],
+  east: [{ x: 3160, y: 1000 }, { x: 3160, y: 760 }, { x: 3160, y: 1240 }],
+};
+const HOLD_OBSTACLES: Obstacle[] = [
+  // compound wire (openings: N 1530-1670, W / E 930-1070; gate gaps NW 1300-1420, NE 1780-1900, S 1520-1680)
+  Wr(1150, 650, 150, 14), Wr(1420, 650, 110, 14), Wr(1670, 650, 110, 14), Wr(1900, 650, 150, 14),
+  Wr(1150, 664, 14, 266), Wr(1150, 1070, 14, 280), Wr(2036, 664, 14, 266), Wr(2036, 1070, 14, 280),
+  Wr(1164, 1336, 356, 14), Wr(1680, 1336, 356, 14),
+  // compound cover: sandbag nests behind the openings, crates, the supply hut
+  S(1430, 760, 80, 16), S(1690, 760, 80, 16), S(1230, 1110, 70, 16), S(1900, 1110, 70, 16),
+  C(1260, 1210), C(1296, 1210), C(1900, 1230), { x: 1380, y: 1180, w: 90, h: 70, kind: 'hut', height: 56 },
+  // northern approach
+  R(1280, 300, 150, 90), R(1790, 330, 130, 80), C(1560, 420), C(1596, 420), W(980, 440, 18, 170), W(2200, 440, 18, 170),
+  B(560, 260, 200, 150), K(2350, 220, 120, 70, 30),
+  // western approach
+  W(880, 880, 18, 220), C(1000, 1150), C(1000, 780), B(520, 900, 170, 140), R(300, 1250, 140, 90),
+  // eastern approach
+  W(2300, 860, 18, 220), C(2180, 1180), C(2180, 760), B(2560, 940, 170, 140), R(2850, 1250, 140, 90),
+  // cache A (south-west): sandbags and a shed
+  S(400, 1560, 130, 16), S(680, 1620, 16, 120), B(220, 1680, 130, 110), C(520, 1820),
+  // cache B (north-east ridge)
+  S(2560, 370, 16, 130), S(2840, 430, 16, 120), B(2900, 200, 160, 120), C(2700, 620),
+  // southern fields
+  W(1100, 1650, 220, 18), W(2050, 1550, 18, 160), C(1400, 1800), C(2300, 1850), R(800, 1950, 160, 90),
+];
+export const HOLD_MAP: MapDef = {
+  id: 'hold', w: 3200, h: 2200, theme: 'grass',
+  obstacles: HOLD_OBSTACLES,
+  start: { x: 1600, y: 2050 }, startZone: { x: 1470, y: 1930, w: 260, h: 240 },
+  medkits: [{ x: 1600, y: 1250 }, { x: 900, y: 1480 }, { x: 2420, y: 720 }],
+  rapidFire: [{ x: 1600, y: 560 }],
+  roads: [
+    [{ x: 1600, y: 2200 }, { x: 1600, y: 1350 }],
+    [{ x: 1600, y: 650 }, { x: 1600, y: 0 }],
+    [{ x: 1150, y: 1000 }, { x: 0, y: 1000 }],
+    [{ x: 2050, y: 1000 }, { x: 3200, y: 1000 }],
+    [{ x: 1600, y: 1500 }, { x: 900, y: 1600 }, { x: 560, y: 1690 }],
+    [{ x: 2050, y: 1000 }, { x: 2500, y: 700 }, { x: 2700, y: 500 }],
+  ],
+  props: [{ kind: 'flag', x: 1660, y: 880 }, { kind: 'tent', x: 1820, y: 1220 }, { kind: 'radar', x: 1540, y: 860 }],
+};
+/** The same compound with its three gates closed (Mission 13 once the assault starts): collision / nav only; the ground bitmap stays HOLD_MAP's. */
+export const HOLD_GATED_MAP: MapDef = { ...HOLD_MAP, id: 'hold-gated', obstacles: [...HOLD_OBSTACLES, ...HOLD_GATES] };
+
+// Mission 14 "Supply Line Sabotage": an enemy supply road at dusk. Three depots (north-west, south, north), the
+// truck yard in the west, then the road winds east to the extraction field. Roadside cover sits off the road
+// (the route keeps clear of every obstacle; tools/chapter3b.cjs checks it).
+export const SUPPLY_DEPOTS: Vec[] = [{ x: 700, y: 640 }, { x: 1500, y: 1560 }, { x: 1950, y: 440 }];
+export const SUPPLY_ROUTE: Vec[] = [
+  { x: 1250, y: 1000 }, { x: 1700, y: 1000 }, { x: 2050, y: 1250 }, { x: 2550, y: 1250 }, { x: 2850, y: 950 },
+  { x: 3150, y: 700 }, { x: 3550, y: 700 }, { x: 3800, y: 700 },
+];
+export const SUPPLY_EXTRACTION: Rect = { x: 3640, y: 560, w: 300, h: 280 };
+export const SUPPLY_MAP: MapDef = {
+  id: 'supply', w: 4000, h: 2000, theme: 'dusk',
+  obstacles: [
+    // depot 1 (north-west)
+    S(590, 540, 220, 16), B(400, 420, 150, 120), C(830, 720), C(866, 720),
+    // depot 2 (south)
+    S(1380, 1450, 16, 130), W(1580, 1660, 220, 18), B(1180, 1640, 150, 120), C(1620, 1450),
+    // depot 3 (north)
+    B(2080, 280, 180, 130), S(1830, 350, 200, 16), C(1780, 520), C(1816, 520),
+    // truck yard (west): sheds and fences around the parked truck, open to the east
+    B(980, 860, 120, 110), F(1100, 870, 300, 12), F(1100, 1130, 300, 12), C(1050, 1060),
+    // between the depots
+    W(1000, 1250, 18, 200), R(300, 1100, 160, 100), K(1650, 760, 120, 70, 30), W(2350, 600, 18, 180),
+    // ambush 1 roadside cover (north wall, south rocks)
+    W(2080, 1090, 200, 18), R(2200, 1370, 170, 80), C(2420, 1110),
+    // roadblock area (cover beside the bend)
+    K(2560, 1010, 80, 50, 30), S(2900, 1080, 120, 16), C(2680, 860),
+    // ambush 3: ridge rocks north and south of the last straight
+    R(3200, 330, 200, 120), R(3260, 960, 170, 100), W(2950, 520, 18, 120), C(3420, 860),
+    // the south and the far east
+    R(2700, 1600, 220, 120), B(3300, 1400, 180, 130), W(600, 1350, 200, 18), C(150, 1500),
+  ],
+  start: { x: 200, y: 1800 }, startZone: { x: 40, y: 1680, w: 260, h: 260 },
+  medkits: [{ x: 1000, y: 1450 }, { x: 2300, y: 980 }, { x: 3050, y: 1100 }],
+  rapidFire: [{ x: 1700, y: 680 }],
+  roads: [SUPPLY_ROUTE, [{ x: 0, y: 1850 }, { x: 700, y: 1400 }, { x: 1250, y: 1000 }]],
+  props: [{ kind: 'tent', x: 900, y: 1200 }, { kind: 'flag', x: 1130, y: 950 }, { kind: 'radar', x: 2200, y: 250 }],
 };

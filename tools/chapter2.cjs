@@ -85,13 +85,13 @@ function installHelpers() {
     const C = window.__campaign, M = window.game.mission;
     const rows = CH2.map((id) => { const m = C.campaignMission(id); return { id, n: m.number, cap: C.capacityOf(id), playable: m.playable, unlocks: m.unlocks.missions.join(), opt: m.optional.map((o) => o.id).join(), stars: m.stars.two + '/' + m.stars.three, recruits: m.unlocks.recruits.join(), classes: (m.unlocks.classes || []).join() }; });
     const scripts = CH2.map((id) => { const s = window.game.selectMission(id, true) && window.game.mission.script; return { id, ok: !!s, opt: s ? s.optionals().map((o) => o.id).join() : '' }; });
-    return { rows, scripts, m5: C.campaignMission('bring-them-home').unlocks.missions.join(), m11: C.campaignMission('resistance-rising'), m13: C.campaignMission('mission-13'), patch: C.namedRecruit('patch').milestone };
+    return { rows, scripts, m5: C.campaignMission('bring-them-home').unlocks.missions.join(), m11: C.campaignMission('resistance-rising'), m13: C.campaignMission('hold-the-line'), m15: C.campaignMission('mission-15'), patch: C.namedRecruit('patch').milestone };
   }, CH2);
   check('M5 unlocks M6; M6->M7->M8->M9->M10 in order; M10 (Chapter 2 finale) unlocks M11 (v0.8A)', camp.m5 === 'bridgehead' && camp.rows.map((r) => r.unlocks).join('|') === 'prison-break|convoy-crusher|blackout|iron-fist|resistance-rising', camp.rows.map((r) => `${r.id}->${r.unlocks}`).join(' '));
   check('mission numbers 6-10, all playable; deployment caps 4/5/5/5/5 (6 still reserved for M13+)', camp.rows.map((r) => r.n).join() === '6,7,8,9,10' && camp.rows.every((r) => r.playable) && camp.rows.map((r) => r.cap).join() === '4,5,5,5,5', camp.rows.map((r) => r.cap).join());
   check('optional objective ids match the mission scripts (no-kia, prisoner-safe, all-trucks, alarm, no-kia)', camp.rows.map((r) => r.opt).join() === 'no-kia,prisoner-safe,all-trucks,alarm,no-kia' && camp.scripts.every((s, i) => s.ok && s.opt === camp.rows[i].opt), camp.scripts.map((s) => s.opt).join());
   check('M7 milestone = Patch offer (prison-break), M9 unlocks the Sniper class, no soldier awarded', camp.patch === 'prison-break' && camp.rows[1].recruits === 'patch' && camp.rows[3].classes === 'sniper' && camp.rows.every((r, i) => i === 1 ? r.recruits === 'patch' : r.recruits === ''), JSON.stringify(camp.rows.map((r) => r.recruits + '/' + r.classes)));
-  check('Chapter 3 after M10: M11 playable (v0.8A), placeholder M13 not playable', camp.m11 && camp.m11.playable && camp.m11.number === 11 && camp.m13 && !camp.m13.playable && camp.m13.number === 13, camp.m11 && camp.m11.name);
+  check('Chapter 3 after M10: M11 playable (v0.8A), M13 playable (v0.8B), placeholder M15 not playable', camp.m11 && camp.m11.playable && camp.m11.number === 11 && camp.m13 && camp.m13.playable && camp.m13.number === 13 && camp.m15 && !camp.m15.playable && camp.m15.number === 15, camp.m11 && camp.m11.name);
 
   // mission chain through real settlements on a fresh save (first clears only unlock the next one)
   await fresh();

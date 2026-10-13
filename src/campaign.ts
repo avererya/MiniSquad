@@ -15,11 +15,12 @@
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
-export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery';
+export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort';
 export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
   elimination: 'Elimination', sabotage: 'Sabotage', capture: 'Capture & Hold', survival: 'Survival / Extraction', rescue: 'Rescue / Escort',
   interception: 'Convoy Interception', night: 'Night Sabotage', assault: 'Assault / Boss',
   liberation: 'Liberation & Defense', artillery: 'Search & Destroy',
+  defense: 'Defense / Waves', escort: 'Sabotage & Vehicle Escort',
 };
 
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
@@ -79,7 +80,7 @@ export interface CampaignMission {
    * v0.8A pre-deployment briefing (DEPLOY on the Campaign screen opens it): one or two sentences of story, the
    * primary objective in one line and a short tactical tip. Optional objectives come from `optional`.
    */
-  brief?: { story: string; objective: string; tip?: string };
+  brief?: { story: string; objective: string; tip?: string; /** v0.8B: the primary objectives as a list (shown instead of `objective`). */ objectives?: string[] };
   playable: boolean;
   /**
    * v0.1-v0.3 mission id this campaign mission replaces (same map). A legacy first clear of it
@@ -260,10 +261,39 @@ export const CAMPAIGN: CampaignMission[] = [
       objective: 'Destroy three enemy artillery guns.',
       tip: 'Keep moving when artillery marks your position. Solid cover reduces incoming blast damage.',
     },
-    unlocks: { missions: [], recruits: [], classes: ['commando'] },
+    unlocks: { missions: ['hold-the-line'], recruits: [], classes: ['commando'], capacityNote: 'Mission 13 deploys up to 6 soldiers' },
+  },
+  // ---- v0.8B Chapter 3B ----
+  {
+    id: 'hold-the-line', number: 13, name: 'Hold the Line', type: 'defense', playable: true,
+    briefing: 'Secure automated defenses, then hold the resistance command center against four enemy assaults.',
+    primary: ['Prepare the defenses', 'Protect the command center', 'Survive four waves', 'Extract'],
+    optional: [{ id: 'cc-half', label: 'Command center finishes with at least 50% HP' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Defend an objective: turrets and finite enemy waves',
+    brief: {
+      story: 'The resistance command center is under threat. Secure automated defenses if you can, then hold the command center against four enemy assaults. The resistance is counting on you.',
+      objective: 'Prepare the defenses, protect the command center, survive four waves, extract.',
+      objectives: ['Prepare the defenses', 'Protect the command center', 'Survive four waves', 'Extract'],
+      tip: 'Each secured cache installs a turret. Stand in the command zone for 5 s when you are ready.',
+    },
+    unlocks: { missions: ['supply-line'], recruits: [] },
   },
   {
-    id: 'mission-13', number: 13, name: 'Coming soon', type: 'elimination', playable: false,
+    id: 'supply-line', number: 14, name: 'Supply Line Sabotage', type: 'escort', playable: true,
+    briefing: 'Destroy three enemy depots, capture their transport truck and escort it to extraction.',
+    primary: ['Destroy three depots', 'Capture the truck', 'Escort it to extraction'],
+    optional: [{ id: 'truck-half', label: 'Truck finishes with at least 50% HP' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Vehicle escort: the truck follows your squad; pick a gunner',
+    brief: {
+      story: 'The resistance needs supplies. Destroy the enemy depots, capture their transport truck, and escort it through hostile territory. Keep the cargo moving—and keep that truck alive.',
+      objective: 'Destroy three depots, capture the truck, escort it to extraction.',
+      objectives: ['Destroy three depots', 'Capture the truck', 'Escort it to extraction'],
+      tip: 'The truck follows your squad along the road and stops at roadblocks. Clear the road ahead of it.',
+    },
+    unlocks: { missions: [], recruits: [] },
+  },
+  {
+    id: 'mission-15', number: 15, name: 'Coming soon', type: 'elimination', playable: false,
     briefing: 'The next part of Chapter 3 is coming in a future update.', primary: ['Not available yet'], optional: [],
     stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: 'Chapter 3', unlocks: { missions: [], recruits: [] },
   },

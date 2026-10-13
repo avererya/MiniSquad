@@ -1,12 +1,13 @@
-# MiniSquad development handoff (after v0.8A)
+# MiniSquad development handoff (after v0.8B)
 
-Current release: **v0.8A — Chapter 3A: The Resistance Begins** (package 0.8.0, label `versionLabel: "0.8A"`), on top of v0.7D.1 Accuracy Soft Floor & HUD Touch Areas, v0.7D Squad Training Expansion & Mobile Polish, v0.7C Tactical Support, v0.7B.1 Progression & Training Rebalance, v0.7B Elite Progression and v0.7A Elite Promotions.
-Rules and numbers: README → "Chapter 3A: The Resistance Begins (v0.8A)", "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)", "Progression & Training Rebalance (v0.7B.1)", "Tactical Support (v0.7C)", "Squad Training Expansion & Mobile Polish (v0.7D)" and "Accuracy Soft Floor & HUD Touch Areas (v0.7D.1)". This file is what the next step (Chapter 3B: Missions 13-15, the sixth slot, Demolitions Expert) needs.
+Current release: **v0.8B — Chapter 3B: Hold the Line & Supply Line Sabotage** (package 0.8.1, label `versionLabel: "0.8B"`), on top of v0.8A Chapter 3A: The Resistance Begins, v0.7D.1 Accuracy Soft Floor & HUD Touch Areas, v0.7D Squad Training Expansion & Mobile Polish, v0.7C Tactical Support, v0.7B.1 Progression & Training Rebalance, v0.7B Elite Progression and v0.7A Elite Promotions.
+Rules and numbers: README → "Chapter 3B: Hold the Line & Supply Line Sabotage (v0.8B)", "Chapter 3A: The Resistance Begins (v0.8A)", "Elite Promotions (v0.7A)", "Elite Progression (v0.7B)", "Progression & Training Rebalance (v0.7B.1)", "Tactical Support (v0.7C)", "Squad Training Expansion & Mobile Polish (v0.7D)" and "Accuracy Soft Floor & HUD Touch Areas (v0.7D.1)". This file is what the next step (Chapter 3C: Mission 15, the Demolitions Expert) needs.
 
 ## Workflow
 
 - Repo `avererya/MiniSquad`. A push to `main` deploys to Cloudflare Workers. Never touch the `prototype-v0.1` tag (the git proxy refuses tag pushes anyway).
 - Serve a build and run the headless suites: `npm run build && npx vite preview --port 4173`, then `node tools/<suite>.cjs` (`URL=` to point elsewhere, `OUT=` for screenshots).
+- Regression set used for v0.8B: `chapter3b` and `chapter3b-e2e` (new) and `fps-parity` (`MISSIONS=hold-the-line,supply-line` too), then the v0.8A set below against `BASE=<v0.8A build>`. Outdated v0.8A expectations were updated in `campaign-rules` (CH 3 = 4 missions / 12 stars, M15 placeholder), `chapter2` (M13 playable) and `support` A2 (two playable missions at 6). Balance: `node tools/chapter3b-sim.cjs` (autopilot, `SCEN=`, `RUNS=`, `THROTTLE=4` renders every step for perf).
 - Regression set used for v0.8A: `chapter3a` (new), `elite elite-progression logic permadeath recruitment failure-recruit progression campaign-rules barracks chapter2 support (BASE=) squad-training training-rebalance accuracy (BASE=)`, `fps-default`, `fps-parity` (30 / 60 FPS within this build), and the phone suites `mobile chapter2-mobile permadeath-mobile failure-recruit-mobile recruit-mobile`. `fps-parity BASE=<v0.7D.1>` now differs from 5-10 s into prison-break / blackout / iron-fist by design: enemy group awareness changes how guards react (approved in the v0.8A brief). Use the v0.8A build as the new simulation baseline.
 - Regression set used for v0.7D.1: `accuracy` (with `BASE=<v0.7D build>`), `progression`, `training-rebalance` and `squad-training` (with `BASE=`), `fps-parity` (with `BASE=`), `elite-progression` and `support` (with `BASE=`), then the v0.7B set below. Serve the v0.7D base from a worktree on port 4174 as described below.
 - Regression set used for v0.7D: `squad-training` (with `BASE=<v0.7C build>`; `QUICK=1` skips the long runs), `training-rebalance`, `progression`, `support` (with `BASE=`), `elite-progression` and `fps-parity` (with `BASE=`), then the v0.7B set below.
@@ -84,6 +85,14 @@ Rules and numbers: README → "Chapter 3A: The Resistance Begins (v0.8A)", "Elit
 - **Commando**: class in `src/classes.ts`, stats `CFG.commando`, offhand pistol `updateOffhand` + `squadReaction` / `turnMul` in `src/combat.ts`, `BulletStormAbility` in `src/abilities.ts` (`CFG.bulletStorm`), specs `com-gunslinger` / `com-assault` in `src/elite.ts` (`CFG.elite.quickDraw*`, `cq*`, `closeQuartersMul`), recruitment row in `src/recruitment.ts`, unlock text `CLASS_UNLOCK_TEXT.commando`, drawing (`weapon: 'pistols'`, `pack: 'vest'`, `helmet: 'beret'`) in `src/render.ts`, save guard `noCommando` in `src/save.ts`.
 - **Tests**: `tools/chapter3a.cjs` (91 checks: awareness, extraction, briefings, M11, M12, Commando, older saves, phones).
 
+## Where Chapter 3B lives (v0.8B)
+
+- **Sixth slot**: `CAPACITY_TABLE` / `capacityOf` in `src/campaign.ts` (6 from Mission 13); HUD rows of three in `src/hud.ts` (`compact rows2`); `Digit1-6` in `Game.onKey`.
+- **Friendly assets**: `Unit.asset` (`'command' | 'turret' | 'truck'`), `Unit.live` (a parked truck is not `targetable`), stats from `ASSET_CFG` (`src/unit.ts`) → `CFG.commandCenter` / `CFG.turret` / `CFG.escortTruck`. Created by `Game.spawnAsset`, kept in `Game.assets` (never `soldiers`), included in `enemyVictims`, drawn by `drawCommandCenter` / `drawTurret` / `drawEscortTruck` (`src/render.ts`). Destruction emits the `assetDestroyed` MissionEvent (`Mission.emit` fails the mission for the protected asset, starts the truck aftermath). `combat.ts` lets an enemy fire from off screen only when its target is an asset.
+- **Mission 13**: `PrepareDefenseObjective` (caches, turret install, response groups, 5 s command zone, `onBegin` → `Mission.closeGates` → `Game.swapWorld(HOLD_GATED_MAP)`), `WaveController` / `WaveDefenseObjective` (waves, `CFG.defense` gaps, `SiegeTargeting` from `assetHunter` in `src/targeting.ts`), `AssetHpOptional` — all in `src/defense.ts`. Map data `HOLD_*` in `src/map.ts`; waves / caches in `src/missions.ts`. Wire and gate obstacles block movement, not sight; gates are drawn by `drawGates`. Enemy `holdPos` (src/enemy.ts) parks a unit on a point.
+- **Mission 14**: `src/escort.ts`: `EscortVehicle` (route progress `s`, follow / wait / off-road / yield / roadblock, `makeWay` lane avoidance used by `updateSquad`, `stepAside`, `onDestroyed` wreck), `MountedGun` (assign / release / update; `Projectile.mounted` rounds skip Elite on-hit, Close Quarters and healing), `CaptureVehicleObjective` (opens the gunner selection), `ProgressAmbushes` / `EscortObjective`, `CountDestroyObjective`. Gunner selection: `Game.modal = 'gunner'` halts the simulation and keys; `openGunnerSelect` / `gunnerCandidates` / `chooseGunner` in `src/game.ts`, `#gunsel` in `src/hud.ts` + `src/style.css`. Truck aftermath: `Mission.startAftermath` / `updateAftermath` (ceasefire, abilities and support locked). Route / depots / extraction in `src/map.ts` (`SUPPLY_*`).
+- **Tests**: `tools/chapter3b.cjs` (98 checks), `tools/chapter3b-sim.cjs` (autopilot balance and perf), `tools/chapter3b-e2e.cjs` (menus → M13 → M14 smoke; closing a Campaign notice locks taps for a moment, so it waits before the next tap), `tools/perf-lib.cjs` answers the gunner selection.
+
 ## Invariants to keep
 
 1. **Elite Level 1 is never weaker than Recruit Level 25** and is exactly the v0.7A soldier. The stat pipeline still reads the Recruit level (25) for Elites; the v0.7B level bonus is one multiplier per stat in `eliteModifiers` (null at Elite 1), next to the trait.
@@ -108,6 +117,10 @@ Rules and numbers: README → "Chapter 3A: The Resistance Begins (v0.8A)", "Elit
 20. (v0.8A) **Extraction reinforcements are finite and never required**: a mission has either a scripted `finalWave` or `pressure`, never both; no per-kill rewards exist, so nothing can be farmed. The helicopter countdown is separate and unchanged.
 21. (v0.8A) **Resistance allies never touch the account**: no XP, no stats, no casualty decision, no Memorial, nothing saved. Anything that iterates `Game.soldiers` for rewards must keep ignoring `Game.allies`.
 22. (v0.8A) Spec id `inf-recon` is shown as "Recon Specialist"; titles can change, ids cannot (invariant 3).
+23. (v0.8B) **Assets are never soldiers.** Anything that iterates `Game.soldiers` (rewards, stats, casualties, formation) must not see the command center, turrets or the truck; they live in `Game.assets`. No asset is ever healed or repaired.
+24. (v0.8B) **The mounted gun has fixed stats** (`CFG.mountedGun`): no training, Elite, trait or Rally modifiers. A downed gunner never remounts; the gun stays silent for the rest of the mission.
+25. (v0.8B) **The truck never moves through a friendly**: it yields to anyone in its lane (`blockers`), and the squad formation keeps out of its lane (`makeWay`). A destroyed truck downs the gunner, never kills them outright; the aftermath is bounded (40 s cap).
+26. (v0.8B) **Enemy budgets are finite**: Mission 13 at most 63 (12 + 7 + 44), Mission 14 at most 54 (27 placed + 27 ambush); every response group and ambush fires once.
 
 ## v0.7B: shipped
 
@@ -180,6 +193,15 @@ Open:
 - Nuke still unreachable in the live campaign until Mission 13 (six-soldier squads); performance with six Elites is measured only in the dev harness (headless, CPU-throttled), not on a phone.
 - Chapter 3 enemy scaling (see v0.7C notes): fully upgraded Elite Heavy Gunners now do ~31% more sustained damage than the v0.7C maximum (172.8 vs 131.8 damage/s per Weapons Specialist before passives), so Missions 11-15 should grow encounter size and mix.
 
+## v0.8B: what shipped and what is open
+
+Shipped: the sixth deployment slot (Missions 13 / 14), the friendly asset system (command center, turrets, truck), Mission 13 Hold the Line (caches, turrets, command zone start, gates, four waves, allies, siege attackers), Mission 14 Supply Line Sabotage (depots, capture, gunner selection, mounted gun, escort truck, three ambushes, wreck aftermath), exact briefings, `tools/chapter3b.cjs` and `tools/chapter3b-sim.cjs`. Save v9 unchanged.
+
+Open:
+- **Mission length**: the autopilot clears M13 in ~3-3.8 min and M14 in ~2.3 min (level 12, six soldiers). Check on phones; levers are listed in the README known issues.
+- Mission 15, the Demolitions Expert and Chapters 4-5 are not started; `mission-15` is a non-playable placeholder row.
+- `fps-parity BASE=<v0.8A>` is identical on Missions 1-12 (nothing changed there); Missions 13 / 14 have no base to compare against.
+
 ## v0.8A: what shipped and what is open
 
 Shipped: mission briefings (M1-12), enemy group awareness, extraction pressure presets, Mission 11 Resistance Rising (zones in any order, safehouse defence, three resistance allies), Mission 12 Artillery Hunt (three guns, searchlights, artillery alert, markers, shells), the Commando class (dual independent pistols, Bullet Storm, Gunslinger / Assault Specialist), the Recon Specialist rename, 44 CSS px touch areas on every portrait ability button, `tools/chapter3a.cjs`. Red Canyon's pressure points sit at the canyon's west end (the only edge off screen from that extraction zone). Save v9 unchanged; every fixture saves byte-identically to v0.7D.1.
@@ -189,5 +211,5 @@ Open:
 - **Awareness tuning** wants phone playtests: radius 300, reaction 0.3-0.8 s, search 12 s, sniper standoff 0.72 (all live in ⚙).
 - **Target leading** (from v0.7D.1) is still not implemented, by instruction.
 - `fps-parity BASE=` against pre-0.8A builds differs by design (awareness). The 30 / 60 FPS parity within this build passes.
-- Chapter 3B: Missions 13-15, the sixth deployment slot (`CAPACITY_TABLE` already says 6 from Mission 13), Demolitions Expert, Inferno and General Voss are not started. `mission-13` is a non-playable placeholder row.
+- Chapter 3B: done in v0.8B (Missions 13 / 14 and the sixth slot); Mission 15, Demolitions Expert, Inferno and General Voss remain.
 - The `alertLog.broadcasts` counter used by the tools also counts hits on enemies outside awareness (waves, structures). Diagnostic only.

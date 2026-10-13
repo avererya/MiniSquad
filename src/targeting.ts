@@ -123,3 +123,29 @@ export const EscortTargeting: TargetingStrategy = {
     return best;
   },
 };
+
+/**
+ * v0.8B attackers that go for a mission asset: a friendly asset of `kind` (the escort truck, the command center)
+ * counts as `k` times closer than it is (distance-weighted, line of sight and range as always), else the nearest.
+ */
+export function assetHunter(kind: 'truck' | 'command', k: number): TargetingStrategy {
+  return {
+    isValid: NearestVisible.isValid,
+    select(shooter, candidates, game) {
+      const r2 = shooter.stats.range ** 2;
+      let best: Unit | null = null, bs = Infinity;
+      for (const c of candidates) {
+        if (!c.targetable) continue;
+        const d = dist2(shooter.pos, c.pos);
+        if (d > r2 || !game.world.clear(shooter.pos, c.pos)) continue;
+        const score = d * (c.asset === kind ? k * k : 1);
+        if (score < bs) { bs = score; best = c; }
+      }
+      return best;
+    },
+  };
+}
+/** Ambush hunters (Mission 14): prefer the escort truck. */
+export const VehicleHunterTargeting = assetHunter('truck', 0.6);
+/** Siege attackers (Mission 13 waves): prefer the command center. */
+export const SiegeTargeting = assetHunter('command', 0.35);

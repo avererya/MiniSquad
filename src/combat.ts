@@ -26,6 +26,8 @@ export interface Projectile {
   charged?: boolean;
   /** v0.8A: where the shooter stood when the round left the barrel (enemy group awareness). */
   from?: Vec;
+  /** v0.8B: a round of the escort truck's machine gun (fixed stats: no Elite / class on-hit effects). */
+  mounted?: boolean;
 }
 
 export interface Particle { pos: Vec; vel: Vec; life: number; maxLife: number; color: string; size: number; z?: number; vz?: number }
@@ -114,7 +116,8 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   }
   if (!u.target || u.reactionLeft > 0 || u.fireCooldown > 0) return;
   // never fire from off screen (range alone can't guarantee it vertically: view half-height is 360)
-  if (u.team === 'enemy' && !game.isOnScreen(u.pos, -8)) return;
+  // (v0.8B: except at a mission asset: a command center or truck left alone is still under fire)
+  if (u.team === 'enemy' && !u.target.asset && !game.isOnScreen(u.pos, -8)) return;
   if (Math.abs(angleDiff(u.aim, desired)) > st.aimTolerance * DEG) return;
   if (aimNeed > 0 && u.aimHeld < aimNeed) return;
 
@@ -240,7 +243,7 @@ export function updateEnemySniper(u: Unit, game: Game, dt: number, victims: Unit
     if (Math.hypot(u.vel.x, u.vel.y) > 20) u.aim = turnToward(u.aim, Math.atan2(u.vel.y, u.vel.x), C.turnRate * dt);
     return;
   }
-  if (!game.isOnScreen(u.pos, -8)) { u.aimHeld = 0; u.lockAim = null; return; }
+  if (!game.isOnScreen(u.pos, -8) && !u.target.asset) { u.aimHeld = 0; u.lockAim = null; return; }
   const desired = Math.atan2(u.target.pos.y - u.pos.y, u.target.pos.x - u.pos.x);
   if (u.lockAim === null) u.aim = turnToward(u.aim, desired, C.turnRate * dt);
   if (u.fireCooldown > 0) return;
@@ -283,18 +286,19 @@ export function updateProjectiles(game: Game, dt: number) {
       if (t >= 0 && t < bestT) { bestT = t; hitUnit = u; hitWall = false; }
     }
     const hx = x1 + (x2 - x1) * bestT, hy = y1 + (y2 - y1) * bestT;
+    if (hitUnit && p.team === 'enemy') hitUnit = mountedHit(game, hitUnit, p.owner?.target ?? null);
     if (hitUnit) {
       if (p.owner) p.owner.hits++;
-      // v0.7A Deadeye / Phantom Shot: decided per successful hit (misses never count)
-      const eh = p.owner?.elite && p.team === 'squad' ? onHit(p.owner, p.mul ?? 1) : null;
+      // v0.7A Deadeye / Phantom Shot: decided per successful hit (misses never count; never the truck's gun)
+      const eh = p.owner?.elite && p.team === 'squad' && !p.mounted ? onHit(p.owner, p.mul ?? 1) : null;
       const dmg = eh && eh.mul !== 1 ? p.damage * eh.mul : p.damage;
       if (eh && eh.mul !== 1 && p.owner?.elite) p.owner.elite.effect += dmg - p.damage;
       // v0.8A Commando Close Quarters (+15% inside 160 px, within the Elite shot cap) / Assault Storm heal on hit
-      const cq = p.owner?.elite?.id === 'com-assault' ? closeQuartersMul(p.owner, hitUnit, (p.mul ?? 1) * (eh?.mul ?? 1)) : 1;
+      const cq = p.owner?.elite?.id === 'com-assault' && !p.mounted ? closeQuartersMul(p.owner, hitUnit, (p.mul ?? 1) * (eh?.mul ?? 1)) : 1;
       const dmg2 = cq !== 1 ? dmg * cq : dmg;
       if (cq !== 1 && p.owner?.elite) p.owner.elite.effect += dmg2 - dmg;
       game.damage(hitUnit, dmg2, p.owner, { dir: p.vel, precise: p.precise, at: { x: hx, y: hy }, ...(p.from ? { origin: p.from } : {}), ...(eh && eh.pen ? { pen: eh.pen } : {}) });
-      if (p.team === 'squad' && p.owner?.ability?.heal && hitUnit.team === 'enemy' && !hitUnit.structure) { const h = p.owner.ability.heal(p.owner); if (h > 0) p.owner.healFlash = 0.3; }
+      if (p.team === 'squad' && !p.mounted && p.owner?.ability?.heal && hitUnit.team === 'enemy' && !hitUnit.structure) { const h = p.owner.ability.heal(p.owner); if (h > 0) p.owner.healFlash = 0.3; }
       if (eh && (eh.mul !== 1 || eh.pen)) game.fx.burst({ x: hx, y: hy }, 6, eh.pen ? '#bfe8ff' : '#9fd0ff', 170, 0.25, 3);
       game.fx.burst({ x: hx, y: hy }, 4, hitUnit.team === 'squad' ? '#ffd1a0' : '#ffe08a', 120, 0.2, 2.5);
       continue;
@@ -308,6 +312,19 @@ export function updateProjectiles(game: Game, dt: number) {
     out.push(p);
   }
   game.projectiles = out;
+}
+
+/**
+ * v0.8B the truck's gunner rides on the cargo bed: a round meant for the gunner that strikes the truck hits the
+ * gunner, and a round meant for the truck (or anyone else) that strikes the gunner hits the truck.
+ */
+function mountedHit(game: Game, hit: Unit, aimedAt: Unit | null): Unit {
+  const gun = game.mission.escort?.gun;
+  const g = gun?.gunner, truck = gun?.vehicle.unit;
+  if (!g || !truck || !g.active || !truck.active) return hit;
+  if (hit === truck && aimedAt === g) return g;
+  if (hit === g && aimedAt !== g) return truck;
+  return hit;
 }
 
 /** Area damage to one team only (grenades never hurt friendlies). */

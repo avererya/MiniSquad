@@ -296,6 +296,44 @@ function makeDefaults() {
       restrained: 3, restrainedDelay: 2, // M11: one small group (the defence was the fight)
       strongA: 4, strongB: 3, strongDelay: 7, strongArmored: 1, // M12: two groups, the second led by armored troopers
     },
+    // v0.8B Chapter 3B (defense.ts / escort.ts). Friendly mission objects are team 'squad' units that are not
+    // soldiers: no XP, no training, no casualty record, never counted toward the deployment cap.
+    // Friendly automated turret (Mission 13 caches). Same fields as a soldier class (updateWeapon reads them).
+    turret: { ...soldierClassStats({ hp: 300, damage: 9, fireRate: 4, accuracy: 7, movePenalty: 0, moveSpeed: 0, projectileSpeed: 760, reviveTime: 0, range: 420 }), radius: 20, turnRate: 6 },
+    commandCenter: { hp: 1000, radius: 58 },
+    defense: {
+      zoneTime: 5, // s a standing soldier must stay in the command zone, continuously, to start the assault
+      cacheTime: 3, // s standing in a cleared cache zone to secure it (progress kept, like the M11 zones)
+      warn: 7, // s of warning (banner + edge marker + HUD countdown) before each wave's first group
+      nextWhenLeft: 2, // the next wave's warning starts once at most this many attackers of the current wave are left...
+      minGap: 15, // ...but not sooner than this many s after its last group arrived (a short breather)...
+      maxGap: 50, // ...or this many s after the current wave's last group arrived, whichever comes first
+    },
+    escortTruck: {
+      hp: 600,
+      radius: 30,
+      moveSpeed: 72, // px/s at full speed (the squad walks ~130-150)
+      accel: 90, // px/s^2 (starting and braking)
+      behind: 200, // the truck rolls up to this far behind the squad's position along the road
+      maxOff: 300, // squad centre further than this from the road: the truck waits
+      lookahead: 60, // px of road ahead of the front bumper checked for bodies (roadblocks / friendlies)
+      halfLen: 44, // front bumper distance from the truck centre along the road
+      halfWidth: 22, // body half-width used by the road check
+      yieldNudge: 2.5, // s a friendly may stand in the truck's path while the squad is ahead before it is moved aside
+      wreckTime: 15, // s of wreck aftermath before a destroyed truck fails the mission (both sides hold fire)...
+      wreckEarly: 2, // ...it ends this early once nobody is left downed...
+      wreckCap: 40, // ...and never lasts longer than this, even while a revive is running
+      captureTime: 3, // s a standing soldier must stay, continuously, in the truck's capture zone
+      captureRadius: 95,
+    },
+    // Truck machine gun: fixed stats, independent of whoever mans it (no class, training, level or Elite bonus).
+    mountedGun: {
+      damage: 7, fireRate: 10, range: 450, projectileSpeed: 760,
+      spread: 25, // full cone (deg) while the truck stands still
+      movingSpread: 34, // full cone (deg) at full truck speed (scaled by speed)
+      turnRate: 7, // rad/s
+      aimTolerance: 20, // deg
+    },
     pickups: {
       medkitHealFrac: 0.2, // each living, standing soldier heals this fraction of max HP
       rapidFireMul: 1.8,

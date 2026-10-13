@@ -77,6 +77,13 @@ export class Game implements InputHandler {
   npcs: Unit[] = [];
   /** v0.8A resistance allies (Mission 11+): team 'squad', fight and can be downed / revived; never soldiers (no panel, XP or permadeath). */
   allies: Unit[] = [];
+  /** v0.8B friendly mission assets (command center, turrets, escort truck): team 'squad', never soldiers (defense.ts / escort.ts). */
+  assets: Unit[] = [];
+  /**
+   * v0.8B a mission prompt that suspends the simulation until answered (the Mission 14 gunner selection). Like
+   * pause, nothing moves, fires or bleeds out while it is open.
+   */
+  modal: 'gunner' | null = null;
   enemies: Unit[] = [];
   projectiles: Projectile[] = [];
   grenades: Grenade[] = [];
@@ -244,8 +251,8 @@ export class Game implements InputHandler {
   private leaveMission() {
     this.abandonRunning(); // v0.6: leaving a running roster mission (dev panel) settles its journaled deaths now
     this.phase = 'start';
-    this.paused = false; this.targeting = null;
-    this.soldiers = []; this.npcs = []; this.allies = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.paused = false; this.targeting = null; this.modal = null;
+    this.soldiers = []; this.npcs = []; this.allies = []; this.assets = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.ui.rebuildPanels();
   }
 
@@ -270,7 +277,8 @@ export class Game implements InputHandler {
     this.stats = new MissionStats();
     this.runId = newRunId();
     this.lastReward = null; this.lastStars = null; this.escortRescues = 0; this.bossDamage = new Map();
-    this.soldiers = []; this.npcs = []; this.allies = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.soldiers = []; this.npcs = []; this.allies = []; this.assets = []; this.enemies = []; this.projectiles = []; this.grenades = [];
+    this.modal = null;
     this.alertLog = { broadcasts: 0, received: 0 };
     this.scorches = []; this.fx = new Effects(); this.banners = [];
     this.eliteCount = 0; this.eliteCommanders = 0;
@@ -287,7 +295,7 @@ export class Game implements InputHandler {
     // v0.7C: support eligibility = Elites deployed now (never re-counted during the mission)
     this.support = new Support(this.eliteCount);
     this.mission.start(this);
-    this.world.computeFlow(this.soldiers.map((s) => s.pos));
+    this.world.computeFlow([...this.soldiers.map((s) => s.pos), ...this.mission.flowExtra]);
     this.phase = 'playing';
     this.ui.hideOverlay();
     this.ui.rebuildPanels();
@@ -296,7 +304,7 @@ export class Game implements InputHandler {
   win() { if (this.phase !== 'playing') return; this.phase = 'won'; this.end(true); }
   fail() { if (this.phase !== 'playing') return; this.phase = 'failed'; this.end(false); }
   private end(won: boolean) {
-    this.targeting = null;
+    this.targeting = null; this.modal = null;
     this.support.cancelAirstrike(); this.support.cancelNuke(); // an open prompt closes; a launched nuke stays spent
     if (!won) this.downedFallOnFailure();
     this.mission.finalize(this, won);
@@ -380,10 +388,23 @@ export class Game implements InputHandler {
     return a;
   }
 
-  /** What enemy riflemen can shoot at: soldiers, resistance allies and an escorted (freed) captive. */
+  /**
+   * v0.8B friendly mission asset (defense.ts / escort.ts): the command center, an automated turret or the escort
+   * truck. Team 'squad' but never a soldier (no XP, training, casualty record or slot); fixed in place (the truck
+   * is moved by its EscortVehicle). Turrets fire with CFG.turret stats.
+   */
+  spawnAsset(kind: 'command' | 'turret' | 'truck', pos: Vec, label: string): Unit {
+    const u = new Unit('squad', pos, NearestVisible);
+    u.asset = kind; u.label = label; u.name = label;
+    u.hp = u.maxHp; u.aim = -Math.PI / 2;
+    this.assets.push(u);
+    return u;
+  }
+
+  /** What enemy riflemen can shoot at: soldiers, resistance allies, an escorted (freed) captive and live mission assets. */
   enemyVictims(): Unit[] {
-    if (!this.npcs.length && !this.allies.length) return this.soldiers;
-    return [...this.soldiers, ...this.allies, ...this.npcs.filter((n) => n.escorting)];
+    if (!this.npcs.length && !this.allies.length && !this.assets.length) return this.soldiers;
+    return [...this.soldiers, ...this.allies, ...this.npcs.filter((n) => n.escorting), ...this.assets.filter((a) => a.active && a.live)];
   }
 
   spawnEnemy(pos: Vec, kind: EnemyKind = 'rifleman'): Unit {
@@ -405,6 +426,25 @@ export class Game implements InputHandler {
     const e = this.spawnEnemy(this.findOpenNear({ x: truck.pos.x + offset.x, y: truck.pos.y + offset.y }, 20), kind);
     e.escortOf = truck; e.escortOffset = offset; e.targeting = EscortTargeting;
     return e;
+  }
+
+  /**
+   * v0.8B switch the collision / nav world mid-mission (Mission 13: the gates close). Anyone standing inside a new
+   * obstacle is moved to the nearest open spot (never trapped inside it); paths and the flow field are rebuilt.
+   */
+  swapWorld(map: MapDef) {
+    this.world = Game.worldFor(map);
+    for (const u of [...this.soldiers, ...this.allies, ...this.npcs, ...this.enemies]) {
+      if (u.state !== 'active' && u.state !== 'downed') continue;
+      u.path = null;
+      if (u.structure || u.fixed || u.vehicle) continue;
+      if (!this.world.isOpen(u.pos.x, u.pos.y) || this.world.insideObstacle(u.pos, u.radius)) {
+        const q = this.world.center(this.world.nearestOpen(this.world.idx(u.pos.x, u.pos.y)));
+        u.pos.x = q.x; u.pos.y = q.y;
+      }
+    }
+    if (!this.world.isOpen(this.anchor.x, this.anchor.y)) { const q = this.world.center(this.world.nearestOpen(this.world.idx(this.anchor.x, this.anchor.y))); this.anchor = q; }
+    this.flowTimer = 0;
   }
 
   findOpenNear(p: Vec, radius: number): Vec {
@@ -459,7 +499,7 @@ export class Game implements InputHandler {
     if (!u.active) return;
     u.hitFlash = CFG.feel.hitFlash;
     if (u.team === 'squad') {
-      this.hurtFlash = 0.25;
+      if (!u.asset) this.hurtFlash = 0.25;
       if (this.invuln) return;
     }
     amount = modifyDamage(this, u, amount, source, opts);
@@ -484,7 +524,8 @@ export class Game implements InputHandler {
     }
     sfx('hit');
     if (u.hp > 0) return;
-    if (u.team === 'squad') this.downSoldier(u);
+    if (u.asset) this.assetDestroyed(u);
+    else if (u.team === 'squad') this.downSoldier(u);
     else if (u.structure) {
       u.state = 'dead';
       this.mission.emit(this, { type: 'structureDestroyed', unit: u });
@@ -502,8 +543,25 @@ export class Game implements InputHandler {
     }
   }
 
+  /** v0.8B a mission asset reached 0 HP: it is gone for the rest of the mission (the mission decides what that means). */
+  private assetDestroyed(u: Unit) {
+    u.hp = 0;
+    u.state = 'dead';
+    if (u.asset === 'turret') {
+      this.mission.wrecks.push({ id: `turret-${u.id}`, pos: { ...u.pos }, kind: 'turret' });
+      this.fx.burst(u.pos, 26, '#ffb347', 300, 0.6, 5);
+      this.fx.ring(u.pos, 70, 'rgba(255,190,80,0.9)', 0.4, 5);
+      this.scorches.push({ ...u.pos, r: 36 });
+      this.banner(`${u.label} DESTROYED`, '#ff7a5a', 2.6);
+      sfx('boom');
+    }
+    this.mission.emit(this, { type: 'assetDestroyed', unit: u });
+  }
+
   downSoldier(s: Unit) {
     if (!s.active) return;
+    // v0.8B: a downed gunner leaves the truck's gun for good (thrown clear beside the truck for the normal revive)
+    if (s.mount) s.mount.release(this, s);
     s.state = 'downed';
     if (!s.npc && !s.ally) this.stats.down(s);
     s.hp = 0;
@@ -561,6 +619,36 @@ export class Game implements InputHandler {
   confirmExtraction() { return this.phase === 'playing' && this.mission.confirmExtraction(this); }
   stayAndRescue() { return this.phase === 'playing' && this.mission.stayAndRescue(this); }
 
+  // ---------------- v0.8B truck gunner selection (escort.ts) ----------------
+  /** Open the gunner selection (the simulation waits for the answer). */
+  openGunnerSelect() {
+    if (this.phase !== 'playing' || !this.mission.escort || this.mission.escort.gun.assigned) return;
+    this.targeting = null; this.support.cancelAirstrike(); this.support.cancelNuke();
+    this.modal = 'gunner';
+    this.ui.rebuildPanels();
+  }
+  /** Who can take the gun: every standing deployed soldier (any class). */
+  gunnerCandidates(): Unit[] { return this.soldiers.filter((s) => s.active && !s.mount); }
+  /**
+   * Confirm the gunner (a soldier id, or null = No Gunner). Locked for the rest of the escort. Closes the prompt
+   * and starts the escort. Returns false (prompt stays open) for an invalid choice.
+   */
+  chooseGunner(identityOrUnitId: string | number | null): boolean {
+    const v = this.mission.escort;
+    if (this.modal !== 'gunner' || !v || this.phase !== 'playing') return false;
+    let s: Unit | null = null;
+    if (identityOrUnitId !== null) {
+      s = this.gunnerCandidates().find((u) => u.id === identityOrUnitId || u.identity?.id === identityOrUnitId) ?? null;
+      if (!s) return false;
+    }
+    if (!v.gun.assign(this, s)) return false;
+    this.modal = null;
+    this.mission.escortStarted = true;
+    this.banner(s ? `${s.name} MANS THE TRUCK GUN` : 'NO GUNNER — THE TRUCK GUN STAYS SILENT', s ? '#7dd3ff' : '#ffb347', 2.6);
+    this.ui.rebuildPanels();
+    return true;
+  }
+
   banner(text: string, color: string, dur: number) {
     this.banners = this.banners.filter((b) => b.text !== text);
     this.banners.push({ text, color, life: dur, maxLife: dur });
@@ -579,7 +667,10 @@ export class Game implements InputHandler {
    * instant abilities fire immediately. Returns true if something happened.
    */
   useAbility(s: Unit): boolean {
-    if (this.phase !== 'playing' || !s.ability) return false;
+    if (this.phase !== 'playing' || !s.ability || this.modal) return false;
+    if (this.mission.aftermath) { this.say('THE MISSION IS OVER — HOLD FIRE'); sfx('deny'); return false; } // v0.8B wreck aftermath: nothing to farm
+    // v0.8B: the truck's gunner has no personal weapon or ability while mounted
+    if (s.mount) { this.say(`${s.name}: MOUNTED ON THE TRUCK GUN`); sfx('deny'); return false; }
     const ab = s.ability;
     if (ab.targetingMode === 'ground') return this.beginTargeting(s);
     this.targeting = null;
@@ -592,7 +683,8 @@ export class Game implements InputHandler {
   // ---------------- grenade targeting ----------------
   isTargeting() { return this.phase === 'playing' && !!this.targeting; }
   beginTargeting(s: Unit): boolean {
-    if (this.phase !== 'playing' || !s.ability) return false;
+    if (this.phase !== 'playing' || !s.ability || this.modal) return false;
+    if (s.mount) return this.useAbility(s);
     this.support.cancelAirstrike(); // v0.7C: one targeting mode at a time
     if (this.targeting === s) { this.targeting = null; return true; }
     if (s.ability.targetingMode !== 'ground') return this.useAbility(s);
@@ -608,12 +700,12 @@ export class Game implements InputHandler {
 
   // ---------------- v0.7C tactical support (support.ts) ----------------
   /** AIRSTRIKE button / Q: start (or stop) aiming. */
-  useAirstrike() { return this.support.beginAirstrike(this); }
+  useAirstrike() { return !this.mission.aftermath && !this.modal && this.support.beginAirstrike(this); }
   /** CONFIRM / Enter while aiming. */
   confirmAirstrike() { return this.support.confirmAirstrike(this); }
   cancelAirstrike() { this.support.cancelAirstrike(); }
   /** NUKE button / N: open (or close) the launch confirmation. Nothing is spent here. */
-  useNuke() { return this.support.openNuke(this, getAccount().support.nukes); }
+  useNuke() { return !this.mission.aftermath && !this.modal && this.support.openNuke(this, getAccount().support.nukes); }
   cancelNuke() { this.support.cancelNuke(); }
   /** LAUNCH in the confirmation: one Nuclear Strike is deducted and saved, the countdown starts. */
   launchNuke() { return this.support.launchNuke(this, getAccount(), this.persist); }
@@ -637,6 +729,7 @@ export class Game implements InputHandler {
       else if (code === 'KeyC') this.toCampaign();
       return;
     }
+    if (this.modal) return; // v0.8B the gunner selection takes taps / clicks only (an explicit CONFIRM)
     if (code === 'Escape') { this.targeting = null; this.support.cancelAirstrike(); this.support.cancelNuke(); return; }
     if (code === 'KeyP') { this.paused = !this.paused; return; }
     // v0.7C support: Q airstrike (Enter confirms the target), N nuke confirmation (LAUNCH is a button only)
@@ -674,7 +767,7 @@ export class Game implements InputHandler {
     this.banners = this.banners.filter((b) => b.life > 0);
     if (this.notice && (this.notice.life -= dt) <= 0) this.notice = null;
     this.support.tickFx(dt);
-    if (this.phase !== 'playing' || this.paused) return;
+    if (this.phase !== 'playing' || this.paused || this.modal) return;
     this.time += dt;
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
     eliteAuras(this); // v0.7A Rally (no-op without a Field Commander)
@@ -686,7 +779,8 @@ export class Game implements InputHandler {
     this.flowTimer -= dt;
     if (this.flowTimer <= 0) {
       const src = this.soldiers.filter((s) => s.active).map((s) => s.pos);
-      if (src.length) this.world.computeFlow(src);
+      // v0.8B: during a defense the enemy also converges on the protected asset (Mission.flowExtra)
+      if (src.length) this.world.computeFlow(this.mission.flowExtra.length ? [...src, ...this.mission.flowExtra] : src);
       this.flowTimer = 0.3;
     }
     for (const e of this.enemies) if (e.active && !e.structure && !e.fixed && !e.vehicle && e.kind !== 'boss') updateEnemyMovement(this, e, dt);
@@ -694,7 +788,7 @@ export class Game implements InputHandler {
     this.mission.unitStep(this, dt);
 
     // integrate + collide (structures, fixed guards and trucks are pushed by nobody; they push others out)
-    const movers = [...this.soldiers, ...this.allies, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure && !u.fixed && !u.vehicle);
+    const movers = [...this.soldiers, ...this.allies, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure && !u.fixed && !u.vehicle && !u.mount);
     for (const u of movers) { u.pos.x += u.vel.x * dt; u.pos.y += u.vel.y * dt; }
     const soft = movers.filter((u) => !(u.team === 'enemy' && u.kind === 'boss'));
     for (let i = 0; i < soft.length; i++) {
@@ -717,6 +811,8 @@ export class Game implements InputHandler {
         if (d2 < min * min && d2 > 1e-6) { const d = Math.sqrt(d2); u.pos.x = st.pos.x + (dx / d) * min; u.pos.y = st.pos.y + (dy / d) * min; }
       }
     }
+    // v0.8B mission assets push bodies out too (the truck as its oriented box)
+    for (const st of this.assets) if (st.active) for (const u of soft) pushOut(st, u);
     for (const u of movers) {
       this.world.resolveCircle(u.pos, u.radius);
       const sp = Math.hypot(u.vel.x, u.vel.y);
@@ -727,11 +823,18 @@ export class Game implements InputHandler {
     }
 
     // weapons
-    for (const s of this.soldiers) if (s.active) { updateWeapon(s, this, dt, this.enemies); if (s.offhand) updateOffhand(s, this, dt, this.enemies); }
-    for (const a of this.allies) if (a.active) updateWeapon(a, this, dt, this.enemies);
+    // v0.8B: during the wrecked-truck aftermath both sides hold fire (Mission.aftermath)
+    const ceasefire = this.mission.aftermath !== null;
+    if (!ceasefire) {
+      for (const s of this.soldiers) if (s.active && !s.mount) { updateWeapon(s, this, dt, this.enemies); if (s.offhand) updateOffhand(s, this, dt, this.enemies); }
+      for (const a of this.allies) if (a.active) updateWeapon(a, this, dt, this.enemies);
+      for (const t of this.assets) if (t.active && t.asset === 'turret') updateWeapon(t, this, dt, this.enemies);
+      this.mission.escort?.gun.update(this, dt);
+    }
     eliteTick(this, dt); // v0.7A Overdrive / Perfect Aim (no-op without Elites)
     const victims = this.enemyVictims();
     for (const e of this.enemies) {
+      if (ceasefire) break;
       if (!e.active || e.structure || e.vehicle || e.kind === 'boss' || e.routed) continue; // the boss fires from its controller (unitStep)
       if (e.kind === 'sniper') updateEnemySniper(e, this, dt, victims);
       else updateWeapon(e, this, dt, victims);
@@ -753,6 +856,13 @@ export class Game implements InputHandler {
     // routed enemies (after the boss falls) leave once well out of view
     for (const e of this.enemies) if (e.routed && e.active && !this.isOnScreen(e.pos, 160)) e.state = 'dead';
     this.enemies = this.enemies.filter((e) => e.state !== 'dead');
+    if (this.assets.length) {
+      for (const a of this.assets) a.hitFlash = Math.max(0, a.hitFlash - dt);
+      this.assets = this.assets.filter((a) => a.state !== 'dead' || a.asset !== 'turret');
+    }
+    // v0.8B: with nobody else on their feet the gunner jumps down (else nobody could revive anyone)
+    const gunner = this.mission.escort?.gun.gunner;
+    if (gunner && gunner.active && !this.soldiers.some((s) => s.active && !s.mount)) gunner.mount!.release(this, gunner);
 
     this.updateDowned(dt);
     if (this.phase !== 'playing') return;
@@ -790,7 +900,7 @@ export class Game implements InputHandler {
       if (s.state !== 'downed') continue;
       let best: Unit | null = null;
       for (const o of this.soldiers) {
-        if (o === s || !o.active || dist(o.pos, s.pos) > R.radius || !this.world.clear(o.pos, s.pos)) continue;
+        if (o === s || !o.active || o.mount || dist(o.pos, s.pos) > R.radius || !this.world.clear(o.pos, s.pos)) continue;
         if (!best || o.soldierStats.reviveTime < best.soldierStats.reviveTime) best = o;
       }
       s.reviver = best;
@@ -814,4 +924,22 @@ export class Game implements InputHandler {
       }
     }
   }
+}
+
+/** v0.8B: push a body out of a mission asset (circle; the truck as an oriented box of CFG.escortTruck halfLen x halfWidth). */
+function pushOut(st: Unit, u: Unit) {
+  if (st.asset === 'truck') {
+    const T = CFG.escortTruck, c = Math.cos(st.aim), s = Math.sin(st.aim);
+    const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y;
+    const lx = dx * c + dy * s, ly = -dx * s + dy * c;
+    const hx = T.halfLen + u.radius, hy = T.halfWidth + u.radius;
+    if (Math.abs(lx) >= hx || Math.abs(ly) >= hy) return;
+    // out through the nearest side
+    let nx = lx, ny = ly;
+    if (hx - Math.abs(lx) < hy - Math.abs(ly)) nx = Math.sign(lx || 1) * hx; else ny = Math.sign(ly || 1) * hy;
+    u.pos.x = st.pos.x + nx * c - ny * s; u.pos.y = st.pos.y + nx * s + ny * c;
+    return;
+  }
+  const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y, min = u.radius + st.radius, d2 = dx * dx + dy * dy;
+  if (d2 < min * min && d2 > 1e-6) { const d = Math.sqrt(d2); u.pos.x = st.pos.x + (dx / d) * min; u.pos.y = st.pos.y + (dy / d) * min; }
 }

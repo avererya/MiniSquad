@@ -6,10 +6,14 @@ import type { Game } from './game';
 import type { Unit } from './unit';
 import { clamp, dist, lerp, type Vec } from './util';
 
+/** Centre of the standing soldiers on foot (v0.8B: the truck's gunner only when nobody else stands). */
 export function squadCentre(soldiers: Unit[]): Vec | null {
-  let x = 0, y = 0, n = 0;
-  for (const s of soldiers) if (s.active) { x += s.pos.x; y += s.pos.y; n++; }
-  return n ? { x: x / n, y: y / n } : null;
+  let x = 0, y = 0, n = 0, mx = 0, my = 0, mn = 0;
+  for (const s of soldiers) {
+    if (!s.active) continue;
+    if (s.mount) { mx += s.pos.x; my += s.pos.y; mn++; } else { x += s.pos.x; y += s.pos.y; n++; }
+  }
+  return n ? { x: x / n, y: y / n } : mn ? { x: mx / mn, y: my / mn } : null;
 }
 
 /** Move the anchor with collision; near an obstacle's corner, nudge sideways around it instead of snagging. */
@@ -42,7 +46,8 @@ function moveAnchor(game: Game, a: Vec, dx: number, dy: number) {
 
 export function updateSquad(game: Game, mv: Vec, dt: number) {
   const S = CFG.squad;
-  const active = game.soldiers.filter((s) => s.active);
+  // v0.8B: the truck's gunner rides the truck (escort.ts), out of the formation
+  const active = game.soldiers.filter((s) => s.active && !s.mount);
   if (!active.length) return;
 
   // --- anchor ---
@@ -88,6 +93,7 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
   // the movement direction (or, when stopped, the nearest visible threat) ---
   const vip = game.npcs.find((n) => n.escorting && n.active) ?? null;
   const ring = vip ? escortRing(game, active, mv, moving, dt) : null;
+  const truck = game.mission.escort?.live ? game.mission.escort : null;
 
   for (const s of active) {
     // --- goal: slot around anchor, plus a little organic wander ---
@@ -105,6 +111,8 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
       if (slot) goal = slot;
     }
     if (game.world.insideObstacle(goal, s.radius) || !game.world.isOpen(goal.x, goal.y)) goal = { x: a.x, y: a.y };
+    // v0.8B escort: slots in the truck's lane just ahead of it bend out to the roadside
+    if (truck) { const w = truck.makeWay(s, goal); if (w !== goal && game.world.isOpen(w.x, w.y) && !game.world.insideObstacle(w, s.radius)) goal = w; }
     const rv = assist.get(s);
     if (rv) goal = rv;
 

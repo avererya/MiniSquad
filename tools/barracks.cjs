@@ -50,7 +50,7 @@ const OUT = process.env.OUT || '';
   await page.click('[data-a="unlockAll"]');
   await page.keyboard.press('Backquote');
   sv = await save();
-  check('debug unlock all: labelled "modifies save", 2 taps, saved', /modifies save/i.test(lbl0) && /again/i.test(armedTxt) && stillLocked === 2 && sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.length === 12, `${lbl0} / ${armedTxt} / ${sv.unlockedSoldiers.length} soldiers, ${sv.account.campaign.unlockedMissions.length} missions`);
+  check('debug unlock all (v0.8B: 14 playable missions): labelled "modifies save", 2 taps, saved', /modifies save/i.test(lbl0) && /again/i.test(armedTxt) && stillLocked === 2 && sv.unlockedSoldiers.length === 6 && sv.account.campaign.unlockedMissions.length === 14, `${lbl0} / ${armedTxt} / ${sv.unlockedSoldiers.length} soldiers, ${sv.account.campaign.unlockedMissions.length} missions`);
   // pick Mission 3 (squad cap 3) on the Campaign screen, then back to the Barracks
   await page.click('[data-a="to-campaign"]');
   await page.click('[data-a="csel"][data-id="field-medicine"]');

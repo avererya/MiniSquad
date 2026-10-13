@@ -600,7 +600,7 @@ export function parseSave(raw: string | null): LoadResult {
     if (memorialIds.has(id)) { notes.push(`Recruit ${id} is in the Memorial: roster copy dropped.`); continue; }
     soldiers.push(cleanRecruit(saved.get(id)!, notes, v5));
   }
-  const account = cleanAccount(rawAccount, notes, legacy, [...(version !== null && version < 7 ? ['bridgehead'] : []), 'resistance-rising']) // v0.8A: no older build could list Mission 11;
+  const account = cleanAccount(rawAccount, notes, legacy, [...(version !== null && version < 7 ? ['bridgehead'] : []), 'resistance-rising', 'hold-the-line', 'supply-line']) // v0.8A: no older build could list Mission 11 (v0.8B: nor Missions 13 / 14, unlocked by an M12 / M13 clear);
   account.memorial = memorial;
   account.promotions = promotions;
   if (v5 && isObj(rawAccount)) {

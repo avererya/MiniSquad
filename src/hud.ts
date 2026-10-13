@@ -79,6 +79,13 @@ export class Hud implements GameUI {
   private nkGo!: HTMLButtonElement;
   private nkOpenAt = 0;
   private nkWasOpen = false;
+  // v0.8B truck gunner selection
+  private gsEl!: HTMLElement;
+  private gsList!: HTMLElement;
+  private gsGo!: HTMLButtonElement;
+  private gsOpen = false;
+  /** Selected row: a unit id, 0 = No Gunner, -1 = nothing yet. */
+  private gsPick = -1;
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
@@ -91,6 +98,7 @@ export class Hud implements GameUI {
       <div id="asbar" style="display:none"><div class="as-t"></div><div class="as-btns"><button data-as="cancel">CANCEL</button><button data-as="go">CONFIRM</button></div></div>
       <div id="nkbox" role="alertdialog" style="display:none"><div class="nk-title">☢ LAUNCH NUCLEAR STRIKE?</div><div class="nk-body"></div><div class="nk-btns"><button data-nk="cancel">CANCEL</button><button data-nk="go">LAUNCH</button></div></div>
       <div id="xwarn" role="alert" style="display:none"><div class="xw-title"></div><div class="xw-body"></div><div class="xw-btns"><button data-x="stay">STAY AND RESCUE</button><button data-x="go">CONFIRM EXTRACTION</button></div></div>
+      <div id="gunsel" role="dialog" aria-label="Choose the truck gunner" style="display:none"><div class="gs-title">CHOOSE THE TRUCK GUNNER</div><div class="gs-sub">Fixed machine gun: same stats for anyone. The gunner leaves the formation and can't use their own weapon or ability. Locked for the escort.</div><div class="gs-list"></div><div class="gs-btns"><button data-g="go" disabled>CONFIRM</button></div></div>
       <div id="overlay"></div>`;
     this.objText = root.querySelector('.obj-text')!;
     this.objSub = root.querySelector('.obj-sub')!;
@@ -149,6 +157,17 @@ export class Hud implements GameUI {
       if (performance.now() < this.nkOpenAt + NUKE_ARM_MS) return;
       game.launchNuke();
     }));
+    // v0.8B gunner selection: rows select on click (the list scrolls with a drag), CONFIRM commits
+    this.gsEl = root.querySelector('#gunsel')!; this.gsList = this.gsEl.querySelector('.gs-list')!; this.gsGo = this.gsEl.querySelector('[data-g="go"]')!;
+    this.gsEl.addEventListener('pointerdown', (e) => { e.stopPropagation(); unlockAudio(); });
+    this.gsList.addEventListener('click', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('[data-u]');
+      if (!row) return;
+      this.gsPick = +row.dataset.u!;
+      this.gsList.querySelectorAll('[data-u]').forEach((r) => r.classList.toggle('sel', r === row));
+      this.gsGo.disabled = false;
+    });
+    tap(this.gsGo, () => { if (this.gsPick >= 0) game.chooseGunner(this.gsPick === 0 ? null : this.gsPick); });
     this.tuning = new Tuning(tuningRoot, game);
     this.menus = new Menus(menuRoot, game, () => this.toggleTuning());
   }
@@ -222,6 +241,7 @@ export class Hud implements GameUI {
     } else setStyle(this.hint, 'display', 'none');
 
     this.updateWarning();
+    this.updateGunnerSelect();
 
     const compact = this.panels.length >= 4;
     const crit = CFG.revive.criticalTime;
@@ -241,6 +261,7 @@ export class Hud implements GameUI {
           ? compact ? `REV ${Math.floor(u.reviveProgress * 100)}% ⏸` : `REVIVING ${Math.floor(u.reviveProgress * 100)}% · ${Math.ceil(u.bleed)}s ⏸`
           : u.bleed <= crit ? `CRITICAL ${Math.ceil(u.bleed)}s` : compact ? `DOWN ${Math.ceil(u.bleed)}s` : `DOWN — ${Math.ceil(u.bleed)}s`;
       } else if (u.state === 'kia') { cls = 'kia'; state = 'KIA'; }
+      else if (u.mount) { cls = 'ok mounted'; state = compact ? 'GUNNER' : 'ON THE TRUCK GUN'; }
       else if (ab.activeLeft > 0) { cls = 'ok active'; state = `${abName}ON ${Math.ceil(ab.activeLeft)}s`; }
       else if (ab.cooldownLeft > 0) { cls = 'ok cooling'; state = `${abName}${Math.ceil(ab.cooldownLeft)}s`; }
       else state = `${abName}READY`;
@@ -252,7 +273,7 @@ export class Hud implements GameUI {
       setStyle(p.cd, 'height', running ? '0%' : `${Math.min(100, cdFrac * 100)}%`);
       const dur = ab.duration?.() ?? CFG.suppressive.duration;
       setStyle(p.act, 'width', running ? `${Math.min(100, (ab.activeLeft / dur) * 100)}%` : '0%');
-      setFlag(p.btn, 'disabled', !u.active);
+      setFlag(p.btn, 'disabled', !u.active || !!u.mount);
       setFlag(p.btn, 'ready', ab.ready(u));
       setFlag(p.btn, 'running', running);
       setFlag(p.btn, 'targeting', g.targeting === u);
@@ -278,7 +299,7 @@ export class Hud implements GameUI {
       setFlag(this.objMeter, 'hot', m.hot);
       setText(this.omL, m.label);
       setStyle(this.omFill, 'width', `${Math.min(100, m.frac * 100)}%`);
-      setText(this.omV, `${Math.floor(m.frac * 100)}%`);
+      setText(this.omV, m.value ? `${m.value} · ${Math.floor(m.frac * 100)}%` : `${Math.floor(m.frac * 100)}%`);
     }
     const b = g.phase === 'playing' ? g.mission.boss : null;
     const show = !!b && b.unit.active;
@@ -330,6 +351,26 @@ export class Hud implements GameUI {
       setText(this.nkBody, `Uses 1 of your ${stock} Nuclear Strike${stock === 1 ? '' : 's'} (${stock - 1} left). Detonates across the whole battlefield in ${CFG.nuke.countdown} seconds. Once launched it can't be cancelled or refunded.`);
       if (changed(this.nkGo, 'dis', !armed)) this.nkGo.disabled = !armed;
     }
+  }
+
+  /**
+   * v0.8B truck gunner selection (Mission 14). Opens when the truck is captured; the simulation waits (Game.modal).
+   * One row per standing deployed soldier (name, class, HP) plus NO GUNNER; the list scrolls when it doesn't fit;
+   * CONFIRM commits (explicit, never a single tap on a row). Rows are built once per opening.
+   */
+  private updateGunnerSelect() {
+    const g = this.game, open = g.phase === 'playing' && g.modal === 'gunner';
+    if (open === this.gsOpen) return;
+    this.gsOpen = open;
+    this.gsEl.style.display = open ? '' : 'none';
+    if (!open) return;
+    this.gsPick = -1; this.gsGo.disabled = true;
+    const esc = (t: string) => t.replace(/[&<>"']/g, '');
+    this.gsList.innerHTML = g.gunnerCandidates().map((u) => {
+      const cls = u.elite ? u.elite.spec.title : u.classDef?.label ?? '';
+      return `<button class="gs-row" data-u="${u.id}"><b>${u.elite ? '★ ' : ''}${esc(u.name)}</b><span>${esc(cls)}</span><i>${Math.min(Math.ceil(u.hp), Math.round(u.maxHp))}/${Math.round(u.maxHp)} HP</i></button>`;
+    }).join('') + '<button class="gs-row none" data-u="0"><b>NO GUNNER</b><span>The truck gun stays silent</span><i></i></button>';
+    this.gsList.scrollTop = 0;
   }
 
   /**
