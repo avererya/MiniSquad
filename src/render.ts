@@ -38,7 +38,24 @@ const THEMES = {
   fortress: { base: '#8f8a72', patchA: 'rgba(110,105,85,0.4)', patchB: 'rgba(150,145,115,0.3)', dirt: 'rgba(110,95,75,0.4)', road: 'rgba(150,145,130,0.6)', blade: 'rgba(70,70,55,0.22)', tint: '' },
 } as const;
 
-const grounds = new Map<string, HTMLCanvasElement>();
+/** v0.8B.1: the ground is kept as vertical strips at most GROUND_TILE px wide. One very wide bitmap (Mission 14's
+ * 6,300 px map) made every frame's sub-rect blit several times slower than the 4,000 px maps, even off its edges. */
+type GroundTile = { x: number; c: HTMLCanvasElement };
+const GROUND_TILE = 2048;
+const grounds = new Map<string, GroundTile[]>();
+function buildGroundTiles(map: MapDef): GroundTile[] {
+  const full = buildGround(map);
+  if (full.width <= GROUND_TILE) return [{ x: 0, c: full }];
+  const tiles: GroundTile[] = [];
+  for (let x = 0; x < full.width; x += GROUND_TILE) {
+    const c = document.createElement('canvas');
+    c.width = Math.min(GROUND_TILE, full.width - x); c.height = full.height;
+    c.getContext('2d')!.drawImage(full, x, 0, c.width, c.height, 0, 0, c.width, c.height);
+    tiles.push({ x, c });
+  }
+  full.width = full.height = 0; // release the full-map bitmap now rather than at the next GC
+  return tiles;
+}
 function buildGround(map: MapDef): HTMLCanvasElement {
   const W = map.w, H = map.h, T = THEMES[map.theme];
   const c = document.createElement('canvas');
@@ -113,7 +130,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   let ground = grounds.get(map.id);
   // v0.6.3: keep only the current map's ground (each is a full-map bitmap, 10-30 MB): playing
   // through the campaign used to retain one per map visited
-  if (!ground) { grounds.clear(); ground = buildGround(map); grounds.set(map.id, ground); }
+  if (!ground) { grounds.clear(); ground = buildGroundTiles(map); grounds.set(map.id, ground); }
   const OBSTACLES = map.obstacles;
   const shake = game.fx.shake;
   const ox = Math.round(-game.cam.x + VIEW_W / 2 + (shake ? (shakeRnd() - 0.5) * shake : 0));
@@ -122,7 +139,14 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   ctx.save();
   ctx.translate(ox, oy);
   const vx = game.cam.x - VIEW_W / 2, vy = game.cam.y - VIEW_H / 2;
-  ctx.drawImage(ground, vx - 20, vy - 20, VIEW_W + 40, VIEW_H + 40, vx - 20, vy - 20, VIEW_W + 40, VIEW_H + 40);
+  if (ground.length === 1) ctx.drawImage(ground[0].c, vx - 20, vy - 20, VIEW_W + 40, VIEW_H + 40, vx - 20, vy - 20, VIEW_W + 40, VIEW_H + 40);
+  else {
+    const x0 = vx - 20, x1 = vx + VIEW_W + 20;
+    for (const t of ground) {
+      const a = Math.max(x0, t.x), b = Math.min(x1, t.x + t.c.width);
+      if (b > a) ctx.drawImage(t.c, a - t.x, vy - 20, b - a, VIEW_H + 40, a, vy - 20, b - a, VIEW_H + 40);
+    }
+  }
 
   drawZones(ctx, game);
   for (const s of game.scorches) {

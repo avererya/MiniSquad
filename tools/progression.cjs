@@ -339,7 +339,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     await tabCheck('Roster', '.s-card .pick, .b-slots .slot, .b-go', 6 + 6 + 1);
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-roster.png` });
     await page.tap('[data-tab="training"]'); await page.waitForTimeout(100);
-    await tabCheck('Training', '.t-pick, .t-buy, .m-icon[data-a="settings"]', 6 + 5 + 1);
+    await tabCheck('Training', '.t-pick, .t-buy, .m-icon[data-a="settings"]', 6 + 6 + 1); // v0.8B.1: five stat rows + the Ability Capacity row
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-training.png` });
     await page.tap('.t-row[data-stat="hp"] .t-buy');
     const bought = await page.evaluate(() => [window.game.roster.get('ace').training.hp, window.__account().credits]);
@@ -347,7 +347,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
     // rotate to portrait and back while on Training
     await page.setViewportSize({ width: H, height: W }); await page.waitForTimeout(400);
     await page.setViewportSize({ width: W, height: H }); await page.waitForTimeout(450);
-    await tabCheck('Training after rotation', '.t-pick, .t-buy, .m-icon[data-a="settings"]', 6 + 5 + 1);
+    await tabCheck('Training after rotation', '.t-pick, .t-buy, .m-icon[data-a="settings"]', 6 + 6 + 1); // v0.8B.1: five stat rows + the Ability Capacity row
     await page.tap('[data-tab="squad"]'); await page.waitForTimeout(100);
     await tabCheck('Squad Training', '.t-buy, .m-icon[data-a="settings"]', 4 + 1);
     if (OUT) await page.screenshot({ path: `${OUT}/${dev.name}-landscape-squad-training.png` });

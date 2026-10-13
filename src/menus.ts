@@ -761,7 +761,7 @@ export class Menus {
         <div class="t-row t-cap" data-stat="capacity">
           <div class="t-name"><b>${ABILITY_CAPACITY.label}</b><span>${esc(ab)} uses per mission: 1 at rank 0, 2 at rank 1, 3 at rank 2 (max). Charges refill on every deployment, never during a mission. Revives are always unlimited.</span></div>
           <div class="t-rank"><span class="pips">${this.pips(rank, max)}</span><span class="t-rk">RANK ${rank}/${max}</span></div>
-          <div class="t-val">${uses(now)}/mission${cost !== null ? ` → <b>${uses(abilityUses(rank + 1))}</b><small class="t-gain">+1 ${esc(ab)} per mission · rank ${rank + 1}</small>` : ' <b>MAX</b><small class="t-gain">3 of 3 uses per mission</small>'}</div>
+          <div class="t-val">${uses(now)}${cost !== null ? ` → <b>${uses(abilityUses(rank + 1))}</b><small class="t-gain">+1 per mission · rank ${rank + 1}</small>` : ' <b>MAX</b><small class="t-gain">per mission</small>'}</div>
           ${btn}
         </div>`;
   }

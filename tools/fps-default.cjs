@@ -16,7 +16,7 @@ const ANDROID = { viewport: { width: 915, height: 412 }, deviceScaleFactor: 2.6,
 function shim() {
   let q = [], now = 1000;
   window.requestAnimationFrame = (cb) => { q.push(cb); return q.length; };
-  window.__drive = (ms, hz) => { let n = 0; const end = now + ms; while (now < end) { now += 1000 / hz; const cbs = q; q = []; for (const cb of cbs) cb(now); n++; } return n; };
+  window.__drive = (ms, hz) => { let n = 0; const end = now + ms; while (now < end) { now += 1000 / hz; const cbs = q; q = []; window.__tick = n; for (const cb of cbs) cb(now); n++; } return n; };
 }
 
 /** Opens the game with `stored` (string or null) in the perf key; returns the page. */
@@ -43,7 +43,8 @@ async function probe(page) {
     g.deploy(['ace', 'ranger'].map((id) => g.roster.get(id)), 'temp');
     let draws = 0;
     const di = CanvasRenderingContext2D.prototype.drawImage;
-    CanvasRenderingContext2D.prototype.drawImage = function (...a) { if (a.length === 9) draws++; return di.apply(this, a); };
+    let last = -1; // v0.8B.1: the ground is drawn in strips; one count per frame-loop tick
+    CanvasRenderingContext2D.prototype.drawImage = function (...a) { if (a.length === 9 && window.__tick !== last) { last = window.__tick; draws++; } return di.apply(this, a); };
     window.__drive(200, 120); draws = 0; window.__drive(1000, 120);
     CanvasRenderingContext2D.prototype.drawImage = di;
     return { cap: s.fpsCap, overlay: s.overlay, shown, draws, stored: localStorage.getItem('minisquad.dev.perf'), coarse: matchMedia('(pointer: coarse)').matches };

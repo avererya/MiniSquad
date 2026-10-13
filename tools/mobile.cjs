@@ -158,7 +158,8 @@ const DEVICES = [
     await page.tap('.panel:nth-child(3) .ability');
     await page.waitForTimeout(120); // the HUD redraws on the next animation frame
     const hint = await page.evaluate(() => { const h = document.getElementById('hint'); return h.style.display !== 'none' ? h.textContent : ''; });
-    check(`${dev.name}: unavailable ability shows feedback`, /RECHARGING/.test(hint), hint);
+    // v0.8B.1: a rank-0 soldier has one use per mission, so the second tap reports the spent charge (cooldown feedback: tools/v081.cjs B)
+    check(`${dev.name}: unavailable ability shows feedback`, /NO USES LEFT \(0\/1\)/.test(hint), hint);
     // ---------- Results ----------
     const RESULT_SEL = '#menu .r-card, #menu [data-a="retry"], #menu [data-a="campaign"], #menu [data-a="barracks"]';
     // (v0.6: a KIA is permanent and replaces these buttons with RESOLVE CASUALTIES; the KIA Results /

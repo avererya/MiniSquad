@@ -985,3 +985,12 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 .panel.spent .state { color: #ff8a7a; }
 .ability.spent .portrait, .ability.spent .icon { filter: grayscale(1); opacity: 0.4; }
 .ability.spent .cd { height: 100% !important; background: rgba(40,0,0,0.55); }
+
+/* v0.8B.1: the Ability Capacity row adds a sixth Training row; phones in landscape tighten the panel so it still fits without scrolling. */
+@media (orientation: landscape) and (max-height: 430px) {
+  .t-panel { padding: 0.35em 0.6em; }
+  .t-head { margin-bottom: 0.15em; }
+  .t-rows { gap: 0.2em; }
+  .t-row { padding: 0.12em 0.45em; }
+  .t-buy { min-height: 32px; padding: 0.2em 0.4em; }
+}

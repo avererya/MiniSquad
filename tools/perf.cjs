@@ -45,16 +45,17 @@ function displayShim(hz) {
       const cbs = q; q = [];
       window.__rafCalls = (window.__rafCalls || 0) + cbs.length;
       const now = performance.now();
+      window.__tick = k; // v0.8B.1: a frame may blit several ground strips; count it once
       for (const cb of cbs) cb(now);
       k++;
       setTimeout(tick, Math.max(0, t0 + k * period - performance.now()));
     };
     setTimeout(tick, period);
   }
-  // one 9-argument drawImage on the game canvas = the ground blit = one rendered frame
+  // a frame-loop tick with a 9-argument drawImage on the game canvas (the ground blit) = one rendered frame
   const di = CanvasRenderingContext2D.prototype.drawImage;
   CanvasRenderingContext2D.prototype.drawImage = function (...a) {
-    if (a.length === 9 && this.canvas && this.canvas.id === 'game') window.__canvasFrames = (window.__canvasFrames || 0) + 1;
+    if (a.length === 9 && this.canvas && this.canvas.id === 'game' && window.__tick !== window.__lastTick) { window.__lastTick = window.__tick; window.__canvasFrames = (window.__canvasFrames || 0) + 1; }
     return di.apply(this, a);
   };
 }

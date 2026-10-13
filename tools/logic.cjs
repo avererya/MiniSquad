@@ -184,6 +184,8 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     fresh(['heavy', 'infantry']); g.invuln = true;
     let H = g.soldiers[0]; H.pos = { x: 1000, y: 1250 }; g.soldiers[1].pos = { x: 960, y: 1300 }; g.anchor = { ...H.pos }; g.cam = { ...H.pos };
     let tgt = g.spawnEnemy({ x: 1250, y: 1250 }); tgt.hp = 1e9; tgt.guard = true;
+    // v0.8B.1: a rank-0 soldier has one use per mission; give rank 2 (3 uses) so the cooldown rules stay testable.
+    H.ability.capacity = H.ability.charges = 3;
     step(1); let s0 = H.shots; step(4); const baseRate = (H.shots - s0) / 4;
     const coneBefore = H.cone;
     const act = g.useAbility(H);
@@ -203,6 +205,7 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     M.pos = { ...P }; near.pos = { x: P.x + 100, y: P.y }; nearFull.pos = { x: P.x, y: P.y + 130 }; far.pos = { x: P.x + 200, y: P.y }; dnear.pos = { x: P.x - 60, y: P.y };
     M.hp = 40; near.hp = 30; nearFull.hp = 140; far.hp = 30;
     g.downSoldier(dnear);
+    M.ability.capacity = M.ability.charges = 3; // v0.8B.1: rank 2, so the cooldown (not the use limit) blocks
     const ft = g.useAbility(M);
     check('Field Treatment: heals 25% max HP in radius incl. Medic', ft && M.hp === 60 && near.hp === 55, `medic 40 -> ${M.hp}, infantry@100px 30 -> ${near.hp}`);
     check('Field Treatment: capped at max HP', nearFull.hp === 150, `heavy@130px 140 -> ${nearFull.hp}`);

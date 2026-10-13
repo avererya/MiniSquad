@@ -207,7 +207,8 @@ Shipped: Ability Capacity (training row per soldier, ranks 0/1/2 = 1/2/3 uses pe
 
 Open:
 - **M14 with a moderate (untrained L12) squad** wins about 60% with a gunner and loses without one; trained/Elite squads win reliably. If phones show it too hard, the levers are `RoadblockTargeting` (k 3, reach 0.5) and the Ambush 4/5 `after` staggers in `missions.ts`.
-- **Ground bitmap** is now 6,300 x 2,000 (12.6 Mpx, ~50 MB). Under iOS's 16.7 Mpx canvas limit, but watch memory on older iPhones.
+- **Ground bitmap**: Mission 14's map is 6,300 x 2,000 (12.6 Mpx, ~50 MB). `render.ts` keeps every ground as 2,048 px strips (one very wide bitmap made each frame's blit ~4x slower under 4x CPU throttle); the frame-counting tools (`fps-parity`, `fps-default`, `perf`) count one ground blit per frame-loop tick. Watch memory on older iPhones.
+- **Missions 1-12 replay differently from v0.8B** (`fps-parity BASE=`) only because of the one-use-per-mission charge: a build with uncapped charges replays prison-break / blackout / iron-fist identically to v0.8B.
 - The truck back-up rescue (`pinBackAfter` / `pinBackMax`) never triggers in sims; it is a safety net for players who park inside the truck's path.
 - Mission 15, the Demolitions Expert and Chapters 4-5 are still not started.
 

@@ -64,8 +64,10 @@ async function loopRun(browser, url, mission, hz) {
     let steps = 0, frames = 0; const out = [];
     g.update = (dt) => { if (g.phase === 'playing') { P.step(); steps++; } u0(dt); if (steps % 300 === 0 && out.length < steps / 300) out.push(hash()); };
     const canvasDraws = { n: 0 };
+    // a drawn frame = a frame-loop tick that blits the ground (v0.8B.1 draws the ground in strips: count once per tick)
+    let tick = 0, last = -1; const raf = window.requestAnimationFrame; window.requestAnimationFrame = (cb) => { tick++; return raf(cb); };
     const di = CanvasRenderingContext2D.prototype.drawImage;
-    CanvasRenderingContext2D.prototype.drawImage = function (...a) { if (a.length === 9) canvasDraws.n++; return di.apply(this, a); };
+    CanvasRenderingContext2D.prototype.drawImage = function (...a) { if (a.length === 9 && tick !== last) { last = tick; canvasDraws.n++; } return di.apply(this, a); };
     frames = window.__drive(1000 / hz, () => steps >= SECS * 60 || g.phase !== 'playing');
     return { hashes: out, steps, frames, draws: canvasDraws.n, phase: g.phase, time: +g.time.toFixed(3) };
   }, { hz, SECS, hashSrc: hashState.toString() });
@@ -121,8 +123,9 @@ async function simRun(browser, url, mission) {
       const setup = eval(`(${setupSrc})`);
       const g = window.game;
       let draws = 0;
+      let tick = 0, last = -1; const raf = window.requestAnimationFrame; window.requestAnimationFrame = (cb) => { tick++; return raf(cb); }; // one count per tick (see loopRun)
       const di = CanvasRenderingContext2D.prototype.drawImage;
-      CanvasRenderingContext2D.prototype.drawImage = function (...a) { if (a.length === 9) draws++; return di.apply(this, a); };
+      CanvasRenderingContext2D.prototype.drawImage = function (...a) { if (a.length === 9 && tick !== last) { last = tick; draws++; } return di.apply(this, a); };
       const sec = (s) => { let t = 0; window.__drive(1000 / 120, () => ++t > s * 120); };
       sec(1); const menuDraws = draws; // Campaign screen: no canvas frames
       setup({ missionId: 'iron-fist', level: 6 });
