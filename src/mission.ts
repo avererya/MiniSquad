@@ -376,6 +376,7 @@ export class Mission {
     for (const m of this.incoming) m.life -= dt;
     if (this.incoming.length) this.incoming = this.incoming.filter((m) => m.life > 0);
     if (this.aftermath) { this.updateAftermath(game, dt); return; }
+    for (const o of this.primaries) if (o.state === 'complete') o.afterComplete(this, game, dt);
     const centre = squadCentre(game.soldiers);
     for (const t of this.script.triggers) {
       if (this.fired.has(t.id) || !centre || !t.when(this, game)) continue;

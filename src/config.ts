@@ -304,10 +304,12 @@ function makeDefaults() {
     defense: {
       zoneTime: 5, // s a standing soldier must stay in the command zone, continuously, to start the assault
       cacheTime: 3, // s standing in a cleared cache zone to secure it (progress kept, like the M11 zones)
-      warn: 7, // s of warning (banner + edge marker + HUD countdown) before each wave's first group
-      nextWhenLeft: 2, // the next wave's warning starts once at most this many attackers of the current wave are left...
-      minGap: 15, // ...but not sooner than this many s after its last group arrived (a short breather)...
-      maxGap: 50, // ...or this many s after the current wave's last group arrived, whichever comes first
+      warn: 7, // s from a wave's start (banner + edge marker + HUD countdown) to its first group's arrival
+      // v0.8B.1 wave-start intervals, measured START TO START (announcement to announcement, one clock):
+      minGap: 12, // the next wave never starts sooner than this many s after the current one started...
+      nextWhenLeft: 4, // ...and starts early once at most this many of the current wave remain (alive + not yet arrived)...
+      maxGap: 35, // ...and at the latest this many s after the current one started, however many are still alive
+      siegeShare: 0.8, // share of wave riflemen / armored troopers that go for the command center (SiegeTargeting)
     },
     escortTruck: {
       hp: 600,
@@ -319,6 +321,9 @@ function makeDefaults() {
       lookahead: 60, // px of road ahead of the front bumper checked for bodies (roadblocks / friendlies)
       halfLen: 44, // front bumper distance from the truck centre along the road
       halfWidth: 22, // body half-width used by the road check
+      pinBackAfter: 1.2, // v0.8B.1 s a friendly may stay wedged against the truck before it backs off...
+      pinBackMax: 40, // ...at most this many px per incident...
+      pinBackSpeed: 30, // ...at this speed (px/s); never a teleport
       yieldNudge: 2.5, // s a friendly may stand in the truck's path while the squad is ahead before it is moved aside
       wreckTime: 15, // s of wreck aftermath before a destroyed truck fails the mission (both sides hold fire)...
       wreckEarly: 2, // ...it ends this early once nobody is left downed...

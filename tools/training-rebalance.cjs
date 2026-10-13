@@ -334,15 +334,16 @@ function installHelpers() {
     const m = await p.evaluate(() => {
       window.__debugUnlockAll(); T.spec('ace', 'inf-trooper', 14); T.R.get('ace').training = { accuracy: 9, damage: 4, hp: 10, fireRate: 0, moveSpeed: 6 }; T.a.credits = 3000;
       const g = window.game; g.toBarracks(); g.ui.menus.trainId = 'ace'; g.ui.menus.tab = 'training'; g.ui.menus.showBarracks();
-      const rows = [...document.querySelectorAll('.t-row')];
+      // v0.8B.1: the Ability Capacity row (.t-cap) sits under the five stat rows; it must exist and fit too.
+      const all = [...document.querySelectorAll('.t-row')], rows = all.filter((r) => !r.classList.contains('t-cap')), cap = all.length - rows.length;
       const over = document.documentElement.scrollWidth > window.innerWidth + 1;
-      const clipped = rows.some((r) => { const b = r.getBoundingClientRect(); return b.right > window.innerWidth + 1; });
+      const clipped = all.some((r) => { const b = r.getBoundingClientRect(); return b.right > window.innerWidth + 1; });
       const gains = rows.map((r) => r.querySelector('.t-gain')).filter(Boolean);
       const vis = gains.every((x) => { const b = x.getBoundingClientRect(); return b.width > 0 && b.height > 0 && b.right <= window.innerWidth + 1; });
-      return { rows: rows.length, over, clipped, gains: gains.length, vis, minFont: Math.min(...gains.map((x) => parseFloat(getComputedStyle(x).fontSize))) };
+      return { rows: rows.length, cap, over, clipped, gains: gains.length, vis, minFont: Math.min(...gains.map((x) => parseFloat(getComputedStyle(x).fontSize))) };
     });
     if (OUT) await p.screenshot({ path: `${OUT}/${dev.name}-landscape-training.png` });
-    check(`F ${dev.name} landscape: Training tab fits (no horizontal overflow), every non-max row shows its gain (≥ 11px)`, m.rows === 5 && !m.over && !m.clipped && m.gains === 4 && m.vis && m.minFont >= 11 && errs.length === 0, JSON.stringify(m));
+    check(`F ${dev.name} landscape: Training tab fits (no horizontal overflow), every non-max row shows its gain (≥ 11px)`, m.rows === 5 && m.cap === 1 && !m.over && !m.clipped && m.gains === 4 && m.vis && m.minFont >= 11 && errs.length === 0, JSON.stringify(m));
     await c2.close();
   }
 

@@ -78,6 +78,9 @@ export function aimTimeOf(u: Unit): number {
 }
 
 /** Retarget, turn to aim, and fire if possible. */
+/** Targets an enemy may engage while itself off screen (stationary assets). */
+const offscreenTarget = (u: Unit) => u.target?.asset === 'command' || u.target?.asset === 'turret';
+
 export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) {
   u.fireCooldown -= dt;
   u.reactionLeft -= dt;
@@ -117,7 +120,9 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   if (!u.target || u.reactionLeft > 0 || u.fireCooldown > 0) return;
   // never fire from off screen (range alone can't guarantee it vertically: view half-height is 360)
   // (v0.8B: except at a mission asset: a command center or truck left alone is still under fire)
-  if (u.team === 'enemy' && !u.target.asset && !game.isOnScreen(u.pos, -8)) return;
+  // v0.8B.1: off-screen enemies may only shell stationary assets (command
+  // centre, turrets); the escort truck is attacked from on screen only.
+  if (u.team === 'enemy' && !offscreenTarget(u) && !game.isOnScreen(u.pos, -8)) return;
   if (Math.abs(angleDiff(u.aim, desired)) > st.aimTolerance * DEG) return;
   if (aimNeed > 0 && u.aimHeld < aimNeed) return;
 
@@ -243,7 +248,7 @@ export function updateEnemySniper(u: Unit, game: Game, dt: number, victims: Unit
     if (Math.hypot(u.vel.x, u.vel.y) > 20) u.aim = turnToward(u.aim, Math.atan2(u.vel.y, u.vel.x), C.turnRate * dt);
     return;
   }
-  if (!game.isOnScreen(u.pos, -8) && !u.target.asset) { u.aimHeld = 0; u.lockAim = null; return; }
+  if (!game.isOnScreen(u.pos, -8) && !offscreenTarget(u)) { u.aimHeld = 0; u.lockAim = null; return; }
   const desired = Math.atan2(u.target.pos.y - u.pos.y, u.target.pos.x - u.pos.x);
   if (u.lockAim === null) u.aim = turnToward(u.aim, desired, C.turnRate * dt);
   if (u.fireCooldown > 0) return;

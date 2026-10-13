@@ -15,6 +15,7 @@ import {
   PROGRESSION, SQUAD_TRAINING, TRAINING, addXp, computeMissionRewards, levelForXp, newTraining, nextCost, xpForLevel,
   type AccountData, type CandidateRecord, type CasualtyDecision, type DismissalRecord, type FallenEntry, type KiaCause, type MemorialRecord, type MissionOutcome, type MissionReward,
   type SoldierReward, type SquadTrainingStat, type TrainingStat,
+  ABILITY_CAPACITY, ABILITY_CAPACITY_MAX, abilityUses, capacityRank,
 } from './progression';
 import { newProgression, newService, type SoldierIdentity } from './classes';
 import {
@@ -219,6 +220,28 @@ export function buyTraining(roster: Roster, account: AccountData, soldierId: str
   if (cost === null) return { ok: false, reason: `${def.label} is maxed` };
   if (account.credits < cost) return { ok: false, reason: `Not enough Credits (${cost} needed)` };
   const r = transact(account, cost, () => { s.training[stat] = rank + 1; }, () => { s.training[stat] = rank; }, persist);
+  return r.ok ? { ok: true, cost, rank: rank + 1, saved: r.saved } : r;
+}
+
+/**
+ * v0.8B.1 Buy the next Ability Capacity rank for ONE soldier (1,500 then 3,000 CR; max rank 2 = 3 class-ability
+ * uses per mission). Same rules as individual training: no purchase with a pending casualty decision, never for a
+ * fallen soldier, stale / repeated taps refused by `expectedRank`, rolled back if the save write fails.
+ */
+export function buyAbilityCapacity(roster: Roster, account: AccountData, soldierId: string, expectedRank: number | null, persist: PersistFn | null, opts: { inMission?: boolean } = {}): BuyResult {
+  const s = roster.get(soldierId);
+  if (!s || !s.progression) return { ok: false, reason: 'Unknown soldier' };
+  if (opts.inMission) return { ok: false, reason: 'Not during a mission' };
+  const blocked = decisionBlock(account);
+  if (blocked) return { ok: false, reason: blocked };
+  if (s.status === 'kia') return { ok: false, reason: `${s.name} has fallen` };
+  const rank = capacityRank(s);
+  if (expectedRank !== null && rank !== expectedRank) return { ok: false, reason: 'Already bought' };
+  if (rank >= ABILITY_CAPACITY_MAX) return { ok: false, reason: `${ABILITY_CAPACITY.label} is maxed (${abilityUses(rank)} uses per mission)` };
+  const cost = ABILITY_CAPACITY.costs[rank];
+  if (account.credits < cost) return { ok: false, reason: `Not enough Credits (${cost.toLocaleString('en-US')} needed)` };
+  const set = (r: number) => { if (r > 0) s.abilityCapacity = r; else delete s.abilityCapacity; };
+  const r = transact(account, cost, () => set(rank + 1), () => set(rank), persist);
   return r.ok ? { ok: true, cost, rank: rank + 1, saved: r.saved } : r;
 }
 

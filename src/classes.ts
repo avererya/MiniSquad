@@ -139,6 +139,8 @@ export interface SoldierIdentity {
   service: ServiceRecord;
   /** v0.6: 'phoenix' = granted free by Operation Phoenix (dismissal refunds 0). Absent otherwise. */
   origin?: 'phoenix';
+  /** v0.8B.1 Ability Capacity rank 0..2 (class-ability uses per mission 1 / 2 / 3; progression.ts). Absent = 0. */
+  abilityCapacity?: number;
 }
 
 /** Progression inputs for the stat pipeline. Generics (no progression) get class base only. */

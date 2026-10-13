@@ -83,7 +83,7 @@ import { CLASSES, CLASS_IDS, newProgression, newService, type ProgressionRecord,
 import { MODIFIER_KEYS, TRAITS, type StatModifiers } from './traits';
 import { ALL_SOLDIER_IDS, DEFAULT_SQUAD, LEGACY_DEFAULT_SQUAD, Roster, defaultRoster } from './roster';
 import {
-  LEVEL_CAP, MAX_XP, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, cleanRank, levelForXp, newAccount,
+  ABILITY_CAPACITY_MAX, LEVEL_CAP, MAX_XP, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, cleanRank, levelForXp, newAccount,
   newCampaign, newSquadTraining, newSupportInventory, newTraining, xpForLevel, type AccountData, type SupportInventory, type CampaignProgress, type MissionRecord, type SquadTrainingRanks, type TrainingRanks,
 } from './progression';
 import { CAMPAIGN, CLASS_UNLOCK_TEXT, FIRST_MISSION, NAMED_RECRUITS, STARTING_SOLDIERS, derivedClassUnlocks, derivedMissionUnlocks, derivedRecruitUnlocks, derivedSoldierUnlocks } from './campaign';
@@ -262,6 +262,13 @@ export function mergeSoldier(def: SoldierIdentity, v: Record<string, unknown>, n
   s.resurrections = isInt(v.resurrections) && v.resurrections >= 0 ? v.resurrections : 0;
   s.service = cleanService(v.service);
   if (v.origin === 'phoenix') s.origin = 'phoenix'; else delete s.origin;
+  // v0.8B.1 Ability Capacity: optional (older saves have none = rank 0, no note); clamped to 0..2
+  if (v.abilityCapacity === undefined || v.abilityCapacity === 0) delete s.abilityCapacity;
+  else {
+    const r = cleanRank(v.abilityCapacity, ABILITY_CAPACITY_MAX);
+    if (r !== v.abilityCapacity) notes.push(`${who}: ability capacity rank ${String(v.abilityCapacity)} -> ${r}.`);
+    if (r > 0) s.abilityCapacity = r; else delete s.abilityCapacity;
+  }
   cleanElite(s, notes);
   return s;
 }

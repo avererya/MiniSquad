@@ -16,6 +16,13 @@ export interface Ability {
   readonly icon: string; // short glyph for the HUD button
   readonly targetingMode: TargetingMode;
   cooldownLeft: number;
+  /**
+   * v0.8B.1 Ability Capacity: uses left this mission and the soldier's uses per mission (1 / 2 / 3, set at
+   * deployment from SoldierIdentity.abilityCapacity). A successful activation (activateAbility) spends one;
+   * nothing in a mission restores them. ready() is false at 0.
+   */
+  charges: number;
+  capacity: number;
   /** Seconds the ability's effect is still running (0 for one-shot abilities). */
   activeLeft: number;
   cooldown(): number;
@@ -44,12 +51,15 @@ export interface Ability {
 abstract class BaseAbility {
   cooldownLeft = 0;
   activeLeft = 0;
+  charges = 1;
+  capacity = 1;
   range() { return 0; }
   previewRadius() { return 0; }
-  ready(owner: Unit) { return owner.active && this.cooldownLeft <= 0 && this.activeLeft <= 0; }
+  ready(owner: Unit) { return owner.active && this.charges > 0 && this.cooldownLeft <= 0 && this.activeLeft <= 0; }
   blockReason(_game: Game, owner: Unit): string | null {
     if (!owner.active) return owner.state === 'downed' ? 'DOWNED' : 'KIA';
     if (this.activeLeft > 0) return 'ALREADY ACTIVE';
+    if (this.charges <= 0) return `NO USES LEFT (0/${this.capacity})`;
     if (this.cooldownLeft > 0) return `RECHARGING ${Math.ceil(this.cooldownLeft)}s`;
     return null;
   }
@@ -203,6 +213,28 @@ export class FieldTreatmentAbility extends BaseAbility implements Ability {
     this.cooldownLeft = this.cooldown();
     sfx('heal');
   }
+}
+
+/** v0.8B.1: fill an ability's charges for a new deployment (`capacity` uses; the mission never restores them). */
+export function resetCharges(ab: Ability, capacity: number) {
+  ab.capacity = Math.max(1, Math.min(3, capacity | 0));
+  ab.charges = ab.capacity;
+}
+
+/**
+ * v0.8B.1 the ONE way a class ability is activated (portrait tap, keys 1-6, a grenade ground tap). It runs the
+ * ability only when it is ready (alive, a charge left, off cooldown, not already running) and spends exactly one
+ * charge when the activation actually took effect: the ability started its cooldown or its running effect. An
+ * activation the ability itself refuses (Field Treatment with nobody hurt in range) starts neither, so it costs
+ * nothing; a running effect (Suppressive Fire, Focus, Bullet Storm) costs one charge for the whole activation,
+ * however many steps it lasts. Returns true when a charge was spent. Future classes get this for free.
+ */
+export function activateAbility(game: Game, owner: Unit, ab: Ability, target: Vec): boolean {
+  if (!ab.ready(owner) || ab.blockReason(game, owner)) return false;
+  const cd0 = ab.cooldownLeft, act0 = ab.activeLeft;
+  ab.execute(game, owner, target);
+  if (ab.cooldownLeft > cd0 || ab.activeLeft > act0) { ab.charges = Math.max(0, ab.charges - 1); return true; }
+  return false;
 }
 
 export interface Grenade {

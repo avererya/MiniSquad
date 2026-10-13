@@ -510,16 +510,25 @@ export const HOLD_MAP: MapDef = {
 export const HOLD_GATED_MAP: MapDef = { ...HOLD_MAP, id: 'hold-gated', obstacles: [...HOLD_OBSTACLES, ...HOLD_GATES] };
 
 // Mission 14 "Supply Line Sabotage": an enemy supply road at dusk. Three depots (north-west, south, north), the
-// truck yard in the west, then the road winds east to the extraction field. Roadside cover sits off the road
-// (the route keeps clear of every obstacle; tools/chapter3b.cjs checks it).
+// truck yard in the west, then the road winds east. Roadside cover sits off the road (the route keeps clear of
+// every obstacle; tools/chapter3b.cjs checks it). v0.8B.1: the road no longer ends after the third ambush: past
+// the old end (x 3550) it bends south-east through a narrow rocky pass, runs a long southern straight (Ambush 4,
+// armored roadblock), then climbs north-east between two ridges (Ambush 5, the final gauntlet) to the new
+// extraction field in the far east. The original section (yard to x 3550, Ambushes 1-3) is unchanged.
 export const SUPPLY_DEPOTS: Vec[] = [{ x: 700, y: 640 }, { x: 1500, y: 1560 }, { x: 1950, y: 440 }];
 export const SUPPLY_ROUTE: Vec[] = [
+  // original road (v0.8B), unchanged up to x 3550
   { x: 1250, y: 1000 }, { x: 1700, y: 1000 }, { x: 2050, y: 1250 }, { x: 2550, y: 1250 }, { x: 2850, y: 950 },
-  { x: 3150, y: 700 }, { x: 3550, y: 700 }, { x: 3800, y: 700 },
+  { x: 3150, y: 700 }, { x: 3550, y: 700 },
+  // v0.8B.1 extension: east, the rocky pass south, the southern straight, the climb north-east, extraction
+  { x: 3900, y: 700 }, { x: 4250, y: 950 }, { x: 4350, y: 1350 }, { x: 4750, y: 1550 }, { x: 5200, y: 1550 },
+  { x: 5550, y: 1250 }, { x: 5750, y: 900 }, { x: 6050, y: 800 },
 ];
-export const SUPPLY_EXTRACTION: Rect = { x: 3640, y: 560, w: 300, h: 280 };
+/** v0.8B road length (capture point to its old end point at 3800, 700), for the escort-distance comparison. */
+export const SUPPLY_ROUTE_V08B = 2845;
+export const SUPPLY_EXTRACTION: Rect = { x: 5900, y: 660, w: 300, h: 280 };
 export const SUPPLY_MAP: MapDef = {
-  id: 'supply', w: 4000, h: 2000, theme: 'dusk',
+  id: 'supply', w: 6300, h: 2000, theme: 'dusk',
   obstacles: [
     // depot 1 (north-west)
     S(590, 540, 220, 16), B(400, 420, 150, 120), C(830, 720), C(866, 720),
@@ -539,10 +548,23 @@ export const SUPPLY_MAP: MapDef = {
     R(3200, 330, 200, 120), R(3260, 960, 170, 100), W(2950, 520, 18, 120), C(3420, 860),
     // the south and the far east
     R(2700, 1600, 220, 120), B(3300, 1400, 180, 130), W(600, 1350, 200, 18), C(150, 1500),
+    // v0.8B.1 extension. East of the old end: ridge rocks north of the bend, a shed and crates south of it
+    R(3930, 500, 210, 110), B(3700, 900, 150, 110), C(4060, 920), K(4450, 700, 110, 60, 30),
+    // the rocky pass (the road runs south between these; about 190 px wide)
+    R(4060, 1060, 140, 180, 46), R(4390, 1020, 150, 190, 46), R(4150, 1320, 110, 110, 40),
+    // Ambush 4, the southern straight: a wall and rocks on the north side, rocks and a wrecked barrier on the south,
+    // a burnt-out car narrowing the road
+    W(4800, 1420, 220, 18), R(5060, 1370, 150, 90), C(4720, 1400), R(4830, 1660, 160, 90), C(5110, 1650), C(5146, 1650),
+    K(5010, 1596, 90, 36, 26),
+    // Ambush 5, the climb: a western ridge and an eastern ridge, a crate line by the final roadblock
+    R(5250, 1050, 150, 100, 46), W(5420, 900, 18, 150), C(5440, 1170), R(5780, 1180, 160, 100, 46), W(5900, 960, 18, 150), C(5700, 1290),
+    // the far east: a farmhouse, field walls, the extraction field
+    B(4600, 250, 200, 140), W(4900, 600, 200, 18), R(5600, 1720, 200, 110), W(6000, 1250, 18, 220), B(6050, 300, 160, 130), C(5650, 620),
   ],
   start: { x: 200, y: 1800 }, startZone: { x: 40, y: 1680, w: 260, h: 260 },
-  medkits: [{ x: 1000, y: 1450 }, { x: 2300, y: 980 }, { x: 3050, y: 1100 }],
+  // v0.8B.1: two more medkits on the extension (one before Ambush 4, one between Ambushes 4 and 5); no truck repairs exist
+  medkits: [{ x: 1000, y: 1450 }, { x: 2300, y: 980 }, { x: 3050, y: 1100 }, { x: 4560, y: 1240 }, { x: 5380, y: 1700 }],
   rapidFire: [{ x: 1700, y: 680 }],
   roads: [SUPPLY_ROUTE, [{ x: 0, y: 1850 }, { x: 700, y: 1400 }, { x: 1250, y: 1000 }]],
-  props: [{ kind: 'tent', x: 900, y: 1200 }, { kind: 'flag', x: 1130, y: 950 }, { kind: 'radar', x: 2200, y: 250 }],
+  props: [{ kind: 'tent', x: 900, y: 1200 }, { kind: 'flag', x: 1130, y: 950 }, { kind: 'radar', x: 2200, y: 250 }, { kind: 'tent', x: 4700, y: 480 }, { kind: 'flag', x: 6080, y: 700 }],
 };

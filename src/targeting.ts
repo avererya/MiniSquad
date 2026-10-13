@@ -128,7 +128,7 @@ export const EscortTargeting: TargetingStrategy = {
  * v0.8B attackers that go for a mission asset: a friendly asset of `kind` (the escort truck, the command center)
  * counts as `k` times closer than it is (distance-weighted, line of sight and range as always), else the nearest.
  */
-export function assetHunter(kind: 'truck' | 'command', k: number): TargetingStrategy {
+export function assetHunter(kind: 'truck' | 'command', k: number, assetReach = 1): TargetingStrategy {
   return {
     isValid: NearestVisible.isValid,
     select(shooter, candidates, game) {
@@ -138,6 +138,7 @@ export function assetHunter(kind: 'truck' | 'command', k: number): TargetingStra
         if (!c.targetable) continue;
         const d = dist2(shooter.pos, c.pos);
         if (d > r2 || !game.world.clear(shooter.pos, c.pos)) continue;
+        if (c.asset === kind && d > r2 * assetReach * assetReach) continue; // v0.8B.1: assets only inside assetReach x range
         const score = d * (c.asset === kind ? k * k : 1);
         if (score < bs) { bs = score; best = c; }
       }
@@ -147,5 +148,11 @@ export function assetHunter(kind: 'truck' | 'command', k: number): TargetingStra
 }
 /** Ambush hunters (Mission 14): prefer the escort truck. */
 export const VehicleHunterTargeting = assetHunter('truck', 0.6);
+/**
+ * v0.8B.1 Mission 14 Ambushes 4-5 roadblock troopers: they hold the road against the ESCORT, so a soldier in sight
+ * comes first; the truck counts as 3 x farther than it is, and they only open up on it inside half their range
+ * (they close in on it, into the squad's guns, instead of plinking it from the ridge while it waits for the squad).
+ */
+export const RoadblockTargeting = assetHunter('truck', 3, 0.5);
 /** Siege attackers (Mission 13 waves): prefer the command center. */
-export const SiegeTargeting = assetHunter('command', 0.35);
+export const SiegeTargeting = assetHunter('command', 0.5); // v0.8B.1: 0.35 -> 0.5 (a soldier at half the distance is shot first)

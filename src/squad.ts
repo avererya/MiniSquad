@@ -66,6 +66,9 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
     a.y = c.y + ((a.y - c.y) / d) * S.leash;
     game.world.resolveCircle(a, CFG.infantry.radius);
   }
+  // v0.8B.1: the anchor is virtual and may pass over the escort truck (blocking it there would park the squad
+  // behind the truck forever); the slots and steering below keep the soldiers themselves off its body
+  const truck = game.mission.escort?.live ? game.mission.escort : null;
   const moving = Math.hypot(mv.x, mv.y) > 0.1;
   game.squadMoving = moving;
   game.spread = lerp(game.spread, moving ? S.spreadMoving : S.spreadIdle, 1 - Math.exp(-3 * dt));
@@ -93,7 +96,6 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
   // the movement direction (or, when stopped, the nearest visible threat) ---
   const vip = game.npcs.find((n) => n.escorting && n.active) ?? null;
   const ring = vip ? escortRing(game, active, mv, moving, dt) : null;
-  const truck = game.mission.escort?.live ? game.mission.escort : null;
 
   for (const s of active) {
     // --- goal: slot around anchor, plus a little organic wander ---
@@ -113,8 +115,12 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
     if (game.world.insideObstacle(goal, s.radius) || !game.world.isOpen(goal.x, goal.y)) goal = { x: a.x, y: a.y };
     // v0.8B escort: slots in the truck's lane just ahead of it bend out to the roadside
     if (truck) { const w = truck.makeWay(s, goal); if (w !== goal && game.world.isOpen(w.x, w.y) && !game.world.insideObstacle(w, s.radius)) goal = w; }
+    // v0.8B.1 formation-slot adjustment: a slot inside the truck's body moves to its open side
+    if (truck && truck.inBox(goal, s.radius + 6)) { const q = truck.clearOf(game, goal, s.radius, s.radius + 8); if (q) goal = q; }
     const rv = assist.get(s);
     if (rv) goal = rv;
+    // v0.8B.1 a short steered clear goal (stepping out of the truck's way / out of a wedge) wins for its duration
+    if (s.clearGoal) { s.clearGoal.t -= dt; if (s.clearGoal.t <= 0 || !truck || dist(s.pos, s.clearGoal.p) < 6) s.clearGoal = null; else goal = s.clearGoal.p; }
 
     // --- catch-up: a soldier well behind his slot hurries a little (ramped, never a snap) ---
     const behind = dist(s.pos, goal) - S.catchUpDist;
@@ -136,6 +142,9 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
         isFinal = s.path.length === 1;
       }
     }
+    // v0.8B.1 the terrain grid doesn't know the truck: a straight leg through its body walks round a corner first
+    const corner = truck ? truck.around(game, s.pos, steerTo, s.radius, s.radius - 1) : null;
+    if (corner) { steerTo = corner; isFinal = false; }
 
     const dx = steerTo.x - s.pos.x, dy = steerTo.y - s.pos.y;
     const dd = Math.hypot(dx, dy);
@@ -144,6 +153,10 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
     if (isFinal) speed *= clamp((dd - deadzone) / 45, 0, 1);
     let vx = dd > 0.01 ? (dx / dd) * speed : 0;
     let vy = dd > 0.01 ? (dy / dd) * speed : 0;
+
+    // --- v0.8B.1 predictive avoidance: step off the strip the moving truck is about to sweep ---
+    const off = truck ? truck.sweep(s.pos, s.radius + 8) : null;
+    if (off) { vx += off.x * s.maxSpeed * 0.9; vy += off.y * s.maxSpeed * 0.9; }
 
     // --- separation: never stack ---
     for (const o of active) {

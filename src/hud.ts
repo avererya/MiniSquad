@@ -18,7 +18,7 @@ import { NUKE_ELITES } from './support';
 /** v0.7C: the nuke LAUNCH button arms this long after the confirmation opens (a double tap on NUKE can't launch). */
 const NUKE_ARM_MS = 500;
 
-interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
+interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; uses: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
 
 const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT', focus: 'FOCUS', bulletStorm: 'STORM' };
 
@@ -192,7 +192,7 @@ export class Hud implements GameUI {
       root.innerHTML = `
         <button class="ability cls-${def.id}" title="${ab.name} (${i + 1})" data-ability="${ab.id}"><span class="ab-clip">
           <div class="portrait"><div class="face"></div><div class="helmet"></div><div class="badge"></div></div>
-          <div class="cd"></div><div class="act"></div><span class="key">${i + 1}</span><span class="icon">${ab.icon}</span>
+          <div class="cd"></div><div class="act"></div><span class="key">${i + 1}</span><span class="uses"></span><span class="icon">${ab.icon}</span>
         </span></button>
         <div class="info"><div class="name">${u.elite ? '<i class="el-star">★</i>' : ''}${u.name}</div><div class="cls">${u.elite ? u.elite.spec.title : def.label}</div><div class="hp"><div class="fill"></div><span class="hpnum"></span></div><div class="state"></div></div>`;
       const btn = root.querySelector<HTMLElement>('.ability')!;
@@ -202,7 +202,7 @@ export class Hud implements GameUI {
       });
       this.panelsEl.appendChild(root);
       return {
-        root, btn, unit: u, cd: root.querySelector('.cd')!, act: root.querySelector('.act')!, fill: root.querySelector('.fill')!,
+        root, btn, unit: u, cd: root.querySelector('.cd')!, act: root.querySelector('.act')!, uses: root.querySelector('.uses')!, fill: root.querySelector('.fill')!,
         hpnum: root.querySelector('.hpnum')!, cls: root.querySelector('.cls')!, state: root.querySelector('.state')!,
       };
     });
@@ -263,16 +263,20 @@ export class Hud implements GameUI {
       } else if (u.state === 'kia') { cls = 'kia'; state = 'KIA'; }
       else if (u.mount) { cls = 'ok mounted'; state = compact ? 'GUNNER' : 'ON THE TRUCK GUN'; }
       else if (ab.activeLeft > 0) { cls = 'ok active'; state = `${abName}ON ${Math.ceil(ab.activeLeft)}s`; }
+      else if (ab.charges <= 0) { cls = 'ok spent'; state = compact ? 'NO USES' : `${abName}NO USES LEFT`; } // v0.8B.1: not a cooldown
       else if (ab.cooldownLeft > 0) { cls = 'ok cooling'; state = `${abName}${Math.ceil(ab.cooldownLeft)}s`; }
       else state = `${abName}READY`;
       setText(p.state, state);
       setClass(p.root, `panel ${cls}${u.elite ? ' elite' : ''}`);
-      const cdFrac = u.active ? ab.cooldownLeft / ab.cooldown() : 1;
+      const cdFrac = u.active && ab.charges > 0 ? ab.cooldownLeft / ab.cooldown() : 1;
       // while an effect runs, the button shows its remaining duration instead of the cooldown
       const running = u.active && ab.activeLeft > 0;
       setStyle(p.cd, 'height', running ? '0%' : `${Math.min(100, cdFrac * 100)}%`);
       const dur = ab.duration?.() ?? CFG.suppressive.duration;
       setStyle(p.act, 'width', running ? `${Math.min(100, (ab.activeLeft / dur) * 100)}%` : '0%');
+      // v0.8B.1 Ability Capacity: uses left / per mission on the button's top-right corner
+      setText(p.uses, `${ab.charges}/${ab.capacity}`);
+      setFlag(p.btn, 'spent', ab.charges <= 0);
       setFlag(p.btn, 'disabled', !u.active || !!u.mount);
       setFlag(p.btn, 'ready', ab.ready(u));
       setFlag(p.btn, 'running', running);

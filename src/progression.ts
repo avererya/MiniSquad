@@ -191,6 +191,25 @@ export const newSquadTraining = (): SquadTrainingRanks => ({ hp: 0, damage: 0, a
 export const maxRank = (d: TrainingDef<string>) => d.costs.length;
 /** Cost of the NEXT rank, or null when maxed. */
 export const nextCost = (d: TrainingDef<string>, rank: number): number | null => (rank >= d.costs.length ? null : d.costs[rank]);
+/**
+ * v0.8B.1 ABILITY CAPACITY (permanent, per soldier; NOT squad training). Every class active ability (the portrait
+ * button: Grenade, Suppressive Fire, Field Treatment, Focus, Bullet Storm and any future class) has a number of uses
+ * per mission: 1 at rank 0, 2 at rank 1, 3 at rank 2 (the cap; nothing raises it further). Charges reset to full on
+ * every deployment and never regenerate in a mission. Prices are the incremental cost of each rank. The normal
+ * squad revive is not an ability and is never limited. Stored as SoldierIdentity.abilityCapacity (absent = 0).
+ */
+export const ABILITY_CAPACITY = {
+  label: 'Ability Capacity',
+  costs: [1500, 3000] as number[],
+  /** Uses per mission by rank (index = rank). */
+  uses: [1, 2, 3] as number[],
+};
+export const ABILITY_CAPACITY_MAX = ABILITY_CAPACITY.costs.length;
+/** Stored capacity rank of a soldier (absent / invalid = 0), clamped to 0..2. */
+export const capacityRank = (s: { abilityCapacity?: number } | null | undefined): number =>
+  Math.max(0, Math.min(ABILITY_CAPACITY_MAX, Math.floor(Number.isFinite(s?.abilityCapacity) ? (s!.abilityCapacity as number) : 0)));
+/** Class-ability uses per mission at a capacity rank (1 / 2 / 3). */
+export const abilityUses = (rank: number): number => ABILITY_CAPACITY.uses[Math.max(0, Math.min(ABILITY_CAPACITY_MAX, rank | 0))];
 /** Clamp a stored rank: integers 0..max, anything else -> 0 / clamped. */
 export function cleanRank(v: unknown, max: number): number {
   if (typeof v !== 'number' || !Number.isFinite(v)) return 0;

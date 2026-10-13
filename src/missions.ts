@@ -351,18 +351,26 @@ const ARTILLERY_HUNT: MissionScript = {
 };
 
 // ---- v0.8B Mission 13: Hold the Line (Defense / finite waves, 6 soldiers + 3 resistance allies) ----
-// Enemy budget (never all at once): cache defenders 5 + 7, cache responses 3 + 4 (each once, only if that cache is
-// secured), waves 8 + 10 + 12 + 14 = 44. Max 63.
+// v0.8B.1 difficulty overhaul. Enemy budget (never all at once): cache defenders 5 + 7, cache responses 3 + 4 (each
+// once, only if that cache is secured), waves 10 + 14 + 16 + 20 = 60 (31 riflemen, 23 armored, 6 snipers). Max 79.
+// Waves overlap (CFG.defense: 12-35 s start to start) and arrive in groups 4-5 s apart.
 const R = 'rifleman' as const, A = 'armored' as const, SN = 'sniper' as const;
 const HP = HOLD_WAVE_POINTS;
 export const HOLD_WAVES: DefenseWaveDef[] = [
-  { from: 'NORTH', groups: [{ at: 0, points: HP.north, kinds: [R, R, R, R] }, { at: 4, points: [HP.north[1], HP.north[2]], kinds: [R, R, R, R] }] },
-  { from: 'WEST', groups: [{ at: 0, points: HP.west, kinds: [R, R, R, A] }, { at: 4, points: [HP.west[1], HP.west[0]], kinds: [R, R, A] }, { at: 8, points: [HP.west[2], HP.west[0]], kinds: [R, R, A] }] },
-  { from: 'EAST', groups: [{ at: 0, points: HP.east, kinds: [R, R, R, SN] }, { at: 4, points: [HP.east[1], HP.east[0]], kinds: [R, A, R, SN] }, { at: 8, points: [HP.east[2], HP.east[0]], kinds: [R, A, R, SN] }] },
+  // W1 north: 8 riflemen + 2 armored
+  { from: 'NORTH', groups: [{ at: 0, points: HP.north, kinds: [R, R, R, A, R] }, { at: 5, points: [HP.north[1], HP.north[2]], kinds: [R, R, A, R, R] }] },
+  // W2 west: 8 riflemen + 6 armored
+  { from: 'WEST', groups: [{ at: 0, points: HP.west, kinds: [R, A, R, R, A] }, { at: 5, points: [HP.west[1], HP.west[0]], kinds: [R, A, R, A, R] }, { at: 10, points: [HP.west[2], HP.west[0]], kinds: [R, A, R, A] }] },
+  // W3 east: 7 riflemen + 6 armored + 3 snipers
+  { from: 'EAST', groups: [
+    { at: 0, points: HP.east, kinds: [R, A, R, SN] }, { at: 4, points: [HP.east[1], HP.east[0]], kinds: [A, R, A, R] },
+    { at: 8, points: [HP.east[2], HP.east[0]], kinds: [R, A, SN, R] }, { at: 12, points: [HP.east[1], HP.east[2]], kinds: [A, R, A, SN] },
+  ] },
+  // W4 north, west and east: 8 riflemen + 9 armored + 3 snipers
   { from: 'NORTH, WEST AND EAST', groups: [
-    { at: 0, points: HP.north, kinds: [R, R, A, SN, R] },
-    { at: 3, points: HP.west, kinds: [R, R, A, SN, R] },
-    { at: 6, points: HP.east, kinds: [R, A, SN, R] },
+    { at: 0, points: HP.north, kinds: [R, A, R, A, SN, R, A] },
+    { at: 5, points: HP.west, kinds: [A, R, A, R, SN, A] },
+    { at: 10, points: HP.east, kinds: [R, A, R, A, SN, R, A] },
   ] },
 ];
 export const HOLD_CACHE_DEFS: TurretCache[] = [
@@ -395,8 +403,9 @@ const HOLD_THE_LINE: MissionScript = {
 };
 
 // ---- v0.8B Mission 14: Supply Line Sabotage (sabotage + vehicle capture + escort, 6 soldiers) ----
-// Enemy budget: depot guards 6 + 6 + 6, truck yard 5, two patrols of 2, ambushes 6 + 9 + 12 = 27 (each once, keyed
-// to the truck's progress along the road). Max 54.
+// Enemy budget: depot guards 6 + 6 + 6, truck yard 5, two patrols of 2, ambushes 6 + 9 + 12 + 12 + 15 = 54 (each
+// once, keyed to the truck's progress along the road). Max 81. v0.8B.1: Ambushes 1-3 are exactly v0.8B's (only the
+// third's banner no longer says FINAL); 4 and 5 sit on the road extension (map.ts SUPPLY_ROUTE).
 export const SUPPLY_AMBUSHES: AmbushDef[] = [
   {
     at: 480, delay: 2.5, banner: 'AMBUSH! ENEMIES IN THE ROADSIDE COVER',
@@ -413,11 +422,44 @@ export const SUPPLY_AMBUSHES: AmbushDef[] = [
     ],
   },
   {
-    at: 2030, delay: 3, banner: 'FINAL AMBUSH! ENEMIES ON BOTH RIDGES AND BEHIND',
+    at: 2030, delay: 3, banner: 'AMBUSH! ENEMIES ON BOTH RIDGES AND BEHIND',
     groups: [
       { kinds: [R, R, R, R, SN], points: [{ x: 3250, y: 480 }, { x: 3350, y: 480 }, { x: 3150, y: 500 }, { x: 3430, y: 500 }, { x: 3300, y: 290 }] },
       { kinds: [R, R, R, A], points: [{ x: 3300, y: 1100 }, { x: 3400, y: 1090 }, { x: 3230, y: 1120 }, { x: 3350, y: 1130 }] },
       { kinds: [R, A, R], points: [{ x: 2600, y: 800 }, { x: 2560, y: 760 }, { x: 2640, y: 740 }], hunter: true },
+    ],
+  },
+  // ---- v0.8B.1 extension ----
+  {
+    // Ambush 4, Armored Resistance (12: 5 riflemen, 7 armored). Fires as the truck leaves the rocky pass (4 s
+    // warning); the armored roadblock holds the southern straight ~500 px ahead (the truck stops ~6 s later, never on
+    // top of it); a riflemen / armored line fires from the wall and rocks to the north; from the far south two truck
+    // hunters and two more come up the slope. Roadblock and roadside troopers fight the escort first. Staggered:
+    // roadblock first, the northern line 6 s later, the southern group 12 s later.
+    // (Truck-pressure tuning: 2 hunters; everyone else (RoadblockTargeting) shoots the truck only with no soldier in
+    // sight and only inside half their range.)
+    at: 3950, delay: 4, banner: 'ARMORED ROADBLOCK AHEAD! TROOPERS IN THE ROADSIDE COVER',
+    groups: [
+      { kinds: [A, A, R, A], road: [{ s: 4440, side: -24 }, { s: 4450, side: 24 }, { s: 4490, side: 0 }, { s: 4515, side: -22 }], hold: true, escortFirst: true },
+      { kinds: [R, A, R, A], points: [{ x: 4860, y: 1380 }, { x: 4950, y: 1385 }, { x: 5110, y: 1340 }, { x: 5190, y: 1350 }], escortFirst: true, after: 6 },
+      { kinds: [A, R], points: [{ x: 4950, y: 1850 }, { x: 5150, y: 1840 }], hunter: true, after: 12 },
+      { kinds: [A, R], points: [{ x: 5050, y: 1880 }, { x: 4850, y: 1870 }], escortFirst: true, after: 12 },
+    ],
+  },
+  {
+    // Ambush 5, Final Gauntlet (15: 7 riflemen, 6 armored, 2 snipers). Fires on the climb (4 s warning): a final
+    // armored roadblock near the top, ridge lines on both sides (a sniper on each), and two rifleman truck hunters
+    // coming up the road from behind (spawned ~300 px back, never in firing position at once). Arrival markers for every direction.
+    // Arrivals are staggered: roadblock first, the western ridge 6 s / 9 s later, the hunters behind 10 s later, the eastern
+    // ridge 15 s later (groups still on their way when the truck arrives land anyway: ProgressAmbushes.drain).
+    // (Truck-pressure tuning: only the 2 hunters prefer the truck; everyone else fights the escort first.)
+    at: 4880, delay: 4, banner: 'FINAL GAUNTLET! ENEMIES ON BOTH RIDGES, AHEAD AND BEHIND',
+    groups: [
+      { kinds: [A, A, A], road: [{ s: 5345, side: -24 }, { s: 5360, side: 24 }, { s: 5400, side: 0 }], hold: true, escortFirst: true },
+      { kinds: [R, R, A, SN, R], points: [{ x: 5850, y: 1340 }, { x: 5960, y: 1300 }, { x: 5880, y: 1450 }, { x: 6060, y: 1120 }, { x: 5940, y: 1420 }], escortFirst: true, after: 15 },
+      { kinds: [R, A, SN], points: [{ x: 5200, y: 960 }, { x: 5300, y: 900 }, { x: 5150, y: 860 }], escortFirst: true, after: 6 },
+      { kinds: [R, A], points: [{ x: 5330, y: 1180 }, { x: 5220, y: 1200 }], escortFirst: true, after: 9 },
+      { kinds: [R, R], road: [{ s: 4560, side: 130 }, { s: 4600, side: -130 }], hunter: true, after: 10 },
     ],
   },
 ];

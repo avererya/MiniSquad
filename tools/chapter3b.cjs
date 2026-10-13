@@ -313,11 +313,12 @@ function installHelpers() {
     out.budget = (m.spawned.get('cache-a') || 0) + (m.spawned.get('cache-b') || 0) + 7 + W.plannedCount;
     return out;
   });
-  check('B15 four waves of 8 / 10 / 12 / 14 (44 total, all spawned, the defense completes)', W.sizes === '8,10,12,14' && W.spawned === 44 && W.planned === 44 && W.state === 'complete' && W.phase === 'toExtraction', JSON.stringify({ s: W.sizes, sp: W.spawned, st: W.state, ph: W.phase }));
-  check('B16 wave kinds: W1 8 riflemen, W2 riflemen + armored, W3 riflemen / armored / snipers, W4 mixed', W.kinds === 'rrrrrrrr|aaarrrrrrr|aarrrrrrrsss|aaarrrrrrrrsss', W.kinds);
+  // v0.8B.1: waves of 10 / 14 / 16 / 20 (60) replace v0.8B's 8 / 10 / 12 / 14 (tools/v081.cjs has the timing)
+  check('B15 four waves of 10 / 14 / 16 / 20 (60 total, all spawned, the defense completes)', W.sizes === '10,14,16,20' && W.spawned === 60 && W.planned === 60 && W.state === 'complete' && W.phase === 'toExtraction', JSON.stringify({ s: W.sizes, sp: W.spawned, st: W.state, ph: W.phase }));
+  check('B16 wave kinds: W1 8R+2A, W2 8R+6A, W3 7R+6A+3S, W4 8R+9A+3S', W.kinds === 'aarrrrrrrr|aaaaaarrrrrrrr|aaaaaarrrrrrrsss|aaaaaaaaarrrrrrrrsss', W.kinds);
   check('B17 directions: W1 north, W2 west, W3 east, W4 north + west + east', W.dirs === 'N|W|E|ENW', W.dirs);
   check('B18 each wave announced (banner + edge markers) before it arrives; arrivals staggered', W.banners.length === 4 && W.banners.every((b) => b.incoming > 0) && /WAVE 1 OF 4 INBOUND FROM THE NORTH/.test(W.banners[0].text) && /FINAL ASSAULT/.test(W.banners[3].text) && W.stagger.every((n) => n >= 2), JSON.stringify({ b: W.banners.map((b) => b.text), st: W.stagger }));
-  check('B19 the defense never completes while an attacker is alive; budget = 63 max (12 + 7 + 44), never all at once', !W.doneEarly && W.budget === 63 && W.maxAlive < 63, JSON.stringify({ budget: W.budget, maxAlive: W.maxAlive, total: W.total }));
+  check('B19 the defense never completes while an attacker is alive; budget = 79 max (12 + 7 + 60), never all at once', !W.doneEarly && W.budget === 79 && W.maxAlive < 79, JSON.stringify({ budget: W.budget, maxAlive: W.maxAlive, total: W.total }));
 
   // failures, optional, allies, victory + unlocks
   const B2 = await ev(() => {
@@ -558,10 +559,11 @@ function installHelpers() {
     out.win = { phase: g.phase, gunner: g.soldiers.find((s) => s.identity.classId === 'heavy').state, opt: m.optionals[0].state };
     return out;
   });
-  check('C18 ambush 1 / 2 / 3: once each at the truck\'s progress, 6 / 9 / 12 enemies, warning then a short delay', C3.amb.length === 3 && C3.amb.map((a) => a.n).join() === '6,9,12' && C3.amb.every((a) => a.fired === 1 && a.before === 0 && a.delay >= 2 && /AMBUSH|ROADBLOCK/.test(a.banner)), JSON.stringify(C3.amb.map((a) => ({ n: a.n, f: a.fired, d: a.delay, b: a.banner.slice(0, 40) }))));
+  // v0.8B.1: two more ambushes follow on the extended road (their staggered groups: tools/v081.cjs E2-E5)
+  check('C18 ambush 1 / 2 / 3: once each at the truck\'s progress, 6 / 9 / 12 enemies, warning then a short delay', C3.amb.length === 5 && C3.amb.slice(0, 3).map((a) => a.n).join() === '6,9,12' && C3.amb.every((a) => a.fired === 1 && a.before === 0 && a.delay >= 2 && /AMBUSH|ROADBLOCK|GAUNTLET/.test(a.banner)), JSON.stringify(C3.amb.map((a) => ({ n: a.n, f: a.fired, d: a.delay, b: a.banner.slice(0, 40) }))));
   check('C19 ambush kinds: A1 riflemen, A2 riflemen + armored (a roadblock that holds), A3 mixed with a sniper', C3.amb[0].kinds === 'rrrrrr' && C3.amb[1].kinds === 'aaarrrrrr' && C3.amb[1].hold >= 6 && /s/.test(C3.amb[2].kinds) && /a/.test(C3.amb[2].kinds), C3.amb.map((a) => `${a.kinds}/${a.hold}`).join(' '));
   check('C20 ambush spawns on open ground, never on top of the squad or the truck; some prefer the truck', C3.amb.every((a) => a.open && a.minD >= 200) && C3.amb[0].hunt >= 3, C3.amb.map((a) => `${a.open}/${a.minD}/${a.hunt}`).join(' '));
-  check('C21 no ambush repeats (27 total); the truck arriving completes the escort; extraction wins with the gunner standing', C3.once.fired === 3 && C3.once.spawned === 27 && C3.once.planned === 27 && C3.arrived.state === 'arrived' && C3.arrived.esc === 'complete' && C3.win.phase === 'won' && C3.win.gunner === 'active' && C3.win.opt === 'complete', JSON.stringify([C3.once, C3.arrived, C3.win]));
+  check('C21 no ambush repeats (54 total in v0.8B.1); the truck arriving completes the escort; extraction wins with the gunner standing', C3.once.fired === 5 && C3.once.spawned === 54 && C3.once.planned === 54 && C3.arrived.state === 'arrived' && C3.arrived.esc === 'complete' && C3.win.phase === 'won' && C3.win.gunner === 'active' && C3.win.opt === 'complete', JSON.stringify([C3.once, C3.arrived, C3.win]));
 
   const C4 = await ev(() => {
     const out = {}, g = T.g;

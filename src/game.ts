@@ -6,7 +6,7 @@ import { Unit, nextStatEpoch } from './unit';
 import { EscortTargeting, ExposedTargeting, NearestVisible, SniperTargeting } from './targeting';
 import type { EnemyKind } from './unit';
 import { Effects, modifyDamage, updateEnemySniper, updateOffhand, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
-import { updateGrenades, type Grenade } from './abilities';
+import { activateAbility, resetCharges, updateGrenades, type Grenade } from './abilities';
 import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, cloneIdentity, createGeneric, type SoldierClassId, type SoldierIdentity } from './classes';
 import { MissionStats } from './missionstats';
 import { Roster } from './roster';
@@ -21,12 +21,13 @@ import { Input, type InputHandler } from './input';
 import { VIEW_W, VIEW_H } from './view';
 import { clamp, dist, rand, type Vec } from './util';
 import { sfx, setMuted, isMuted } from './audio';
-import { getAccount, type MissionReward } from './progression';
+import { abilityUses, capacityRank, getAccount, type MissionReward } from './progression';
 import { journalKia, newRunId, recoverInterruptedRun, settleMission, type PersistFn } from './economy';
 import { decisionBlock } from './casualties';
 import { eliteAuras, eliteTick, incomingMul, reviveHpFrac } from './elite';
 import { Support, supportRoom } from './support';
 import { raiseAlert, type AlertLog } from './awareness';
+import { siegeAnswer } from './defense';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -360,6 +361,8 @@ export class Game implements InputHandler {
     const s = new Unit('squad', pos, cls === 'sniper' ? SniperTargeting : NearestVisible, identity ?? createGeneric(r.name, cls));
     s.speedMul = r.speedMul; s.slot = r.offset;
     s.ability = ABILITY_FACTORIES[CLASSES[cls].abilityId]();
+    // v0.8B.1 Ability Capacity: full charges for this deployment from the soldier's own rank (generics: rank 0)
+    resetCharges(s.ability, abilityUses(capacityRank(identity)));
     // v0.8A Commando: the left-hand pistol, half a shot period behind the right so the two alternate
     if (CLASSES[cls].visual.weapon === 'pistols') s.offhand = { target: null, cooldown: 0.5 / Math.max(0.1, s.fireRate), reaction: 0, aim: s.aim, muzzle: 0 };
     if (s.elite) { this.eliteCount++; if (s.elite.id === 'med-commander') this.eliteCommanders++; }
@@ -521,6 +524,7 @@ export class Game implements InputHandler {
     if (u.team === 'enemy' && opts.support !== 'nuke') {
       const from = opts.origin ?? (source?.team === 'squad' ? source.pos : opts.support ? squadCentre(this.soldiers) : null);
       if (from) raiseAlert(this, u, from);
+      if (u.hp > 0) siegeAnswer(this, u, source); // v0.8B.1 Mission 13: siege attackers answer fire
     }
     sfx('hit');
     if (u.hp > 0) return;
@@ -676,7 +680,7 @@ export class Game implements InputHandler {
     this.targeting = null;
     const why = ab.blockReason(this, s);
     if (why) { this.say(`${s.name}: ${ab.name.toUpperCase()} — ${why}`); sfx('deny'); return false; }
-    ab.execute(this, s, s.pos);
+    activateAbility(this, s, ab, s.pos); // v0.8B.1: spends one Ability Capacity charge when it takes effect
     return true;
   }
 
@@ -713,8 +717,8 @@ export class Game implements InputHandler {
   onSupportAim(screen: Vec) { this.support.aimAirstrike(this, screen); }
   onTargetConfirm(screen: Vec) {
     const s = this.targeting;
-    if (!s || !s.ability || !s.ability.ready(s)) { this.targeting = null; return; }
-    s.ability.execute(this, s, this.screenToWorld(screen));
+    if (!s || !s.ability || !s.ability.ready(s) || s.mount || this.mission.aftermath) { this.targeting = null; return; }
+    activateAbility(this, s, s.ability, this.screenToWorld(screen)); // v0.8B.1: one charge per throw
     this.targeting = null;
   }
   onAnyInput() { /* audio unlock handled in main */ }
@@ -812,7 +816,7 @@ export class Game implements InputHandler {
       }
     }
     // v0.8B mission assets push bodies out too (the truck as its oriented box)
-    for (const st of this.assets) if (st.active) for (const u of soft) pushOut(st, u);
+    for (const st of this.assets) if (st.active) for (const u of soft) pushOut(this, st, u);
     for (const u of movers) {
       this.world.resolveCircle(u.pos, u.radius);
       const sp = Math.hypot(u.vel.x, u.vel.y);
@@ -821,6 +825,9 @@ export class Game implements InputHandler {
       if (u.moveFrac < 0.02) u.moveFrac = 0;
       u.walkPhase += sp * dt * 0.09;
     }
+    // v0.8B.1: friendlies the terrain pushed back into the truck's body are wedged (EscortVehicle stops / backs off)
+    const tv = this.mission.escort;
+    if (tv) tv.pinned = tv.live ? soft.filter((u) => u.team === 'squad' && !u.mount && (u.state === 'active' || u.state === 'downed') && tv.inBox(u.pos, u.radius - 3)) : [];
 
     // weapons
     // v0.8B: during the wrecked-truck aftermath both sides hold fire (Mission.aftermath)
@@ -926,18 +933,27 @@ export class Game implements InputHandler {
   }
 }
 
-/** v0.8B: push a body out of a mission asset (circle; the truck as an oriented box of CFG.escortTruck halfLen x halfWidth). */
-function pushOut(st: Unit, u: Unit) {
+/**
+ * v0.8B: push a body out of a mission asset (circle; the truck as an oriented box of CFG.escortTruck halfLen x
+ * halfWidth). v0.8B.1: out through the face that moves it least AMONG THOSE WITH OPEN GROUND (a body beside a wall
+ * goes out another nearby face instead of being pushed into the wall and back into the truck every step).
+ */
+function pushOut(g: Game, st: Unit, u: Unit) {
   if (st.asset === 'truck') {
     const T = CFG.escortTruck, c = Math.cos(st.aim), s = Math.sin(st.aim);
     const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y;
     const lx = dx * c + dy * s, ly = -dx * s + dy * c;
     const hx = T.halfLen + u.radius, hy = T.halfWidth + u.radius;
     if (Math.abs(lx) >= hx || Math.abs(ly) >= hy) return;
-    // out through the nearest side
-    let nx = lx, ny = ly;
-    if (hx - Math.abs(lx) < hy - Math.abs(ly)) nx = Math.sign(lx || 1) * hx; else ny = Math.sign(ly || 1) * hy;
-    u.pos.x = st.pos.x + nx * c - ny * s; u.pos.y = st.pos.y + nx * s + ny * c;
+    const faces = [
+      { x: Math.sign(lx || 1) * hx, y: ly }, { x: -Math.sign(lx || 1) * hx, y: ly },
+      { x: lx, y: Math.sign(ly || 1) * hy }, { x: lx, y: -Math.sign(ly || 1) * hy },
+    ].sort((a, b) => Math.hypot(a.x - lx, a.y - ly) - Math.hypot(b.x - lx, b.y - ly));
+    const w = (f: { x: number; y: number }) => ({ x: st.pos.x + f.x * c - f.y * s, y: st.pos.y + f.x * s + f.y * c });
+    // (only faces a short step away: never through the truck to its far side)
+    const open = faces.filter((f) => Math.hypot(f.x - lx, f.y - ly) <= u.radius + 14).map(w).find((p) => g.world.isOpen(p.x, p.y) && !g.world.insideObstacle(p, u.radius - 1));
+    const q = open ?? w(faces[0]);
+    u.pos.x = q.x; u.pos.y = q.y;
     return;
   }
   const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y, min = u.radius + st.radius, d2 = dx * dx + dy * dy;

@@ -27,7 +27,7 @@ import type { Unit, EnemyKind } from './unit';
 import { MultiDestroyObjective, Objective, type HudChip, type HudLine, type ObjPoint } from './objectives';
 import { DEG, angleDiff, clamp, dist, rand, turnToward, type Vec } from './util';
 import { squadCentre } from './squad';
-import { VehicleHunterTargeting } from './targeting';
+import { RoadblockTargeting, VehicleHunterTargeting } from './targeting';
 import { assetMeter, footSoldiers } from './defense';
 import { sfx } from './audio';
 
@@ -49,6 +49,13 @@ export class EscortVehicle {
   private blockedPrev = false;
   /** Times a friendly had to step aside (should stay rare). */
   nudges = 0;
+  /** v0.8B.1 friendlies wedged against the truck's body after collision (Game.update fills it each step). */
+  pinned: Unit[] = [];
+  /** v0.8B.1 seconds someone has been wedged, and px backed up in the current incident (bounded recovery). */
+  pinnedT = 0;
+  backedUp = 0;
+  /** v0.8B.1 times the truck had to back off to free a wedged friendly (should stay rare; reported by tools). */
+  rescues = 0;
   /** Squad progress along the route at the last step (tests / HUD). */
   squadS = 0;
   squadOff = 0;
@@ -141,11 +148,25 @@ export class EscortVehicle {
       this.blockedPrev = reason === 'roadblock';
       if (reason !== 'yield') this.yieldT = 0;
     } else { this.blockedPrev = false; this.yieldT = 0; }
+    // v0.8B.1 a friendly wedged between the truck and terrain: the truck stops at once and they walk clear; if
+    // that takes more than pinBackAfter s the truck backs off slowly, at most pinBackMax px per incident (bounded)
+    let backing = false;
+    if (this.pinned.length) {
+      stop = true; reason = 'yield'; want = false;
+      this.pinnedT += dt;
+      for (const f of this.pinned) if (f.state === 'active' && !f.clearGoal) { const q = this.clearOf(g, f.pos, f.radius, f.radius + 10); if (q) f.clearGoal = { p: q, t: 1.5 }; }
+      if (this.pinnedT > T.pinBackAfter && this.backedUp < T.pinBackMax && this.s > 0) {
+        if (this.backedUp === 0) this.rescues++;
+        const d = Math.min(T.pinBackSpeed * dt, T.pinBackMax - this.backedUp, this.s);
+        this.s -= d; this.backedUp += d; backing = true;
+      }
+    } else if (this.pinnedT > 0) { this.pinnedT = 0; this.backedUp = 0; }
     // speed: ramp toward the target (no overshoot past the squad), brake at once for a body on the road
     const gap = want ? this.squadS - T.behind - this.s : 0;
     const vWant = stop ? 0 : Math.min(T.moveSpeed, Math.max(0, gap) * 1.6);
     if (reason === 'roadblock' || reason === 'yield') this.v = Math.max(0, Math.min(this.v, vWant) - T.accel * 2 * dt);
     else this.v = this.v < vWant ? Math.min(vWant, this.v + T.accel * dt) : Math.max(vWant, this.v - T.accel * 1.5 * dt);
+    if (backing) this.v = 0;
     this.s = Math.min(this.total, this.s + this.v * dt);
     const { p, a } = this.at(this.s);
     u.vel = { x: (p.x - u.pos.x) / Math.max(dt, 1e-6), y: (p.y - u.pos.y) / Math.max(dt, 1e-6) };
@@ -166,7 +187,9 @@ export class EscortVehicle {
     if (!this.live || this.state === 'arrived') return goal;
     const T = CFG.escortTruck, lo = this.s - T.halfLen, hi = this.s + T.halfLen + T.lookahead + 90;
     const check = (p: Vec) => { const pr = this.project(p, lo, hi); return pr.d < T.halfWidth + u.radius + 14 && pr.s > lo + 1 && pr.s < hi - 1 ? pr : null; };
-    const pr = check(goal) ?? check(u.pos);
+    // v0.8B.1: only a GOAL in the lane is moved (the soldier's own position no longer counts: a soldier crossing the
+    // road ahead of the truck to a slot on the far side was sent back to the near roadside every step, forever)
+    const pr = check(goal);
     if (!pr) return goal;
     const { p, a } = this.at(pr.s);
     const nx = -Math.sin(a), ny = Math.cos(a);
@@ -175,7 +198,10 @@ export class EscortVehicle {
     return { x: p.x + nx * off * side, y: p.y + ny * off * side };
   }
 
-  /** A friendly who keeps standing in the truck's way steps to the roadside (the truck never runs anyone over). */
+  /**
+   * A friendly who keeps standing in the truck's way steps to the roadside (the truck never runs anyone over).
+   * v0.8B.1: they WALK there (a steered clear goal for squad.ts, never a teleport).
+   */
   private stepAside(g: Game, friends: Unit[]) {
     for (const f of friends) {
       if (f.state !== 'active') continue; // a downed soldier on the road: the truck waits for the revive
@@ -183,10 +209,107 @@ export class EscortVehicle {
       const { p, a } = this.at(pr.s);
       const side = Math.sign((f.pos.x - p.x) * -Math.sin(a) + (f.pos.y - p.y) * Math.cos(a)) || 1;
       const off = CFG.escortTruck.halfWidth + f.radius + 26;
-      const q = g.findOpenNear({ x: p.x - Math.sin(a) * off * side, y: p.y + Math.cos(a) * off * side }, 10);
-      f.pos.x = q.x; f.pos.y = q.y; f.vel = { x: 0, y: 0 }; f.path = null;
+      const open = (q: Vec) => g.world.isOpen(q.x, q.y) && !g.world.insideObstacle(q, f.radius);
+      const q0 = { x: p.x - Math.sin(a) * off * side, y: p.y + Math.cos(a) * off * side };
+      const q1 = { x: p.x + Math.sin(a) * off * side, y: p.y - Math.cos(a) * off * side };
+      const q = open(q0) ? q0 : open(q1) ? q1 : g.findOpenNear(q0, 10);
+      f.clearGoal = { p: q, t: 2.5 }; f.path = null;
       this.nudges++;
     }
+  }
+
+  /** v0.8B.1 where a gunner leaving the gun lands (MountedGun.release; tools/v081.cjs checks it). */
+  ejectPoint(g: Game, r: number): Vec {
+    const u = this.unit!, T = CFG.escortTruck, sx = T.halfLen + r + 8, sy = T.halfWidth + r + 8;
+    const cand = [[0, sy], [0, -sy], [-sx, 0], [-sx * 0.6, sy], [-sx * 0.6, -sy], [sx * 0.6, sy], [sx * 0.6, -sy], [sx, 0]].map(([x, y]) => this.toWorld(x, y));
+    const home = g.soldiers.find((o) => o.active && !o.mount)?.pos ?? g.anchor;
+    const ok = (p: Vec) => g.world.isOpen(p.x, p.y) && !g.world.insideObstacle(p, r) && !this.inBox(p, r)
+      && (g.world.passable(p, home, r - 1) || !!g.world.findPath(p, home, r)?.length);
+    const hit = cand.find(ok);
+    if (hit) return hit;
+    for (const c of cand) { const p = g.findOpenNear(c, 40); if (ok(p)) return p; }
+    return this.clearOf(g, u.pos, r, r + 2) ?? g.findOpenNear(cand[0], 60);
+  }
+
+  // ---- v0.8B.1 truck footprint (the oriented box pushOut uses) for squad avoidance / recovery ----
+  /** Truck-local coordinates of p (x along the truck's heading). */
+  private local(p: Vec, at?: { p: Vec; a: number }): { x: number; y: number } {
+    const u = this.unit!, o = at ? at.p : u.pos, a = at ? at.a : u.aim, c = Math.cos(a), sn = Math.sin(a);
+    const dx = p.x - o.x, dy = p.y - o.y;
+    return { x: dx * c + dy * sn, y: -dx * sn + dy * c };
+  }
+  private toWorld(x: number, y: number): Vec {
+    const u = this.unit!, c = Math.cos(u.aim), sn = Math.sin(u.aim);
+    return { x: u.pos.x + x * c - y * sn, y: u.pos.y + x * sn + y * c };
+  }
+  /** p inside the truck body expanded by pad (on foot: pad = the body's radius + margin). */
+  inBox(p: Vec, pad: number): boolean {
+    if (!this.unit || !this.unit.active) return false;
+    const T = CFG.escortTruck, l = this.local(p);
+    return Math.abs(l.x) < T.halfLen + pad && Math.abs(l.y) < T.halfWidth + pad;
+  }
+  /**
+   * The nearest open spot just outside the body (expanded by pad) for a body of radius r at p: the four faces in
+   * order of how little they move it, then the corners. Null when every side is walled in.
+   */
+  clearOf(g: Game, p: Vec, r: number, pad: number): Vec | null {
+    if (!this.unit) return null;
+    const T = CFG.escortTruck, l = this.local(p), hx = T.halfLen + pad + 1, hy = T.halfWidth + pad + 1;
+    const c: { x: number; y: number }[] = [
+      { x: hx, y: l.y }, { x: -hx, y: l.y }, { x: l.x, y: hy }, { x: l.x, y: -hy },
+      { x: hx, y: hy }, { x: hx, y: -hy }, { x: -hx, y: hy }, { x: -hx, y: -hy },
+    ];
+    const faces = c.slice(0, 4).sort((a, b) => Math.hypot(a.x - l.x, a.y - l.y) - Math.hypot(b.x - l.x, b.y - l.y));
+    const corners = c.slice(4).sort((a, b) => Math.hypot(a.x - l.x, a.y - l.y) - Math.hypot(b.x - l.x, b.y - l.y));
+    for (const q of [...faces, ...corners]) {
+      const w = this.toWorld(q.x, q.y);
+      if (g.world.isOpen(w.x, w.y) && !g.world.insideObstacle(w, r)) return w;
+    }
+    return null;
+  }
+  /**
+   * Steering around the body: when the straight line a -> b crosses the body (expanded by pad), the corner to
+   * walk to first (on the side with open ground, the one nearer a); null when the line is clear.
+   */
+  around(g: Game, a: Vec, b: Vec, r: number, pad: number): Vec | null {
+    if (!this.unit || !this.unit.active) return null;
+    const T = CFG.escortTruck, la = this.local(a), lb = this.local(b), hx = T.halfLen + pad, hy = T.halfWidth + pad;
+    // Liang-Barsky: does the segment enter the box?
+    let t0 = 0, t1 = 1;
+    const dx = lb.x - la.x, dy = lb.y - la.y;
+    for (const [pp, q] of [[-dx, la.x + hx], [dx, hx - la.x], [-dy, la.y + hy], [dy, hy - la.y]] as [number, number][]) {
+      if (Math.abs(pp) < 1e-9) { if (q < 0) return null; continue; }
+      const t = q / pp;
+      if (pp < 0) { if (t > t1) return null; if (t > t0) t0 = t; } else { if (t < t0) return null; if (t < t1) t1 = t; }
+    }
+    if (t1 - t0 < 1e-3) return null;
+    // the corner on the side that makes the shorter walk a -> corner -> b, among corners on open ground that a can
+    // walk to in a straight line (cost-based, so the choice doesn't flicker from step to step)
+    const m = 6, cx = hx + m, cy = hy + m;
+    let best: Vec | null = null, bc = Infinity;
+    for (const sy of [1, -1]) {
+      const cs = [{ x: cx, y: sy * cy }, { x: -cx, y: sy * cy }].sort((p, q) => Math.hypot(p.x - la.x, p.y - la.y) - Math.hypot(q.x - la.x, q.y - la.y));
+      // already at the near corner: head for the far one on this side
+      const pick = Math.hypot(cs[0].x - la.x, cs[0].y - la.y) < 10 ? cs[1] : cs[0];
+      const w = this.toWorld(pick.x, pick.y);
+      if (!g.world.isOpen(w.x, w.y) || g.world.insideObstacle(w, r) || !g.world.passable(a, w, r - 1)) continue;
+      const cost = Math.hypot(pick.x - la.x, pick.y - la.y) + Math.hypot(lb.x - pick.x, lb.y - pick.y);
+      if (cost < bc) { bc = cost; best = w; }
+    }
+    return best;
+  }
+  /**
+   * Predictive avoidance: a unit vector off the road (on the body's own side) when p lies in the strip the moving
+   * truck will sweep in the next `ahead` s; null when the truck is stopped or p is clear of that strip.
+   */
+  sweep(p: Vec, pad: number, ahead = 0.7): Vec | null {
+    if (!this.live || this.v < 5) return null;
+    const T = CFG.escortTruck, reach = this.v * ahead;
+    const pr = this.project(p, this.s - T.halfLen, this.s + T.halfLen + reach);
+    if (pr.d > T.halfWidth + pad || pr.s < this.s + T.halfLen * 0.3) return null;
+    const { p: q, a } = this.at(pr.s);
+    const nx = -Math.sin(a), ny = Math.cos(a), side = Math.sign((p.x - q.x) * nx + (p.y - q.y) * ny) || 1;
+    return { x: nx * side, y: ny * side };
   }
 
   placeGunner() {
@@ -253,11 +376,10 @@ export class MountedGun {
     s.mount = null;
     const u = this.vehicle.unit;
     if (u) {
-      // the side of the truck with open ground, clear of its body
-      const a = u.aim, off = (u.radius + s.radius + 8);
-      const cands = [1, -1].map((side) => ({ x: u.pos.x - Math.sin(a) * off * side, y: u.pos.y + Math.cos(a) * off * side }));
-      const q = cands.find((p) => g.world.isOpen(p.x, p.y) && !g.world.insideObstacle(p, s.radius)) ?? g.findOpenNear(cands[0], 30);
-      s.pos.x = q.x; s.pos.y = q.y; s.vel = { x: 0, y: 0 }; s.path = null;
+      // v0.8B.1: a VALID, REACHABLE spot clear of the truck's body: the sides first, then behind, then in front;
+      // open ground, outside the body, and with a walkable way back to the squad (never inside a wall pocket)
+      const q = this.vehicle.ejectPoint(g, s.radius);
+      s.pos.x = q.x; s.pos.y = q.y; s.vel = { x: 0, y: 0 }; s.path = null; s.clearGoal = null;
     }
     g.banner(`${s.name} OFF THE GUN — THE TRUCK GUN IS SILENT`, '#ffb347', 2.6);
   }
@@ -342,8 +464,16 @@ export class CaptureVehicleObjective extends Objective {
   }
 }
 
-/** One ambush group: per-unit points (or road positions), kinds; `hold` = stay put (roadblock), `hunter` = prefer the truck. */
-export interface AmbushGroup { kinds: EnemyKind[]; points?: Vec[]; road?: { s: number; side: number }[]; hold?: boolean; hunter?: boolean }
+/**
+ * One ambush group: per-unit points (or road positions), kinds; `hold` = stay put (roadblock), `hunter` = prefer the
+ * truck, `escortFirst` (v0.8B.1, Ambushes 4-5) = fight the soldiers before the truck (RoadblockTargeting), `after`
+ * = arrives that many seconds after the rest.
+ */
+export interface AmbushGroup {
+  kinds: EnemyKind[]; points?: Vec[]; road?: { s: number; side: number }[]; hold?: boolean; hunter?: boolean; escortFirst?: boolean;
+  /** v0.8B.1: extra seconds after the ambush's delay before this group arrives (staggered directions; default 0). */
+  after?: number;
+}
 export interface AmbushDef { at: number; delay: number; banner: string; groups: AmbushGroup[] }
 
 /** Finite ambushes keyed to the truck's progress along the route (each once). */
@@ -362,7 +492,8 @@ function clearOfFriends(p: Vec, friends: Unit[]): Vec {
 export class ProgressAmbushes {
   fired: number[] = [];
   spawnedAt: number[] = [];
-  pending: { i: number; t: number }[] = [];
+  /** Groups waiting to arrive (ambush i, group j, seconds left), in arrival order. */
+  pending: { i: number; j: number; t: number }[] = [];
   units: Unit[][];
   constructor(readonly defs: AmbushDef[]) { this.units = defs.map(() => []); }
   get spawnedCount() { return this.units.reduce((a, u) => a + u.length, 0); }
@@ -373,19 +504,29 @@ export class ProgressAmbushes {
     this.defs.forEach((d, i) => {
       if (this.fired.includes(i) || v.s < d.at) return;
       this.fired.push(i);
-      this.pending.push({ i, t: d.delay });
+      d.groups.forEach((gr, j) => this.pending.push({ i, j, t: d.delay + (gr.after ?? 0) }));
+      this.pending.sort((x, y) => x.t - y.t || x.i - y.i || x.j - y.j); // stable: same-time groups keep their order
       g.banner(d.banner, '#ff6040', 3);
       sfx('alarm');
-      for (const gr of d.groups) { const p = gr.points?.[0] ?? (gr.road ? v.at(gr.road[0].s).p : null); if (p) m.incoming.push({ pos: { ...p }, life: d.delay + 3 }); }
+      for (const gr of d.groups) { const p = gr.points?.[0] ?? (gr.road ? v.at(gr.road[0].s).p : null); if (p) m.incoming.push({ pos: { ...p }, life: d.delay + (gr.after ?? 0) + 3 }); }
     });
-    for (const p of this.pending) p.t -= dt;
-    while (this.pending.length && this.pending[0].t <= 0) this.spawn(m, g, v, this.pending.shift()!.i);
+    this.drain(m, g, v, dt);
   }
-  private spawn(m: Mission, g: Game, v: EscortVehicle, i: number) {
-    const d = this.defs[i];
-    this.spawnedAt[i] = g.time;
+  /**
+   * v0.8B.1 groups of a fired ambush that are still on their way arrive even when the truck reaches the end of the
+   * road first (EscortObjective.afterComplete): a fired ambush always lands in full, once (never with a wreck).
+   */
+  drain(m: Mission, g: Game, v: EscortVehicle, dt: number) {
+    if (!v.unit || !v.unit.active || v.state === 'wrecked') return;
+    for (const p of this.pending) p.t -= dt;
+    while (this.pending.length && this.pending[0].t <= 0) { const p = this.pending.shift()!; this.spawn(m, g, v, p.i, p.j); }
+  }
+  private spawn(m: Mission, g: Game, v: EscortVehicle, i: number, j: number) {
+    const d = this.defs[i], gr = d.groups[j];
+    this.spawnedAt[i] ??= g.time;
     const friends = [...footSoldiers(g), ...(v.unit ? [v.unit] : [])];
-    for (const gr of d.groups) {
+    const before = this.units[i].length;
+    {
       gr.kinds.forEach((kind, k) => {
         let p: Vec;
         if (gr.road) { const r = gr.road[k % gr.road.length], at = v.at(r.s); p = { x: at.p.x - Math.sin(at.a) * r.side, y: at.p.y + Math.cos(at.a) * r.side }; }
@@ -399,10 +540,11 @@ export class ProgressAmbushes {
         e.tag = `ambush-${i + 1}`;
         if (gr.hold) e.holdPos = { ...e.pos };
         if (gr.hunter) e.targeting = VehicleHunterTargeting;
+        else if (gr.escortFirst) e.targeting = RoadblockTargeting;
         this.units[i].push(e);
       });
     }
-    m.spawned.set('ambush', (m.spawned.get('ambush') ?? 0) + this.units[i].length);
+    m.spawned.set('ambush', (m.spawned.get('ambush') ?? 0) + this.units[i].length - before);
   }
 }
 
@@ -417,6 +559,7 @@ export class EscortObjective extends Objective {
     this.ambushes.update(m, g, v, dt);
     if (v.state === 'arrived') this.complete(m, g);
   }
+  afterComplete(m: Mission, g: Game, dt: number) { if (m.escort && this.ambushes.pending.length) this.ambushes.drain(m, g, m.escort, dt); }
   hud(m: Mission): HudLine {
     const v = m.escort!;
     const st: Record<TruckState, string> = {

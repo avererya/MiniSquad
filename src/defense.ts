@@ -10,11 +10,11 @@
 //    standing soldier stays in the command zone for CFG.defense.zoneTime CONTINUOUS seconds (leaving resets it).
 //    Then the gates close (Mission.closeGates) and the caches lock.
 //  - WaveController / WaveDefenseObjective: finite waves, each announced CFG.defense.warn s ahead (banner, edge
-//    marker, HUD countdown), arriving in staggered groups from off-screen points of its direction. The next wave
-//    is announced once at most CFG.defense.nextWhenLeft attackers of the current one are left (and at least
-//    CFG.defense.minGap s after its last group arrived: a short breather), or CFG.defense.maxGap s after its last
-//    group arrived. Two in three riflemen / armored troopers press the command center (SiegeTargeting). Complete
-//    when every wave has spawned and every wave attacker is down.
+//    marker, HUD countdown), arriving in staggered groups from off-screen points of its direction. v0.8B.1: waves
+//    OVERLAP. Wave-start intervals run start to start: at least CFG.defense.minGap s, early once at most
+//    CFG.defense.nextWhenLeft attackers of the current wave remain, at most CFG.defense.maxGap s whatever is left.
+//    About CFG.defense.siegeShare (80%) of riflemen / armored troopers press the command center (SiegeTargeting).
+//    Complete when every wave has spawned and every wave attacker is down.
 //  - AssetHpOptional: an asset must finish with at least a share of its max HP (no healing exists, so it fails
 //    the moment it drops below).
 import { CFG } from './config';
@@ -25,7 +25,7 @@ import { Objective, type HudChip, type HudLine, type HudMeter, type MissionEvent
 import { clamp, dist, pointInRect, type Rect, type Vec } from './util';
 import { squadCentre } from './squad';
 import { sfx } from './audio';
-import { SiegeTargeting } from './targeting';
+import { NearestVisible, SiegeTargeting } from './targeting';
 
 const centreOf = (r: Rect): Vec => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 
@@ -164,60 +164,102 @@ export interface WaveGroup { at: number; points: Vec[]; kinds: EnemyKind[] }
 export interface DefenseWaveDef { from: string; groups: WaveGroup[] }
 export type WaveStage = 'idle' | 'warning' | 'arriving' | 'fighting' | 'done';
 
+/**
+ * v0.8B.1 OVERLAPPING FINITE WAVES. A wave STARTS when it is announced (banner, edge markers); its groups arrive
+ * CFG.defense.warn s later, staggered by their `at`. Wave-start intervals are measured start to start on one clock
+ * (never from the last spawn): the next wave starts at least minGap s after the current one started, early once at
+ * most nextWhenLeft of the current wave's attackers remain (alive + not yet arrived), and at the latest maxGap s
+ * after it started, whatever is still alive. Attackers of earlier waves keep fighting (never despawned), so a slow
+ * defense faces several waves at once. Every wave starts exactly once; nothing respawns. Complete when every wave
+ * has started, every group has arrived and every wave attacker is down. About CFG.defense.siegeShare of each
+ * wave's riflemen / armored troopers are siege attackers (SiegeTargeting: the command center first).
+ */
 export class WaveController {
+  /** Latest wave that has started (-1 before the first). */
   index = -1;
-  stage: WaveStage = 'idle';
-  /** Stage clock (warning: seconds left; arriving: since arrival began; fighting: since the last group arrived). */
-  t = 0;
-  private nextGroup = 0;
+  /** Controller clock (s since the defense started; simulation time). */
+  clock = 0;
+  /** Clock time each wave started (-1 = not yet). */
+  starts: number[];
+  /** Groups of each wave that have arrived. */
+  private arrived: number[];
+  /** Riflemen / armored troopers spawned per wave so far (siege share bookkeeping). */
+  private melee: number[];
   /** Attackers per wave (spawned so far). */
   units: Unit[][];
-  constructor(readonly waves: DefenseWaveDef[], readonly tag = 'wave') { this.units = waves.map(() => []); }
+  private finished = false;
+  constructor(readonly waves: DefenseWaveDef[], readonly tag = 'wave') {
+    this.units = waves.map(() => []);
+    this.starts = waves.map(() => -1);
+    this.arrived = waves.map(() => 0);
+    this.melee = waves.map(() => 0);
+  }
+  planned(i: number) { return this.waves[i].groups.reduce((b, gr) => b + gr.kinds.length, 0); }
   get spawnedCount() { return this.units.reduce((a, u) => a + u.length, 0); }
-  get plannedCount() { return this.waves.reduce((a, w) => a + w.groups.reduce((b, gr) => b + gr.kinds.length, 0), 0); }
-  get allSpawned() { return this.index === this.waves.length - 1 && (this.stage === 'fighting' || this.stage === 'done'); }
+  get plannedCount() { return this.waves.reduce((a, _w, i) => a + this.planned(i), 0); }
+  /** Every group of wave i has arrived. */
+  arrivedAll(i: number) { return this.arrived[i] >= this.waves[i].groups.length; }
+  get allSpawned() { return this.waves.every((_w, i) => this.starts[i] >= 0 && this.arrivedAll(i)); }
   left(i = this.index) { let n = 0; for (const u of this.units[i] ?? []) if (u.active) n++; return n; }
+  /** Attackers of wave i still to beat: alive plus not yet arrived. */
+  remaining(i = this.index) { return i < 0 ? 0 : this.left(i) + this.planned(i) - this.units[i].length; }
   get totalLeft() { let n = 0; for (const w of this.units) for (const u of w) if (u.active) n++; return n; }
-  get done() { return this.stage === 'done'; }
-  start(m: Mission, g: Game) { if (this.stage === 'idle') this.announce(m, g, 0); }
-  private announce(m: Mission, g: Game, i: number) {
-    this.index = i; this.stage = 'warning'; this.t = CFG.defense.warn; this.nextGroup = 0;
+  /** Waves started whose attackers are still fighting. */
+  get liveWaves() { let n = 0; this.units.forEach((_u, i) => { if (this.starts[i] >= 0 && this.remaining(i) > 0) n++; }); return n; }
+  get done() { return this.finished; }
+  /** Seconds since wave i started. */
+  since(i = this.index) { return i < 0 || this.starts[i] < 0 ? 0 : this.clock - this.starts[i]; }
+  /** Stage of the latest wave (HUD / tools). */
+  get stage(): WaveStage {
+    if (this.finished) return 'done';
+    if (this.index < 0) return 'idle';
+    if (this.since() < CFG.defense.warn) return 'warning';
+    return this.arrivedAll(this.index) ? 'fighting' : 'arriving';
+  }
+  /** Warning: seconds until the latest wave arrives; otherwise seconds since it started. */
+  get t() { return this.stage === 'warning' ? CFG.defense.warn - this.since() : this.since(); }
+  /** Seconds until the next wave starts at the latest (the hard maximum), null when none is left. */
+  get nextAtLatest(): number | null { return this.index < 0 || this.index >= this.waves.length - 1 ? null : Math.max(0, CFG.defense.maxGap - this.since()); }
+  start(m: Mission, g: Game) { if (this.index < 0) this.begin(m, g, 0); }
+  private begin(m: Mission, g: Game, i: number) {
+    if (this.starts[i] >= 0) return; // each wave starts exactly once
+    this.index = i; this.starts[i] = this.clock;
     const w = this.waves[i];
     const last = i === this.waves.length - 1;
-    g.banner(last ? `FINAL ASSAULT INBOUND FROM ${w.from}` : `WAVE ${i + 1} OF ${this.waves.length} INBOUND FROM THE ${w.from}`, last ? '#ff6040' : '#ffb347', 3.2);
+    const still = i > 0 ? this.totalLeft : 0;
+    g.banner(last ? `FINAL ASSAULT INBOUND FROM ${w.from}` : `WAVE ${i + 1} OF ${this.waves.length} INBOUND FROM THE ${w.from}${still ? ` — ${still} ATTACKERS STILL IN THE FIELD` : ''}`, last ? '#ff6040' : '#ffb347', 3.2);
     sfx('alarm');
     const seen = new Set<string>();
     for (const gr of w.groups) { const p = gr.points[0], k = `${p.x},${p.y}`; if (!seen.has(k)) { seen.add(k); m.incoming.push({ pos: { ...p }, life: CFG.defense.warn + 1 }); } }
   }
   update(m: Mission, g: Game, dt: number) {
-    if (this.stage === 'idle' || this.stage === 'done') return;
-    const D = CFG.defense, w = this.waves[this.index];
-    if (this.stage === 'warning') {
-      this.t -= dt;
-      if (this.t > 0) return;
-      this.stage = 'arriving'; this.t = 0;
-    }
-    if (this.stage === 'arriving') {
-      this.t += dt;
-      while (this.nextGroup < w.groups.length && this.t >= w.groups[this.nextGroup].at) {
-        const gr = w.groups[this.nextGroup++];
+    if (this.index < 0 || this.finished) return;
+    const D = CFG.defense;
+    this.clock += dt;
+    // arrivals of every started wave (an earlier wave may still be arriving when the next one starts)
+    for (let i = 0; i <= this.index; i++) {
+      const w = this.waves[i], t = this.since(i) - D.warn;
+      while (t >= 0 && this.arrived[i] < w.groups.length && t >= w.groups[this.arrived[i]].at) {
+        const gr = w.groups[this.arrived[i]++];
         const us = m.spawnWave(g, gr.points, gr.kinds.length, false, gr.kinds);
-        // two in three riflemen / armored troopers go for the command center first and stop to fire once it is in
-        // range (from outside the compound: the squad has to go out and meet them); snipers pick exposed soldiers
-        us.forEach((u, k) => { u.tag = this.tag; if (k % 3 !== 2 && u.kind !== 'sniper') { u.targeting = SiegeTargeting; u.advancer = false; } });
-        this.units[this.index].push(...us);
+        for (const u of us) {
+          u.tag = this.tag;
+          if (u.kind === 'sniper') continue; // snipers pick exposed soldiers from range
+          // siege share by cumulative rounding: after n riflemen / armored, round(n x share) of them are siege attackers
+          const n = ++this.melee[i];
+          if (Math.round(n * D.siegeShare) > Math.round((n - 1) * D.siegeShare)) { u.targeting = SiegeTargeting; u.advancer = false; }
+        }
+        this.units[i].push(...us);
         m.spawned.set(this.tag, (m.spawned.get(this.tag) ?? 0) + us.length);
       }
-      if (this.nextGroup >= w.groups.length) { this.stage = 'fighting'; this.t = 0; }
-      return;
     }
-    // fighting
-    this.t += dt;
-    const lastWave = this.index >= this.waves.length - 1;
-    if (!lastWave) {
-      if ((this.left() <= D.nextWhenLeft && this.t >= D.minGap) || this.t >= D.maxGap) this.announce(m, g, this.index + 1);
-    } else if (this.totalLeft === 0) {
-      this.stage = 'done';
+    // the next wave: never sooner than minGap after the current one started; early when few of it remain; at maxGap regardless
+    const i = this.index;
+    if (i < this.waves.length - 1) {
+      const el = this.since(i);
+      if ((el >= D.minGap && this.remaining(i) <= D.nextWhenLeft) || el >= D.maxGap) this.begin(m, g, i + 1);
+    } else if (this.allSpawned && this.totalLeft === 0) {
+      this.finished = true;
     }
   }
   /** Nearest living attacker (arrows / autopilot). */
@@ -226,6 +268,19 @@ export class WaveController {
     for (const w of this.units) for (const u of w) if (u.active) { const d = dist(u.pos, c); if (d < bd) { bd = d; best = u; } }
     return best;
   }
+}
+
+/**
+ * v0.8B.1 a siege attacker that is shot by a soldier (or a resistance ally) while it is firing at the command
+ * center turns on that shooter when it can see them in range (the normal targeting rules: no wall-hacks, no
+ * map-wide knowledge). Once the shooter is out of sight, out of range or down, SiegeTargeting picks the command
+ * center again. Going out to engage the siege line draws its fire: aggressive defense is rewarded.
+ */
+export function siegeAnswer(g: Game, u: Unit, source: Unit | undefined) {
+  if (!source || source.asset || source.team !== 'squad' || u.targeting !== SiegeTargeting || !u.active) return;
+  if (!u.target?.asset || !source.targetable || !NearestVisible.isValid(u, source, g)) return;
+  u.target = source;
+  u.reactionLeft = Math.max(u.reactionLeft, u.reactionTime);
 }
 
 export class WaveDefenseObjective extends Objective {
@@ -247,18 +302,19 @@ export class WaveDefenseObjective extends Objective {
   }
   chips(): HudChip[] {
     const W = this.waves;
-    return W.waves.map((_, i) => ({
-      label: `W${i + 1}`,
-      frac: i < W.index || W.done ? 1 : i === W.index && W.stage !== 'warning' ? 1 - W.left(i) / Math.max(1, W.units[i].length) : 0,
-      state: i < W.index || W.done ? (W.left(i) ? 'live' : 'done') : i === W.index ? (W.stage === 'warning' ? 'idle' : 'live') : 'idle',
-    }));
+    return W.waves.map((_, i) => {
+      const started = W.starts[i] >= 0, rem = W.remaining(i), n = W.planned(i);
+      return { label: `W${i + 1}`, frac: !started ? 0 : 1 - rem / Math.max(1, n), state: !started ? 'idle' : rem === 0 ? 'done' : 'live' };
+    });
   }
   hud(m: Mission): HudLine {
     const W = this.waves, n = W.waves.length, i = W.index;
+    const next = W.nextAtLatest;
+    const tail = next !== null ? ` · wave ${i + 2} in ≤${Math.ceil(next)}s` : '';
     let sub: string;
-    if (W.stage === 'warning') sub = `Wave ${i + 1}/${n} from the ${W.waves[i].from.toLowerCase()} in ${Math.ceil(W.t)}s${i > 0 && W.left(i - 1) ? ` · ${W.left(i - 1)} still attacking` : ''}`;
-    else if (W.stage === 'arriving') sub = `Wave ${i + 1}/${n} arriving from the ${W.waves[i].from.toLowerCase()} · attackers: ${W.totalLeft}`;
-    else sub = i === n - 1 ? `Final wave · attackers left: ${W.totalLeft}` : `Wave ${i + 1}/${n} · attackers left: ${W.totalLeft}`;
+    if (W.stage === 'warning') sub = `Wave ${i + 1}/${n} from the ${W.waves[i].from.toLowerCase()} in ${Math.ceil(W.t)}s${W.totalLeft ? ` · ${W.totalLeft} still attacking` : ''}`;
+    else if (W.stage === 'arriving') sub = `Wave ${i + 1}/${n} arriving from the ${W.waves[i].from.toLowerCase()} · attackers: ${W.totalLeft}${tail}`;
+    else sub = i === n - 1 ? `Final wave · attackers left: ${W.totalLeft}` : `Wave ${i + 1}/${n} · attackers left: ${W.totalLeft}${tail}`;
     return { text: `${this.label}: wave ${Math.max(1, i + 1)}/${n}`, sub, chips: this.chips(), meter: assetMeter(m.protected, this.protectLabel) };
   }
   point(m: Mission, g: Game): ObjPoint | null {

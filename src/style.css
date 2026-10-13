@@ -977,3 +977,11 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 #gunsel .gs-btns button:disabled { opacity: 0.45; }
 .panel.mounted .state { color: #ffd27a; }
 .obj-meter .om-v { white-space: nowrap; }
+
+/* ---------- v0.8B.1 Ability Capacity: uses left on each portrait button (top right; the key number is top left) ---------- */
+.ability .uses { position: absolute; right: 3px; top: 3px; min-width: 22px; padding: 0 3px; border-radius: 6px; background: rgba(0,0,0,0.72); font-size: 11px; font-weight: 900; line-height: 15px; color: #ffe27a; text-align: center; letter-spacing: 0.2px; }
+.ability.spent .uses { background: #8a1c1c; color: #fff; }
+.ability.spent { border-color: #6b3a3a; box-shadow: none; }
+.panel.spent .state { color: #ff8a7a; }
+.ability.spent .portrait, .ability.spent .icon { filter: grayscale(1); opacity: 0.4; }
+.ability.spent .cd { height: 100% !important; background: rgba(40,0,0,0.55); }

@@ -20,11 +20,11 @@ import { sfx, unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
 import { CAMPAIGN, CAPACITY_TABLE, CHAPTERS, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
-  PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, getAccount, levelProgress, maxRank, newTraining, nextCost, rankBonus, xpForLevel,
+  ABILITY_CAPACITY, ABILITY_CAPACITY_MAX, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, abilityUses, capacityRank, getAccount, levelProgress, maxRank, newTraining, nextCost, rankBonus, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
 } from './progression';
 import {
-  buySquadTraining, buyTraining, dismiss, dismissBlock, dismissRefund, enlistPhoenix, lineupKey, lockedNamedRecruits, markClassNotified, markRecruitNotified, pendingClassNotice, memorialize, namedOffers, openOffice, pendingRecruitNotice,
+  buyAbilityCapacity, buySquadTraining, buyTraining, dismiss, dismissBlock, dismissRefund, enlistPhoenix, lineupKey, lockedNamedRecruits, markClassNotified, markRecruitNotified, pendingClassNotice, memorialize, namedOffers, openOffice, pendingRecruitNotice,
   recruit, recruitBlock, recruitNamed, refreshOffers, rename, resurrect,
 } from './economy';
 import { MEMORIAL_ARM_MS, PHOENIX_RECRUITS, casualtyPosition, costFor, decisionBlock, pendingCasualties } from './casualties';
@@ -551,7 +551,7 @@ export class Menus {
     const sel = this.game.roster.isSelected(s.id);
     const locked = !this.game.roster.isUnlocked(s.id);
     const full = this.game.roster.count() >= this.game.capacity;
-    const ranks = TRAINING_IDS.map((k) => `${TRAINING[k].label} ${s.training[k]}/${maxRank(TRAINING[k])}`).join(' · ');
+    const ranks = [...TRAINING_IDS.map((k) => `${TRAINING[k].label} ${s.training[k]}/${maxRank(TRAINING[k])}`), `${ABILITY_CAPACITY.label} ${capacityRank(s)}/${ABILITY_CAPACITY_MAX}`].join(' · ');
     const dBlock = dismissBlock(this.game.roster, s.id, this.game.phase !== 'start');
     return `
       <div class="m-modal" data-a="close-bg">
@@ -560,7 +560,7 @@ export class Menus {
             <canvas class="d-port" data-cls="${s.classId}"${specAttr(s)}></canvas>
             <div class="d-id">
               <div class="d-name">${sp ? '<i class="el-star">★</i>' : ''}${esc(s.name)} ${lvBadge(s)}${locked ? '' : ` <button class="d-rename" data-a="rename" data-id="${s.id}" title="Rename">✎ RENAME</button>`}</div>
-              <div class="d-cls">${sp ? `<b class="el-title">${sp.title.toUpperCase()}</b> · ` : ''}${CLASSES[s.classId].label} · Ability: ${ability}</div>
+              <div class="d-cls">${sp ? `<b class="el-title">${sp.title.toUpperCase()}</b> · ` : ''}${CLASSES[s.classId].label} · Ability: ${ability} (${abilityUses(capacityRank(s))}/mission)</div>
               <div class="d-trait"><b>${t ? t.name : 'No trait'}</b> ${t ? `— ${t.desc}` : ''}</div>
             </div>
             <button class="m-icon" data-a="close" title="Close (Esc)">✕</button>
@@ -743,10 +743,27 @@ export class Menus {
               <div class="d-xp">${this.xpBar(s, 'xp big')}<span>${specOf(s) ? 'ELITE · training continues as usual' : lp.max ? 'MAX LEVEL' : `XP ${lp.into}/${lp.need} to LV ${lp.level + 1}`}</span></div>
             </div>
           </div>
-          <div class="t-rows">${rows}</div>
+          <div class="t-rows">${rows}${this.capacityRowHtml(s)}</div>
           <div class="t-foot">Individual training stays with ${esc(s.name)} (levels, retries, squad changes). Each rank adds more than the last; values shown are this soldier's real stats (level, trait and Elite bonuses included). Percentages are of the class base and add up. Near the ${PROGRESSION.spreadFloorDeg}° spread floor each Accuracy rank's effect tapers off but never stops; spread never goes below ${PROGRESSION.spreadFloorDeg}°.</div>
         </section>
       </div>`;
+  }
+
+  /** v0.8B.1 Ability Capacity row (this soldier only): rank /2, uses per mission now → next, price. */
+  private capacityRowHtml(s: SoldierIdentity) {
+    const acc = getAccount(), rank = capacityRank(s), max = ABILITY_CAPACITY_MAX, cost = rank < max ? ABILITY_CAPACITY.costs[rank] : null;
+    const ab = ABILITY_NAMES[CLASSES[s.classId].abilityId], now = abilityUses(rank);
+    const afford = cost !== null && acc.credits >= cost;
+    const btn = cost === null ? '<button class="t-buy max" disabled>MAX</button>'
+      : `<button class="t-buy ${afford ? '' : 'poor'}" data-a="capbuy" data-id="${s.id}" data-stat="capacity" data-rank="${rank}" ${afford ? '' : 'disabled'} title="${afford ? 'Buy' : 'Not enough Credits'}">${cr(cost)} CR</button>`;
+    const uses = (n: number) => `${n} use${n === 1 ? '' : 's'}`;
+    return `
+        <div class="t-row t-cap" data-stat="capacity">
+          <div class="t-name"><b>${ABILITY_CAPACITY.label}</b><span>${esc(ab)} uses per mission: 1 at rank 0, 2 at rank 1, 3 at rank 2 (max). Charges refill on every deployment, never during a mission. Revives are always unlimited.</span></div>
+          <div class="t-rank"><span class="pips">${this.pips(rank, max)}</span><span class="t-rk">RANK ${rank}/${max}</span></div>
+          <div class="t-val">${uses(now)}/mission${cost !== null ? ` → <b>${uses(abilityUses(rank + 1))}</b><small class="t-gain">+1 ${esc(ab)} per mission · rank ${rank + 1}</small>` : ' <b>MAX</b><small class="t-gain">3 of 3 uses per mission</small>'}</div>
+          ${btn}
+        </div>`;
   }
 
   private pips(rank: number, max: number) {
@@ -1529,7 +1546,7 @@ export class Menus {
         break;
       case 'tsel': this.trainId = id!; break;
       case 'train': this.trainId = id!; this.tab = 'training'; this.detailsId = null; break;
-      case 'buy': case 'sbuy': {
+      case 'buy': case 'sbuy': case 'capbuy': {
         e.stopPropagation();
         this.buy(el);
         return;
@@ -1574,10 +1591,13 @@ export class Menus {
     const expected = Number.isInteger(rank) ? rank : null;
     const res = el.dataset.a === 'buy'
       ? buyTraining(g.roster, getAccount(), el.dataset.id!, stat as TrainingStat, expected, g.persist)
-      : buySquadTraining(getAccount(), stat as SquadTrainingStat, expected, g.persist);
+      : el.dataset.a === 'capbuy'
+        ? buyAbilityCapacity(g.roster, getAccount(), el.dataset.id!, expected, g.persist, { inMission: g.phase === 'playing' })
+        : buySquadTraining(getAccount(), stat as SquadTrainingStat, expected, g.persist);
     this.renderBarracks();
     if (!res.ok) { this.notice(res.reason); return; }
-    const label = el.dataset.a === 'buy' ? `${g.roster.get(el.dataset.id!)!.name}: ${TRAINING[stat as TrainingStat].label}` : SQUAD_TRAINING[stat as SquadTrainingStat].label;
+    const label = el.dataset.a === 'buy' ? `${g.roster.get(el.dataset.id!)!.name}: ${TRAINING[stat as TrainingStat].label}`
+      : el.dataset.a === 'capbuy' ? `${g.roster.get(el.dataset.id!)!.name}: ${ABILITY_CAPACITY.label} (${abilityUses(res.rank)} uses per mission),` : SQUAD_TRAINING[stat as SquadTrainingStat].label;
     this.notice(`${label} rank ${res.rank} (−${cr(res.cost)} CR)${res.saved ? '' : ' · not saved (no storage)'}`);
   }
 

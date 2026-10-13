@@ -51,6 +51,8 @@ export abstract class Objective {
   }
   protected onStart(_m: Mission, _g: Game) {}
   update(_m: Mission, _g: Game, _dt: number) {}
+  /** v0.8B.1: runs every step after this objective completed (Mission.update), e.g. groups already on their way. */
+  afterComplete(_m: Mission, _g: Game, _dt: number) {}
   onEvent(_m: Mission, _g: Game, _ev: MissionEvent) {}
   /** Mission end (victory or defeat): end-evaluated optionals decide here. */
   finalize(_m: Mission, _g: Game, _won: boolean) {}

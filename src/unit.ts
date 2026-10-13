@@ -81,6 +81,8 @@ export class Unit {
   rallied = false;
   path: Vec[] | null = null;
   pathTimer = 0;
+  /** v0.8B.1 a short steered goal that overrides the formation slot (stepping clear of the escort truck). */
+  clearGoal: { p: Vec; t: number } | null = null;
   wander = Math.random() * 100;
 
   // enemy-only
