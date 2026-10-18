@@ -992,5 +992,6 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   .t-head { margin-bottom: 0.15em; }
   .t-rows { gap: 0.2em; }
   .t-row { padding: 0.12em 0.45em; }
-  .t-buy { min-height: 32px; padding: 0.2em 0.4em; }
+  /* compact buy buttons on the six-row Individual Training panel only; Squad Training and the Support shop (.q-panel) keep 36 px */
+  .t-panel:not(.q-panel) .t-buy { min-height: 32px; padding: 0.2em 0.4em; }
 }

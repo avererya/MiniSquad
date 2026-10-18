@@ -65,11 +65,13 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 
 ## Test status
 
-Run with `npm test -- all` (27 rule suites, ~26 min headless; `BASE` = v0.8B built automatically). Last full run (Phase 2, 2026-10-18, gameplay unchanged since `601dbc2`): **25 passed, 2 failed**, tsc and build clean. Per-suite checks: `logic` 86, `maps` 10, `accuracy` 31, `barracks` 41, `campaign-rules` 77, `recruitment` 76, `recruit-mobile` 51, `failure-recruit` 56, `failure-recruit-mobile` 36, `permadeath` 107, `permadeath-mobile` 63, `progression` 115, `training-rebalance` 42, `squad-training` 61, `elite` 79, `elite-progression` 63, `support` 81, `mobile` 117, `chapter2` 95, `chapter2-mobile` 36, `chapter3a` 91, `chapter3b` 98, `v081` 67, `v081-collision` 12, `v081-e2e` 15, `fps-default` 15, `fps-parity` 17.
+Run with `npm test -- all` (27 rule suites, ~26 min headless; `BASE` = v0.8B built automatically). Last full run (Phase 2, 2026-10-18, gameplay unchanged since `601dbc2`): **25 passed, 2 failed** (both fixed in the follow-up, see below), tsc and build clean. Per-suite checks: `logic` 86, `maps` 10, `accuracy` 31, `barracks` 41, `campaign-rules` 77, `recruitment` 76, `recruit-mobile` 51, `failure-recruit` 56, `failure-recruit-mobile` 36, `permadeath` 107, `permadeath-mobile` 63, `progression` 115, `training-rebalance` 42, `squad-training` 61, `elite` 79, `elite-progression` 63, `support` 81, `mobile` 117, `chapter2` 95, `chapter2-mobile` 36, `chapter3a` 91, `chapter3b` 98, `v081` 67, `v081-collision` 12, `v081-e2e` 15, `fps-default` 15, `fps-parity` 17.
 
-**Known failures:**
-- `squad-training` E1 on iPhone SE / iPhone 14 / Pixel 7 (3 checks): Squad Training buy buttons are 32 px tall, the check wants ≥ 36. Introduced by `601dbc2` (`.t-buy { min-height: 32px }` in the phone-landscape block of `src/style.css`, meant for the six-row Training tab, also hits the four-row Squad Training tab); passes on `9f2cb00`. A UI decision: scope the rule to the Training tab, or accept 32 px and update the check. Not changed in Phase 2 (no `src/` changes).
-- `chapter3a` D7 "allies join and fight" (intermittent, 2 of 10 runs): the three allies fire 0 shots in the 8 s window. Likely the invulnerable squad clears the wave before the allies acquire targets (unseeded spawns / advancers); unconfirmed, test left intact.
+**Known failures:** none after the Phase 2 follow-up (see below).
+
+**Resolved in the Phase 2 follow-up:**
+- `squad-training` E1 (Squad Training buy buttons 32 px on phones since `601dbc2`): CSS fix. The phone-landscape `min-height: 32px` rule in `src/style.css` now targets `.t-panel:not(.q-panel) .t-buy` (Individual Training only); Squad Training and the Support shop are back to 36 px on iPhone SE / iPhone 14 / Pixel 7, desktop unchanged.
+- `chapter3a` D7 "allies join and fight" (0 shots in 2 of 10 runs): timing, not an ally bug. The first wave spawns ~850 px out and walks in; allies first acquire a target at ~7–7.5 s, so the old fixed 8 s window often closed before or just after contact. The check now counts shots over 6 s from the moment an attacker is inside an ally's weapon range (reached at 5.1–6.1 s): 12–20 shots in 10 of 10 runs, assertion `shots > 0` kept.
 
 **Resolved in Phase 2 (test-only, assertions kept):**
 - `logic` "Quick Reflexes in combat": 5 of 20 old runs failed (ratio 1.008–1.098 vs a 1.03–1.07 window). Cause: the measured walk included the random wander wobble (`unit.wander = Math.random() * 100`, ±6 px on the goal) and bumps into randomly spawned Mission 3 enemies. Both soldiers now start at the same wobble phase with the lane kept clear: ratio 1.051 in every run. Class speeds (150 / 157.5) were always right; not a gameplay bug.
@@ -99,8 +101,7 @@ Run with `npm test -- all` (27 rule suites, ~26 min headless; `BASE` = v0.8B bui
 - *Planned, not implemented:* enemy sniper rebalance: significantly more damage, slightly slower and more dodgeable projectiles (`CFG.enemySniper` `damage` / `projectileSpeed`, possibly `lockTime`). Final values need verification and testing.
 
 **Investigations:**
-- `squad-training` E1 (Squad Training buttons 32 px on phones since `601dbc2`): decide between a CSS fix and an updated expectation.
-- `chapter3a` D7 intermittent ally-shots check: confirm the cause (seed the wave or measure across the whole defense).
+- None open from Phase 2.
 
 **Efficiency programme:**
 - Phase 1, navigation docs (this file, CLAUDE.md, ARCHITECTURE, SYSTEM_MAP, archives): done.

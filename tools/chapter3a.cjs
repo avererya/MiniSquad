@@ -392,8 +392,14 @@ function installHelpers() {
       const [mara, elias, tessa] = g.allies;
       out.allies = { n: g.allies.length, names: g.allies.map((a) => a.name).join(), team: mara.team, hp: mara.maxHp };
       // they shoot back at attackers
+      // Phase 2 follow-up: the first wave spawns ~850 px out and walks in, so a fixed 8 s window from here ended just as it reached
+      // the allies (first ally target at ~7-7.5 s, varying with the random walk): 0 shots in about 2 of 10 runs. Count shots over
+      // 6 s from the moment an attacker is inside an ally's weapon range instead (they open fire ~1.5-2 s later, behind cover).
+      const inRange = () => def.attackers.some((e) => e.active && g.allies.some((a) => a.state === 'active' && T.near(a.pos, e.pos) <= a.stats.range));
+      out.allies.reachT = +T.stepUntil(inRange, 30, put).toFixed(1);
+      out.allies.inRange = inRange();
       const sh0 = g.allies.reduce((a, u) => a + u.shots, 0);
-      T.step(8, put);
+      T.step(6, put);
       out.allies.shots = g.allies.reduce((a, u) => a + u.shots, 0) - sh0;
       // downed + revived by a soldier
       g.invuln = false; g.damage(mara, 1e4); out.allies.downed = mara.state; g.invuln = true;
@@ -442,7 +448,7 @@ function installHelpers() {
   check('D5 defence never completes before the last wave spawns (even with every attacker dead)', m11.defWipe.state === 'complete' && m11.defWipe.t >= 40 && m11.defWipe.t < 41, `completed at ${m11.defWipe.t}s`);
   check('D6 defence holds the full 60 s while attackers are still alive', m11.defHold.state === 'complete' && Math.abs(m11.defHold.t - 60) < 0.05, `${m11.defHold.t}s, ${m11.defHold.attackers} attackers`);
   const AL = m11.allies;
-  check('D7 three resistance allies (Mara, Elias, Tessa) join and fight', AL.n === 3 && AL.names === 'MARA,ELIAS,TESSA' && AL.team === 'squad' && AL.shots > 0, JSON.stringify({ n: AL.n, names: AL.names, shots: AL.shots }));
+  check('D7 three resistance allies (Mara, Elias, Tessa) join and fight', AL.n === 3 && AL.names === 'MARA,ELIAS,TESSA' && AL.team === 'squad' && AL.inRange && AL.shots > 0, JSON.stringify({ n: AL.n, names: AL.names, shots: AL.shots, inRangeAfter: AL.reachT }));
   check('D8 an ally can be downed and revived by a soldier', AL.downed === 'downed' && AL.revived === 'active', `revive ${AL.reviveT}s`);
   check('D9 an ally bleeding out: KIA, optional fails, but NO permadeath decision, Memorial entry, roster change', AL.kia === 'kia' && AL.optional === 'failed' && AL.pending === 0 && AL.memorial === 0 && AL.roster === 0 && AL.phase === 'won', JSON.stringify({ kia: AL.kia, opt: AL.optional, pending: AL.pending, mem: AL.memorial, roster: AL.roster, phase: AL.phase }));
   check('D10 allies get no XP / rewards (reward rows: squad soldiers only)', !/MARA|ELIAS|TESSA/i.test(AL.rewardRows), AL.rewardRows);
