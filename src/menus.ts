@@ -501,7 +501,8 @@ export class Menus {
   }
 
   /** Which pipeline layers change a stat for this soldier (details table tag). */
-  private sources(s: SoldierIdentity, key: 'hp' | 'damage' | 'fireRate' | 'spread' | 'moveSpeed' | 'reviveTime' | 'healMul' | 'range' | 'aimTime') {
+  private sources(s: SoldierIdentity, key: 'hp' | 'damage' | 'fireRate' | 'spread' | 'moveSpeed' | 'reviveTime' | 'healMul' | 'range' | 'aimTime' | 'blast') {
+    if (key === 'blast') return specOf(s)?.id === 'demo-pyro' ? 'Wildfire' : ''; // v0.8C rocket blast radius: only the Pyrotechnic changes it
     const out: string[] = [];
     const lv = s.progression?.level ?? 1, acc = getAccount();
     if (lv > 1 && (key === 'hp' || key === 'damage' || key === 'fireRate')) out.push(isElite(s) ? `Recruit ${lv}` : `LV ${lv}`);
@@ -527,7 +528,7 @@ export class Menus {
     type Row = [string, number, number, string, Parameters<Menus['sources']>[1]];
     const rows: Row[] = [
       ['Max HP', base.hp, eff.hp, '', 'hp'],
-      [s.classId === 'commando' ? 'Damage per shot (each pistol)' : 'Damage per shot', base.damage, eff.damage, '', 'damage'],
+      [s.classId === 'commando' ? 'Damage per shot (each pistol)' : s.classId === 'demolitions' ? 'Rocket damage (direct hit)' : 'Damage per shot', base.damage, eff.damage, '', 'damage'],
       [s.classId === 'commando' ? 'Fire rate (each pistol)' : 'Fire rate', base.fireRate, eff.fireRate, '/s', 'fireRate'],
       ['Spread, standing', base.accuracy, eff.accuracy, '°', 'spread'],
       ['Spread, moving', base.accuracy + base.movePenalty, eff.accuracy + eff.movePenalty, '°', 'spread'],
@@ -536,6 +537,7 @@ export class Menus {
       ['Range', base.range, eff.range, ' px', 'range'],
     ];
     if (s.classId === 'sniper') rows.push(['Aim time before shot', base.aimTime, eff.aimTime, ' s', 'aimTime']);
+    if (s.classId === 'demolitions') rows.push(['Rocket blast radius', CFG.rocket.splashRadius, sp?.id === 'demo-pyro' ? CFG.rocket.pyroRadius : CFG.rocket.splashRadius, ' px', 'blast']);
     if (s.classId === 'medic') {
       const h = CFG.fieldTreatment.healFrac * 100;
       rows.push(['Field Treatment heal', h, h * eff.healMul, '% max HP', 'healMul']);
@@ -1193,7 +1195,7 @@ export class Menus {
           <button class="m-nav back" data-a="manage-back">◂ BACK TO ${esc(fallen.name.toUpperCase())}</button>
           <span class="k-need">Resurrect ${esc(fallen.name)}: <b>${cr(cost)} CR</b> · ${short ? `<b class="warn">${cr(short)} CR short</b>` : '<b class="okc">affordable ✓</b>'}</span>
         </div>
-        <div class="k-help">Dismiss reserve soldiers for their refund (Infantry 200 · Heavy Gunner 250 · Medic 250 · Sniper 300 · Commando 300; training is not refunded). Dismissal is permanent. ${living <= 1 ? 'Your last living soldier can\'t be dismissed.' : ''}</div>
+        <div class="k-help">Dismiss reserve soldiers for their refund (Infantry 200 · Heavy Gunner 250 · Medic 250 · Sniper 300 · Commando 300 · Demolitions Expert 350; training is not refunded). Dismissal is permanent. ${living <= 1 ? 'Your last living soldier can\'t be dismissed.' : ''}</div>
         <div class="k-list t-scroll">${rows}</div>
       </div>`;
   }

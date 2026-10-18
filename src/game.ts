@@ -2,11 +2,11 @@
 import { CFG } from './config';
 import { World } from './world';
 import type { MapDef } from './map';
-import { Unit, nextStatEpoch } from './unit';
+import { Unit, isBoss, nextStatEpoch } from './unit';
 import { EscortTargeting, ExposedTargeting, NearestVisible, SniperTargeting } from './targeting';
 import type { EnemyKind } from './unit';
 import { Effects, modifyDamage, updateEnemySniper, updateOffhand, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
-import { activateAbility, resetCharges, updateGrenades, type Grenade } from './abilities';
+import { activateAbility, resetCharges, updateBurns, updateGrenades, type Grenade } from './abilities';
 import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, cloneIdentity, createGeneric, type SoldierClassId, type SoldierIdentity } from './classes';
 import { MissionStats } from './missionstats';
 import { Roster } from './roster';
@@ -516,7 +516,7 @@ export class Game implements InputHandler {
       source.dealt += removed;
       // structures and vehicles aren't enemy soldiers (objective damage is not combat damage)
       if (u.team === 'enemy' && !u.structure && !u.vehicle) this.stats.damage(source, removed);
-      if (u.kind === 'boss' && source.identity) this.bossDamage.set(source.identity.id, (this.bossDamage.get(source.identity.id) ?? 0) + removed);
+      if (isBoss(u) && source.identity) this.bossDamage.set(source.identity.id, (this.bossDamage.get(source.identity.id) ?? 0) + removed);
     }
     if (u.npc && removed > 0) this.mission.emit(this, { type: 'npcDamaged', unit: u, amount: removed });
     // v0.8A group awareness: a hit (or kill) on an enemy alerts it and its neighbours to where it came from
@@ -787,14 +787,14 @@ export class Game implements InputHandler {
       if (src.length) this.world.computeFlow(this.mission.flowExtra.length ? [...src, ...this.mission.flowExtra] : src);
       this.flowTimer = 0.3;
     }
-    for (const e of this.enemies) if (e.active && !e.structure && !e.fixed && !e.vehicle && e.kind !== 'boss') updateEnemyMovement(this, e, dt);
+    for (const e of this.enemies) if (e.active && !e.structure && !e.fixed && !e.vehicle && !isBoss(e)) updateEnemyMovement(this, e, dt);
     // v0.6.2: mission-driven units (convoy trucks, the boss) set their own intent
     this.mission.unitStep(this, dt);
 
     // integrate + collide (structures, fixed guards and trucks are pushed by nobody; they push others out)
     const movers = [...this.soldiers, ...this.allies, ...this.npcs, ...this.enemies].filter((u) => u.active && !u.structure && !u.fixed && !u.vehicle && !u.mount);
     for (const u of movers) { u.pos.x += u.vel.x * dt; u.pos.y += u.vel.y * dt; }
-    const soft = movers.filter((u) => !(u.team === 'enemy' && u.kind === 'boss'));
+    const soft = movers.filter((u) => !(u.team === 'enemy' && isBoss(u)));
     for (let i = 0; i < soft.length; i++) {
       for (let j = i + 1; j < soft.length; j++) {
         const a = soft[i], b = soft[j];
@@ -809,7 +809,7 @@ export class Game implements InputHandler {
       }
     }
     for (const st of this.enemies) {
-      if (!st.active || !(st.structure || st.fixed || st.vehicle || st.kind === 'boss')) continue;
+      if (!st.active || !(st.structure || st.fixed || st.vehicle || isBoss(st))) continue;
       for (const u of soft) {
         const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y, min = u.radius + st.radius, d2 = dx * dx + dy * dy;
         if (d2 < min * min && d2 > 1e-6) { const d = Math.sqrt(d2); u.pos.x = st.pos.x + (dx / d) * min; u.pos.y = st.pos.y + (dy / d) * min; }
@@ -842,7 +842,7 @@ export class Game implements InputHandler {
     const victims = this.enemyVictims();
     for (const e of this.enemies) {
       if (ceasefire) break;
-      if (!e.active || e.structure || e.vehicle || e.kind === 'boss' || e.routed) continue; // the boss fires from its controller (unitStep)
+      if (!e.active || e.structure || e.vehicle || isBoss(e) || e.routed) continue; // the boss fires from its controller (unitStep)
       if (e.kind === 'sniper') updateEnemySniper(e, this, dt, victims);
       else updateWeapon(e, this, dt, victims);
     }
@@ -860,6 +860,7 @@ export class Game implements InputHandler {
         u.ability.tick(this, u, dt);
       }
     }
+    updateBurns(this, dt); // v0.8C Inferno afterburn (no-op while nothing burns)
     // routed enemies (after the boss falls) leave once well out of view
     for (const e of this.enemies) if (e.routed && e.active && !this.isOnScreen(e.pos, 160)) e.state = 'dead';
     this.enemies = this.enemies.filter((e) => e.state !== 'dead');

@@ -19,7 +19,7 @@ const { setupMission, installPilot } = require('./perf-lib.cjs');
 
 const URL = process.env.URL || 'http://localhost:4173/';
 const BASE = process.env.BASE || '';
-const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist').split(',');
+const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist,last-stand@voss').split(',');
 const SECS = +(process.env.SECS || 60);
 const SEED = +(process.env.SEED || 12345);
 
@@ -40,7 +40,9 @@ function hashState() {
     g.soldiers.map(u), g.npcs.map(u), g.enemies.map(u), g.projectiles.map((p) => [r(p.pos.x), r(p.pos.y)]), g.grenades.length,
     m.primaries.map((o) => o.state), m.optionals.map((o) => o.state),
     // v0.8B (absent on older builds: hashes the same there): mission assets, the escort truck's progress
-    (g.assets || []).map(u), m.escort ? [r(m.escort.s), r(m.escort.v), m.escort.state, m.escort.gun.shots] : 0]);
+    (g.assets || []).map(u), m.escort ? [r(m.escort.s), r(m.escort.v), m.escort.state, m.escort.gun.shots] : 0,
+    // v0.8C (absent before): General Voss's phase / shots / Rallies / radioed calls, the resistance allies
+    m.general ? [m.general.phase, m.general.shots, m.general.rallies, m.general.pendingCount, (g.allies || []).map(u)] : 0]);
   let h = 2166136261; for (let i = 0; i < st.length; i++) { h ^= st.charCodeAt(i); h = Math.imul(h, 16777619); }
   return (h >>> 0).toString(16);
 }

@@ -5,7 +5,7 @@ import { CFG } from './config';
 import type { Game } from './game';
 import type { Unit } from './unit';
 import { explode } from './combat';
-import { dist, type Vec } from './util';
+import { DEG, angleDiff, dist, dist2, type Vec } from './util';
 import { sfx } from './audio';
 
 export type TargetingMode = 'ground' | 'instant';
@@ -212,6 +212,114 @@ export class FieldTreatmentAbility extends BaseAbility implements Ability {
     game.fx.pulses.push({ pos: { ...owner.pos }, r: F.radius, life: 0.6, maxLife: 0.6 });
     this.cooldownLeft = this.cooldown();
     sfx('heal');
+  }
+}
+
+/**
+ * v0.8C Demolitions Expert: Inferno. For CFG.inferno.duration s (Pyrotechnic: pyroDuration) a flamethrower burns
+ * every enemy inside a cone in front of the soldier (range px, cone deg full angle, a clear line from the soldier:
+ * never through walls), dps per second in ticks of `tick` s of simulation time. Each enemy the flames reach is set
+ * alight: once out of the flames it burns for burnTime s at burnDps (Pyrotechnic: pyroBurnDps); a new ignition
+ * refreshes the burn, never stacks it. Flames and burn hit an Armored Trooper's plate from any side and ignore
+ * `bypass` of it (Siege Breaker: siegeBypass). The rocket launcher is held while the flamer runs; the soldier turns
+ * to the nearest enemy within reach. Enemies only: never soldiers, allies, captives or assets. The cooldown starts
+ * when the effect ENDS (also when it ends early because the soldier went down). Charges: activateAbility, as always.
+ */
+export class InfernoAbility extends BaseAbility implements Ability {
+  readonly id = 'inferno';
+  readonly name = 'Inferno';
+  readonly icon = '✺';
+  readonly targetingMode = 'instant' as const;
+  /** Length, burn and armor bypass of the running activation (set at activation from the specialization). */
+  private len = 0;
+  burnDps = 0;
+  bypass = 0;
+  private tickT = 0;
+  /** Activations this mission / flame damage dealt (tests / balance). */
+  uses = 0;
+  dealt = 0;
+  cooldown() { return CFG.inferno.cooldown; }
+  duration() { return this.len || CFG.inferno.duration; }
+  range() { return CFG.inferno.range; }
+  execute(game: Game, owner: Unit) {
+    if (this.blockReason(game, owner)) return;
+    const I = CFG.inferno, sp = owner.elite?.id;
+    this.len = sp === 'demo-pyro' ? I.pyroDuration : I.duration;
+    this.burnDps = sp === 'demo-pyro' ? I.pyroBurnDps : I.burnDps;
+    this.bypass = sp === 'demo-siege' ? I.siegeBypass : I.bypass;
+    this.activeLeft = this.len;
+    this.tickT = 0;
+    this.uses++;
+    game.fx.text(owner.pos, 'INFERNO!', '#ff9a3a');
+    game.fx.ring(owner.pos, 36, 'rgba(255,140,40,0.95)', 0.35, 4);
+    sfx('suppress');
+  }
+  /** Is `e` inside the flame cone of `owner` right now (reach includes its body; clear line from the soldier)? */
+  inCone(game: Game, owner: Unit, e: Unit): boolean {
+    const I = CFG.inferno, dx = e.pos.x - owner.pos.x, dy = e.pos.y - owner.pos.y, d = Math.hypot(dx, dy);
+    if (d > I.range + e.radius) return false;
+    if (d > e.radius && Math.abs(angleDiff(owner.aim, Math.atan2(dy, dx))) > (I.cone / 2) * DEG) return false;
+    return game.world.clear(owner.pos, e.pos);
+  }
+  tick(game: Game, owner: Unit, dt: number) {
+    if (this.activeLeft <= 0) return;
+    if (!owner.active) this.activeLeft = 0; // ends if the soldier goes down
+    else {
+      this.activeLeft = Math.max(0, this.activeLeft - dt);
+      const I = CFG.inferno;
+      // hands on the flamer: the launcher holds; face the nearest enemy within reach (updateWeapon turns to it)
+      owner.fireCooldown = Math.max(owner.fireCooldown, 0.25);
+      let near: Unit | null = null, nd = (I.range * 1.3) ** 2;
+      for (const e of game.enemies) {
+        if (!e.targetable || e.structure) continue;
+        const d = dist2(owner.pos, e.pos);
+        if (d < nd && game.world.clear(owner.pos, e.pos)) { nd = d; near = e; }
+      }
+      if (near) owner.target = near;
+      this.tickT += dt;
+      while (this.tickT >= I.tick - 1e-9) {
+        this.tickT -= I.tick;
+        for (const e of game.enemies) {
+          if (!e.targetable || !this.inCone(game, owner, e)) continue;
+          const hp0 = e.hp;
+          game.damage(e, I.dps * I.tick, owner, { flame: true, pen: this.bypass, at: e.pos, origin: owner.pos });
+          this.dealt += Math.max(0, hp0 - Math.max(0, e.hp));
+          if (e.active && !e.structure) ignite(game, e, owner, this.burnDps);
+        }
+      }
+    }
+    if (this.activeLeft <= 0) { this.cooldownLeft = this.cooldown(); this.tickT = 0; } // cooldown after the effect
+  }
+  /** The flamer is running (render, HUD). */
+  get flaming() { return this.activeLeft > 0; }
+}
+
+/** v0.8C set an enemy alight (or refresh its burn; the stronger burn is kept, never stacked). Burning starts once it is out of the flames. */
+function ignite(game: Game, e: Unit, src: Unit, dps: number) {
+  const b = e.burn;
+  if (b) { b.t = CFG.inferno.burnTime; b.dps = Math.max(b.dps, dps); b.src = src; b.lit = game.time; }
+  else e.burn = { t: CFG.inferno.burnTime, dps, src, acc: 0, lit: game.time };
+}
+
+/**
+ * v0.8C Inferno afterburn, once per simulation step (Game.update, after the abilities): an enemy that was not in the
+ * flames during the last tick burns for its remaining time, in CFG.inferno.tick steps (flame opts: armor bypass of
+ * the soldier who lit it). Nothing to do (and nothing drawn from Math.random) when nobody burns.
+ */
+export function updateBurns(game: Game, dt: number) {
+  const I = CFG.inferno;
+  for (const e of game.enemies) {
+    const b = e.burn;
+    if (!b) continue;
+    if (!e.active || b.t <= 0) { e.burn = null; continue; }
+    if (game.time - b.lit <= I.tick + 1e-6) continue; // still in the flames: the flames do the damage
+    b.t -= dt; b.acc += dt;
+    while (b.acc >= I.tick - 1e-9 && e.active) {
+      b.acc -= I.tick;
+      const ab = b.src?.ability as InfernoAbility | null | undefined;
+      game.damage(e, b.dps * I.tick, b.src ?? undefined, { flame: true, pen: ab?.bypass ?? I.bypass, at: e.pos });
+    }
+    if (b.t <= 0) e.burn = null;
   }
 }
 

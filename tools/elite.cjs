@@ -88,7 +88,7 @@ function installHelpers() {
     return { ids: EL.ELITE_SPEC_IDS.join(), branches: JSON.stringify(EL.CLASS_BRANCHES), cost: EL.PROMOTION_COST, lvl: EL.PROMOTION_LEVEL, cap: EL.ELITE_LEVEL_CAP,
       complete: EL.ELITE_SPEC_IDS.every((id) => { const s = EL.ELITE_SPECS[id]; return s.title && s.role && s.passive && s.desc && s.short && EL.CLASS_BRANCHES[s.classId].includes(id); }) };
   });
-  check('A1 ten specializations (v0.8A: + Commando Gunslinger / Assault Specialist) with stable ids, two per class, all fields filled', data.ids === 'inf-trooper,inf-recon,hvy-juggernaut,hvy-weapons,med-surgeon,med-commander,snp-ghost,snp-deadeye,com-gunslinger,com-assault' && data.complete, data.branches);
+  check('A1 twelve specializations (v0.8A: + Commando Gunslinger / Assault Specialist; v0.8C: + Demolitions Siege Breaker / Pyrotechnic) with stable ids, two per class, all fields filled', data.ids === 'inf-trooper,inf-recon,hvy-juggernaut,hvy-weapons,med-surgeon,med-commander,snp-ghost,snp-deadeye,com-gunslinger,com-assault,demo-siege,demo-pyro' && data.complete, data.branches);
   check('A2 promotion: 3,000 CR at Recruit Level 25; Elite levels modelled up to 30', data.cost === 3000 && data.lvl === 25 && data.cap === 30, JSON.stringify(data));
 
   // ================= B. PROMOTION RULES =================

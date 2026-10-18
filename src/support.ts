@@ -18,7 +18,7 @@
 // No randomness in the rules (effects use the shared effect helpers only when a strike lands).
 import { CFG } from './config';
 import type { Game } from './game';
-import type { Unit } from './unit';
+import { isBoss, type Unit } from './unit';
 import { clamp, dist, type Vec } from './util';
 import { sfx } from './audio';
 import type { AccountData, SupportInventory } from './progression';
@@ -172,7 +172,7 @@ type Kind = 'airstrike' | 'nuke';
 /** Support damage to one enemy before the floors (`k` = falloff factor 0..1, nuke always 1). */
 export function supportDamageFor(kind: Kind, u: Unit, k = 1): number {
   const S = kind === 'airstrike' ? CFG.airstrike : CFG.nuke;
-  if (u.kind === 'boss') return u.maxHp * S.bossFrac * k;
+  if (isBoss(u)) return u.maxHp * S.bossFrac * k;
   const base = S.damage * k;
   if (u.protectedObjective) return base * S.objectiveMul;
   if (u.vehicle) return base * S.vehicleMul;
@@ -183,7 +183,7 @@ export function supportDamageFor(kind: Kind, u: Unit, k = 1): number {
 /** Most support damage `u` can take right now (Game.damage): bosses and objectives keep their floor. */
 export function supportRoom(u: Unit): number {
   if (u.team !== 'enemy') return 0;
-  if (u.kind === 'boss') return Math.max(0, u.hp - u.maxHp * CFG.support.bossFloor);
+  if (isBoss(u)) return Math.max(0, u.hp - u.maxHp * CFG.support.bossFloor);
   if (u.protectedObjective) return Math.max(0, u.hp - CFG.support.objectiveFloor);
   return Infinity;
 }

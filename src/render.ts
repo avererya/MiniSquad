@@ -3,7 +3,7 @@
 // oversized heads.
 import { CFG } from './config';
 import type { Game } from './game';
-import type { Unit } from './unit';
+import { isBoss, type Unit } from './unit';
 import { isLowObstacle, type MapDef, type Obstacle } from './map';
 import { grenadePos } from './abilities';
 import { VIEW_W, VIEW_H } from './view';
@@ -178,6 +178,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
     else if (u.vehicle) items.push({ y: u.pos.y, draw: () => drawTruck(ctx, u, game) });
     else if (u.team === 'enemy' && u.kind === 'tower') items.push({ y: u.pos.y + 10, draw: () => drawTower(ctx, u, game) });
     else if (u.team === 'enemy' && u.kind === 'boss') items.push({ y: u.pos.y, draw: () => drawBoss(ctx, u, game) });
+    else if (u.team === 'enemy' && u.kind === 'general') items.push({ y: u.pos.y, draw: () => drawGeneral(ctx, u, game) });
     else items.push({ y: u.pos.y, draw: () => drawUnit(ctx, u, game) });
   }
   for (const g of game.grenades) {
@@ -205,6 +206,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   if (map.theme === 'night') drawNight(ctx, game, vx, vy);
   game.mission.artillery?.drawLights(ctx, game); // v0.8A Mission 12 searchlights (over the darkness)
   drawTelegraphs(ctx, game);
+  drawFlames(ctx, game);
   drawProjectiles(ctx, game);
   drawFx(ctx, game);
   game.mission.extraction.draw(ctx, game);
@@ -581,6 +583,13 @@ function drawEliteBody(ctx: CanvasRenderingContext2D, spec: EliteSpecId, x: numb
       for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(x + sx * (bw / 2), by - 10.5, 3.6, 2.8, 0, 0, Math.PI * 2); ctx.fill(); }
       if (front) { ctx.fillStyle = '#2f343d'; roundRect(ctx, x - 4, by - 10, 8, 7, 1.5); ctx.fill(); ctx.fillStyle = COL.eliteAccent; ctx.fillRect(x - 4, by - 7.2, 8, 1.5); }
       break;
+    case 'demo-siege': // riveted breaching plate
+      ctx.fillStyle = '#454c58'; roundRect(ctx, x - bw / 2 + 2, by - 11, bw - 4, 8, 2); ctx.fill();
+      ctx.strokeStyle = COL.eliteAccent; ctx.lineWidth = 1.2; ctx.stroke();
+      break;
+    case 'demo-pyro': // orange flame stripe across the chest
+      if (front) { ctx.fillStyle = '#ff8a2a'; ctx.fillRect(x - bw / 2 + 1, by - 7, bw - 2, 2); ctx.fillStyle = '#ffd25a'; ctx.fillRect(x - 2, by - 8, 4, 4); }
+      break;
     case 'med-commander': // gold chevrons on the chest
       if (front) {
         ctx.strokeStyle = '#ffd25a'; ctx.lineWidth = 1.6;
@@ -665,6 +674,7 @@ const ENEMY_VIS: Partial<Record<string, ClassVisual>> = {
   sniper: { bodyW: 13, weapon: 'sniper', pack: 'none', helmet: 'boonie', tracerWidth: 4, tracerLen: 44 },
   armored: { bodyW: 19, weapon: 'rifle', pack: 'ammo', helmet: 'heavy', tracerWidth: 3.5, tracerLen: 18 },
   tower: { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'standard', tracerWidth: 3.5, tracerLen: 18 },
+  general: { bodyW: 17, weapon: 'rifle', pack: 'vest', helmet: 'cap', tracerWidth: 4.5, tracerLen: 20 },
 };
 
 /** v0.8A resistance fighter: rifle, no pack, soft cap. */
@@ -780,6 +790,21 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
       const rx = -ay * 4.5, ry = ax * 3.2; // right hand side of the body
       pistol(gx + rx, gy + ry, u.aim, u.muzzle);
       pistol(gx - rx, gy - ry, la, u.offhand?.muzzle ?? 0);
+    } else if (weapon === 'rocket') {
+      // v0.8C Demolitions Expert: shoulder rocket launcher (olive tube, red warhead while loaded); the flamer nozzle
+      // under it glows while Inferno runs
+      const loaded = u.fireCooldown <= 0.35, fl = u.ability?.id === 'inferno' && u.ability.activeLeft > 0;
+      const sx = gx - ay * 2, sy = gy - 4 + ax * 1.5;
+      ctx.strokeStyle = '#2d3320'; ctx.lineWidth = 7.5;
+      ctx.beginPath(); ctx.moveTo(sx - ax * 9, sy - ay * 7); ctx.lineTo(sx + ax * 20, sy + ay * 15); ctx.stroke();
+      ctx.strokeStyle = '#5b6a3a'; ctx.lineWidth = 5.5;
+      ctx.beginPath(); ctx.moveTo(sx - ax * 8, sy - ay * 6); ctx.lineTo(sx + ax * 19, sy + ay * 14.5); ctx.stroke();
+      if (loaded) { ctx.fillStyle = '#c8402c'; ctx.beginPath(); ctx.arc(sx + ax * 21, sy + ay * 16, 2.6, 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 2.6; // flamer wand
+      ctx.beginPath(); ctx.moveTo(gx, gy + 3); ctx.lineTo(gx + ax * 13, gy + 3 + ay * 10); ctx.stroke();
+      if (fl) { ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.arc(gx + ax * 14, gy + 3 + ay * 11, 2.6, 0, Math.PI * 2); ctx.fill(); }
+      if (u.muzzle > 0) { ctx.fillStyle = 'rgba(220,220,220,0.8)'; ctx.beginPath(); ctx.arc(sx - ax * 12, sy - ay * 9, 5, 0, Math.PI * 2); ctx.fill(); } // back-blast
+      muzzle(26, 1.2);
     } else if (weapon === 'smg') {
       // compact SMG
       ctx.strokeStyle = COL.gun; ctx.lineWidth = 3.5;
@@ -796,6 +821,13 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
   const drawPack = () => {
     if (!vis || vis.pack === 'none') return;
     const px = x - ax * 7, py = by - 6;
+    if (vis.pack === 'fuel') {
+      // v0.8C Demolitions Expert: twin fuel tanks for the flamer, hazard band
+      ctx.fillStyle = '#8a2f22';
+      roundRect(ctx, px - 8, py - 9, 7, 15, 3); ctx.fill(); roundRect(ctx, px + 1, py - 9, 7, 15, 3); ctx.fill();
+      ctx.fillStyle = '#e0b83c'; ctx.fillRect(px - 8, py - 3, 16, 2.5);
+      return;
+    }
     if (vis.pack === 'vest') {
       // small black back pouch (the vest's back panel)
       ctx.fillStyle = '#15171b';
@@ -874,6 +906,11 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
     ctx.beginPath(); ctx.ellipse(hx - 2, hy - 7, 12, 6, -0.18, 0, Math.PI * 2); ctx.fill();
     ctx.fillRect(hx - 10, hy - 5, 20, 2.5);
     if (ay > -0.6) { ctx.fillStyle = spec ? '#9fc6ff' : '#3d8cff'; ctx.beginPath(); ctx.arc(hx + 4 + ax * 2, hy - 7, 2.2, 0, Math.PI * 2); ctx.fill(); }
+  } else if (hs === 'blast') {
+    // v0.8C Demolitions Expert: padded blast helmet with a smoked visor
+    ctx.beginPath(); ctx.arc(hx, hy - 1, 11.5, Math.PI * 1.0, Math.PI * 2.0); ctx.closePath(); ctx.fill();
+    ctx.fillRect(hx - 12, hy - 3, 24, 3.5);
+    if (ay > -0.6) { ctx.fillStyle = 'rgba(40,40,46,0.85)'; ctx.fillRect(hx - 8 + ax * 2, hy - 1, 16, 4.5); ctx.fillStyle = 'rgba(255,170,80,0.55)'; ctx.fillRect(hx - 6 + ax * 2, hy - 0.5, 4, 1.5); }
   } else if (hs === 'cap') {
     // v0.8A resistance fighter: soft cap with a short peak
     ctx.beginPath(); ctx.arc(hx, hy - 2, 10.5, Math.PI * 1.05, Math.PI * 1.95); ctx.closePath(); ctx.fill();
@@ -916,6 +953,18 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game) {
       ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
       ctx.strokeStyle = p.charged ? '#8ff4ff' : sq ? '#e6f7ff' : '#ff3b2b'; ctx.lineWidth = (p.width ?? 3) + (p.charged ? 1.5 : 0); // v0.7A Perfect Aim: thicker cyan
       ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
+      continue;
+    }
+    if (p.rocket) {
+      // v0.8C rocket: dark body, red tip, flame and smoke tail (one short path set per rocket)
+      const ux = p.vel.x / sp, uy = p.vel.y / sp, rl = CFG.rocket.length, x0 = p.pos.x, y0 = p.pos.y - 18;
+      ctx.strokeStyle = 'rgba(200,200,200,0.35)'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(x0 - ux * (rl + 26), y0 - uy * (rl + 26)); ctx.lineTo(x0 - ux * rl, y0 - uy * rl); ctx.stroke();
+      ctx.strokeStyle = '#ffb030'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(x0 - ux * (rl + 8), y0 - uy * (rl + 8)); ctx.lineTo(x0 - ux * rl, y0 - uy * rl); ctx.stroke();
+      ctx.strokeStyle = '#2d3320'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(x0 - ux * rl, y0 - uy * rl); ctx.lineTo(x0, y0); ctx.stroke();
+      ctx.fillStyle = '#c8402c'; ctx.beginPath(); ctx.arc(x0, y0, 2.6, 0, Math.PI * 2); ctx.fill();
       continue;
     }
     if (p.mounted) {
@@ -979,7 +1028,7 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
     ctx.fillStyle = '#9fd8ff'; ctx.fillText(tag, a.pos.x, byy - 9);
   }
   for (const e of game.enemies) {
-    if (!e.active || e.kind === 'boss') continue; // the boss has the big HUD bar
+    if (!e.active || isBoss(e)) continue; // the boss has the big HUD bar
     const big = e.structure || e.vehicle;
     const w = big ? 64 : e.kind === 'armored' ? 30 : 24, f = clamp(e.hp / e.maxHp, 0, 1);
     const bx = e.pos.x - w / 2, byy = e.pos.y - (e.vehicle ? 58 : e.structure ? 62 : e.kind === 'tower' ? 118 : 60);
@@ -1072,6 +1121,7 @@ function drawStructure(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   if (u.structure === 'relay') { drawRelay(ctx, u, game); return; }
   if (u.structure === 'bunker') { drawBunker(ctx, u, game); return; }
   if (u.structure === 'artillery') { drawArtilleryGun(ctx, u, game); return; }
+  if (u.structure === 'generator') { drawGenerator(ctx, u, game); return; }
   const { x, y } = u.pos;
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath(); ctx.ellipse(x, y + 4, 34, 14, 0, 0, Math.PI * 2); ctx.fill();
@@ -1318,6 +1368,96 @@ function drawRelay(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   if (on) { ctx.fillStyle = 'rgba(255,60,60,0.25)'; ctx.beginPath(); ctx.arc(x, y - 113, 12, 0, Math.PI * 2); ctx.fill(); }
   ctx.fillStyle = '#7dff8a'; ctx.fillRect(x - 16, y - 20, 6, 4); ctx.fillStyle = Math.sin(game.clock * 11) > 0 ? '#ffd84a' : '#665a20'; ctx.fillRect(x - 6, y - 20, 6, 4);
   ctx.fillStyle = '#ffd84a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(u.label, x, y - 126);
+}
+
+/** v0.8C Mission 15 gate generator: a diesel block with a cable run to the gate, sparking as it breaks. */
+function drawGenerator(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos, flash = u.hitFlash > 0, f = clamp(u.hp / u.maxHp, 0, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 40, 14, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = flash ? '#fff' : '#5d6a3f'; roundRect(ctx, x - 36, y - 32, 72, 34, 5); ctx.fill();
+  ctx.fillStyle = flash ? '#eee' : '#76844f'; roundRect(ctx, x - 32, y - 42, 64, 14, 4); ctx.fill();
+  ctx.strokeStyle = '#2a301d'; ctx.lineWidth = 2; ctx.strokeRect(x - 36, y - 32, 72, 34);
+  ctx.fillStyle = '#26282a'; for (let k = 0; k < 5; k++) ctx.fillRect(x - 26 + k * 9, y - 24, 5, 16); // cooling fins
+  ctx.fillStyle = '#ffd84a'; ctx.fillRect(x + 18, y - 26, 12, 12); ctx.fillStyle = '#222'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('⚡', x + 24, y - 16);
+  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 20, y - 42); ctx.lineTo(x - 20, y - 60); ctx.stroke(); // exhaust
+  const t = game.clock * 2 + x * 0.01;
+  for (let k = 0; k < 2; k++) {
+    const ph = (t + k / 2) % 1;
+    ctx.fillStyle = `rgba(${f < 0.4 ? 40 : 110},${f < 0.4 ? 40 : 110},${f < 0.4 ? 40 : 110},${0.4 * (1 - ph)})`;
+    ctx.beginPath(); ctx.arc(x - 20 + Math.sin(t * 3 + k) * 4, y - 64 - ph * 30, 5 + ph * 7, 0, Math.PI * 2); ctx.fill();
+  }
+  if (f < 0.5 && Math.sin(game.clock * 23 + x) > 0.6) { ctx.fillStyle = '#9fe0ff'; ctx.beginPath(); ctx.arc(x + 8, y - 44, 3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#ffd84a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(u.label, x, y - 76);
+}
+
+/**
+ * v0.8C GENERAL VOSS: an officer, a little larger than his troops (peaked red-banded cap, greatcoat, gold
+ * epaulettes); a red ring under him so he reads in a crowd, an orange pulse while his Rally runs.
+ */
+function drawGeneral(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos;
+  const fight = game.mission.general;
+  if (u.state !== 'active') return;
+  if (fight?.rallyActive(game)) {
+    const p = 0.5 + 0.5 * Math.sin(game.clock * 8);
+    ctx.strokeStyle = `rgba(255,150,60,${0.35 + 0.35 * p})`; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(x, y, 30 + p * 6, 13 + p * 3, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,70,50,0.8)'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.ellipse(x, y, 22, 9, 0, 0, Math.PI * 2); ctx.stroke();
+  const S = CHAR_SCALE * 1.3;
+  ctx.save(); ctx.translate(x, y); ctx.scale(S, S); ctx.translate(-x, -y);
+  drawStanding(ctx, u, x, y, '#3b3f33', '#4a4e3c', ENEMY_VIS.general, null);
+  // greatcoat skirt, epaulettes, cap band
+  const ay = Math.sin(u.aim), by = y - 10;
+  ctx.fillStyle = u.hitFlash > 0 ? '#fff' : '#3d4132'; ctx.fillRect(x - 9, by - 3, 18, 5);
+  ctx.fillStyle = '#e0b83c'; ctx.fillRect(x - 11, by - 13, 5, 3); ctx.fillRect(x + 6, by - 13, 5, 3);
+  ctx.fillStyle = '#c0281e'; ctx.fillRect(x - 8, by - 24 + (ay < -0.2 ? 1 : 0), 16, 2.5);
+  ctx.restore();
+  ctx.fillStyle = '#000'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('VOSS', x + 1, y - 62 + 1);
+  ctx.fillStyle = '#ff7a5a'; ctx.fillText('VOSS', x, y - 62);
+}
+
+/**
+ * v0.8C Inferno flames (a soldier's cone while it runs), burning enemies and Rally markers over rallied enemies.
+ * Pure drawing (render-time flicker from game.clock); nothing here touches the simulation.
+ */
+function drawFlames(ctx: CanvasRenderingContext2D, game: Game) {
+  const I = CFG.inferno, t = game.clock;
+  for (const s of game.soldiers) {
+    const ab = s.ability as { flaming?: boolean } | null;
+    if (!s.active || !ab?.flaming) continue;
+    const half = (I.cone / 2) * DEG, a = s.aim;
+    const ox = s.pos.x + Math.cos(a) * 12, oy = s.pos.y - 14 + Math.sin(a) * 12;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < 3; k++) {
+      const L = I.range * (0.55 + 0.15 * k + 0.05 * Math.sin(t * 17 + k * 2));
+      ctx.fillStyle = ['rgba(255,220,120,0.22)', 'rgba(255,140,40,0.2)', 'rgba(255,70,20,0.14)'][k];
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.arc(ox, oy, L, a - half * (0.5 + 0.25 * k), a + half * (0.5 + 0.25 * k)); ctx.closePath(); ctx.fill();
+    }
+    for (let k = 0; k < 7; k++) { // licks of flame along the cone
+      const ph = (t * 2.2 + k / 7) % 1, d = 20 + ph * (I.range - 30), da = Math.sin(t * 9 + k * 3.1) * half * 0.7;
+      ctx.fillStyle = `rgba(255,${160 + Math.round(80 * (1 - ph))},60,${0.5 * (1 - ph)})`;
+      ctx.beginPath(); ctx.arc(ox + Math.cos(a + da) * d, oy + Math.sin(a + da) * d, 5 + ph * 12, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,150,60,0.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.moveTo(s.pos.x, s.pos.y); ctx.arc(s.pos.x, s.pos.y, I.range, a - half, a + half); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  }
+  for (const e of game.enemies) {
+    if (!e.active) continue;
+    if (e.burn) {
+      const fl = 0.6 + 0.4 * Math.sin(t * 20 + e.pos.x);
+      ctx.fillStyle = `rgba(255,140,40,${0.75 * fl})`; ctx.beginPath(); ctx.ellipse(e.pos.x, e.pos.y - 26, 7, 14 * fl, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(255,230,120,${0.85 * fl})`; ctx.beginPath(); ctx.ellipse(e.pos.x, e.pos.y - 22, 3.5, 7 * fl, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    if (e.rallyUntil > game.time && !e.structure) { // rallied: an orange chevron over the head
+      const yy = e.pos.y - 72 + Math.sin(t * 6) * 1.5;
+      ctx.fillStyle = '#ffb347'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(e.pos.x - 7, yy + 5); ctx.lineTo(e.pos.x, yy - 3); ctx.lineTo(e.pos.x + 7, yy + 5); ctx.lineTo(e.pos.x + 4, yy + 7); ctx.lineTo(e.pos.x, yy + 2); ctx.lineTo(e.pos.x - 4, yy + 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
 }
 
 /** Defensive installation (MG bunker): concrete pillbox with a barrel and an ammo stack. */

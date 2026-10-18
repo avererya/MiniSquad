@@ -20,7 +20,7 @@ const NUKE_ARM_MS = 500;
 
 interface PanelRefs { root: HTMLElement; btn: HTMLElement; cd: HTMLElement; act: HTMLElement; uses: HTMLElement; fill: HTMLElement; hpnum: HTMLElement; cls: HTMLElement; state: HTMLElement; unit: Unit }
 
-const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT', focus: 'FOCUS', bulletStorm: 'STORM' };
+const SHORT_ABILITY: Record<string, string> = { grenade: 'GRENADE', suppressive: 'SUPPRESS', fieldTreatment: 'TREAT', focus: 'FOCUS', bulletStorm: 'STORM', inferno: 'INFERNO' };
 
 // Per-frame DOM writes are cached by last-written value (never read back from the DOM): on mobile an
 // unchanged write still invalidates style/layout, which costs battery. WeakMap keys survive rebuildPanels.
@@ -34,7 +34,7 @@ const changed = (el: HTMLElement, k: string, v: string | boolean) => {
 };
 const setText = (el: HTMLElement, v: string) => { if (changed(el, 't', v)) el.textContent = v; };
 const setClass = (el: HTMLElement, v: string) => { if (changed(el, 'c', v)) el.className = v; };
-const setStyle = (el: HTMLElement, prop: 'display' | 'width' | 'height', v: string) => { if (changed(el, prop, v)) el.style[prop] = v; };
+const setStyle = (el: HTMLElement, prop: 'display' | 'width' | 'height' | 'left', v: string) => { if (changed(el, prop, v)) el.style[prop] = v; };
 const setFlag = (el: HTMLElement, name: string, on: boolean) => { if (changed(el, '.' + name, on)) el.classList.toggle(name, on); };
 
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -55,6 +55,9 @@ export class Hud implements GameUI {
   private obFill!: HTMLElement;
   private obState!: HTMLElement;
   private objBoss!: HTMLElement;
+  private obName!: HTMLElement;
+  private obT1!: HTMLElement;
+  private obT2!: HTMLElement;
   private timer: HTMLElement;
   private hint: HTMLElement;
   private panelsEl: HTMLElement;
@@ -89,7 +92,7 @@ export class Hud implements GameUI {
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
-      <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div><div class="obj-chips"></div><div class="obj-meter"><span class="om-l"></span><div class="om-bar"><div></div></div><span class="om-v"></span></div><div class="obj-boss"><div class="ob-name">IRON WARDEN</div><div class="ob-bar"><div class="ob-fill"></div><i style="left:65%"></i><i style="left:30%"></i></div><div class="ob-state"></div></div><div class="obj-opt"></div></div>
+      <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div><div class="obj-chips"></div><div class="obj-meter"><span class="om-l"></span><div class="om-bar"><div></div></div><span class="om-v"></span></div><div class="obj-boss"><div class="ob-name">IRON WARDEN</div><div class="ob-bar"><div class="ob-fill"></div><i class="ob-t1" style="left:65%"></i><i class="ob-t2" style="left:30%"></i></div><div class="ob-state"></div></div><div class="obj-opt"></div></div>
       <div id="timer"></div>
       <div id="topbtns"><button data-a="mute">🔊</button><button data-a="pause">⏸</button><button data-a="tune">⚙</button></div>
       <div id="hint"></div>
@@ -113,6 +116,9 @@ export class Hud implements GameUI {
     this.omV = this.objMeter.querySelector('.om-v')!;
     this.obFill = this.objBoss.querySelector('.ob-fill')!;
     this.obState = this.objBoss.querySelector('.ob-state')!;
+    this.obName = this.objBoss.querySelector('.ob-name')!;
+    this.obT1 = this.objBoss.querySelector('.ob-t1')!;
+    this.obT2 = this.objBoss.querySelector('.ob-t2')!;
     this.timer = root.querySelector('#timer')!;
     this.hint = root.querySelector('#hint')!;
     this.panelsEl = root.querySelector('#panels')!;
@@ -305,12 +311,19 @@ export class Hud implements GameUI {
       setStyle(this.omFill, 'width', `${Math.min(100, m.frac * 100)}%`);
       setText(this.omV, m.value ? `${m.value} · ${Math.floor(m.frac * 100)}%` : `${Math.floor(m.frac * 100)}%`);
     }
+    // v0.8C the same bar serves General Voss (Mission 15): his name, phase ticks at 70% / 35%, phase / Rally state
     const b = g.phase === 'playing' ? g.mission.boss : null;
-    const show = !!b && b.unit.active;
+    const v = g.phase === 'playing' ? g.mission.general : null;
+    const unit = b?.unit ?? v?.unit ?? null;
+    const show = !!unit && unit.active;
     setStyle(this.objBoss, 'display', show ? '' : 'none');
-    if (show && b) {
-      setStyle(this.obFill, 'width', `${Math.max(0, (b.unit.hp / b.unit.maxHp) * 100)}%`);
-      const st = b.rocket ? 'ROCKET!' : b.phase === 'windup' ? 'MG WINDING UP' : b.phase === 'burst' ? 'FIRING' : '';
+    if (show && unit) {
+      setText(this.obName, v ? 'GENERAL VOSS' : 'IRON WARDEN');
+      setStyle(this.obT1, 'left', v ? `${CFG.general.phase2 * 100}%` : '65%');
+      setStyle(this.obT2, 'left', v ? `${CFG.general.phase3 * 100}%` : '30%');
+      setStyle(this.obFill, 'width', `${Math.max(0, (unit.hp / unit.maxHp) * 100)}%`);
+      const st = b ? (b.rocket ? 'ROCKET!' : b.phase === 'windup' ? 'MG WINDING UP' : b.phase === 'burst' ? 'FIRING' : '')
+        : v ? (v.rallyActive(g) ? 'RALLY!' : v.pendingCount > 0 ? 'REINFORCEMENTS' : `PHASE ${v.phase}`) : '';
       setText(this.obState, st);
     }
   }

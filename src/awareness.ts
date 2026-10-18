@@ -26,7 +26,7 @@
 //    spotlights only).
 import { CFG } from './config';
 import type { Game } from './game';
-import type { Unit } from './unit';
+import { isBoss, type Unit } from './unit';
 import { dist, type Vec } from './util';
 import { nearCover } from './targeting';
 
@@ -57,7 +57,7 @@ export interface AlertLog { broadcasts: number; received: number }
 
 /** Enemies the awareness system moves: placed (dormant) guards and the ones it already woke. Scripted waves (never guards) keep homing in. */
 export function awareEligible(e: Unit): boolean {
-  return e.team === 'enemy' && e.active && (e.guard || e.alert !== null) && !e.structure && !e.vehicle && !e.fixed && !e.routed && !e.escortOf && e.kind !== 'boss' && e.kind !== 'truck';
+  return e.team === 'enemy' && e.active && (e.guard || e.alert !== null) && !e.structure && !e.vehicle && !e.fixed && !e.routed && !e.escortOf && !isBoss(e) && e.kind !== 'truck';
 }
 
 /** Deterministic reaction delay in [reactMin, reactMax] from the unit id (no Math.random). */

@@ -568,3 +568,65 @@ export const SUPPLY_MAP: MapDef = {
   roads: [SUPPLY_ROUTE, [{ x: 0, y: 1850 }, { x: 700, y: 1400 }, { x: 1250, y: 1000 }]],
   props: [{ kind: 'tent', x: 900, y: 1200 }, { kind: 'flag', x: 1130, y: 950 }, { kind: 'radar', x: 2200, y: 250 }, { kind: 'tent', x: 4700, y: 480 }, { kind: 'flag', x: 6080, y: 700 }],
 };
+
+// =====================================================================================
+// v0.8C Mission 15 "General's Last Stand": Voss's fortress, west to east.
+//  - The outer field (x 400-1800): open ground with rocks and walls, the outer defenders by the fortress wall.
+//  - The generator annex (north-west, outside the wall): a sandbagged compound whose generator powers the main gate.
+//  - The fortress wall (x 1800-1820) runs the full map height: the only way in is the MAIN GATE (y 1100-1300).
+//  - The courtyard (x 1820-3000): two communications relays (north, south), barricades and the inner defenders.
+//  - The inner wall (x 3000-3020), full height again: the INNER GATE (y 1100-1300) opens once both relays are down.
+//  - Voss's command area (x 3020-4400): the arena (cover blocks), barracks north and south whose doors the
+//    reinforcements come through, the helipad in the far east.
+// The gates are 'gate' obstacles (block movement, not fire); FORTRESS_MAP (the ground bitmap) has none of them, the
+// lockdown worlds add them (Mission.lockdown); drawGates draws them live.
+// =====================================================================================
+export const FORTRESS_MAIN_GATE: Obstacle = G(1800, 1100, 20, 200);
+export const FORTRESS_INNER_GATE: Obstacle = G(3000, 1100, 20, 200);
+export const FORTRESS_GENERATOR: Vec = { x: 1460, y: 400 };
+export const FORTRESS_RELAYS: Vec[] = [{ x: 2380, y: 520 }, { x: 2460, y: 1880 }];
+/** Voss's leash (he never leaves it) and where he enters (his headquarters end of the arena). */
+export const FORTRESS_ARENA: Rect = { x: 3260, y: 560, w: 1000, h: 1280 };
+export const FORTRESS_VOSS: Vec = { x: 4100, y: 1200 };
+/** Barracks doors (reinforcements arrive out of view through them). */
+export const FORTRESS_CALL_POINTS: Vec[] = [{ x: 3500, y: 160 }, { x: 4100, y: 160 }, { x: 3500, y: 2240 }, { x: 4100, y: 2240 }];
+/** The resistance comes in behind the squad, through the courtyard. */
+export const FORTRESS_ALLY_ENTRY: Vec[] = [{ x: 2500, y: 1200 }, { x: 2150, y: 1200 }, { x: 1900, y: 1200 }];
+export const FORTRESS_EXTRACTION: Rect = { x: 4060, y: 1080, w: 260, h: 240 };
+const FORTRESS_OBSTACLES: Obstacle[] = [
+  // fortress wall (main gate gap y 1100-1300) and inner wall (inner gate gap y 1100-1300)
+  K(1800, 0, 20, 1100, 48), K(1800, 1300, 20, 1100, 48),
+  K(3000, 0, 20, 1100, 48), K(3000, 1300, 20, 1100, 48),
+  // gatehouse towers either side of both gates
+  K(1760, 1040, 80, 60, 56), K(1760, 1300, 80, 60, 56), K(2960, 1040, 80, 60, 56), K(2960, 1300, 80, 60, 56),
+  // outer field: rocks, field walls, crates (cover all the way to the wall)
+  R(560, 1180, 150, 90), R(820, 1700, 170, 100), W(700, 900, 180, 18), W(1050, 1350, 18, 200), C(1000, 1080),
+  R(1250, 1600, 140, 90), W(1300, 960, 200, 18), C(1450, 1250), C(1486, 1250), S(1560, 1120, 16, 140), S(1560, 1420, 16, 120),
+  B(380, 600, 200, 150), R(1100, 2050, 200, 110), C(600, 2000),
+  // generator annex (north-west, outside the wall): sandbag ring open to the south, a shed
+  S(1260, 260, 16, 260), S(1660, 260, 16, 260), S(1276, 260, 384, 16), S(1276, 504, 120, 16), S(1540, 504, 120, 16),
+  B(1060, 180, 150, 120), C(1330, 560), C(1600, 600),
+  // courtyard: barricades behind the gate, cover around both relays, a central bunker
+  S(1960, 1040, 16, 120), S(1960, 1240, 16, 120), K(2200, 1120, 110, 70, 32), K(2560, 1170, 110, 70, 32), S(2680, 1100, 16, 200), K(2880, 1560, 70, 50, 30),
+  S(2260, 640, 240, 16), K(2180, 420, 80, 60, 32), C(2560, 420), C(2560, 456),
+  S(2340, 1760, 240, 16), K(2640, 1920, 80, 60, 32), C(2280, 1980), C(2316, 1980),
+  B(2000, 120, 200, 140), B(2000, 2140, 200, 140), W(2750, 760, 18, 200), W(2750, 1500, 18, 200), C(2150, 860), C(2150, 1560),
+  // command area: barracks north and south (doors face the arena), arena cover blocks
+  B(3300, 60, 160, 150), B(3700, 60, 300, 150), B(4140, 60, 160, 150),
+  B(3300, 2190, 160, 150), B(3700, 2190, 300, 150), B(4140, 2190, 160, 150),
+  K(3420, 820, 100, 60, 36), K(3420, 1520, 100, 60, 36), K(3720, 1000, 90, 60, 36), K(3720, 1340, 90, 60, 36),
+  K(3980, 760, 100, 60, 36), K(3980, 1580, 100, 60, 36), S(3600, 1170, 16, 70), C(4200, 900), C(4200, 1480),
+];
+export const FORTRESS_MAP: MapDef = {
+  id: 'fortress', w: 4400, h: 2400, theme: 'fortress',
+  obstacles: FORTRESS_OBSTACLES,
+  start: { x: 220, y: 1500 }, startZone: { x: 60, y: 1380, w: 260, h: 250 },
+  // no medkit past the inner gate (no free heal before the boss): the field, the annex, the courtyard
+  medkits: [{ x: 900, y: 1300 }, { x: 1460, y: 620 }, { x: 2400, y: 1300 }],
+  rapidFire: [{ x: 2400, y: 760 }],
+  roads: [[{ x: 0, y: 1500 }, { x: 900, y: 1250 }, { x: 1800, y: 1200 }, { x: 3000, y: 1200 }, { x: 4400, y: 1200 }], [{ x: 1200, y: 1220 }, { x: 1460, y: 560 }]],
+  props: [{ kind: 'flag', x: 3900, y: 620 }, { kind: 'flag', x: 1780, y: 1000 }, { kind: 'radar', x: 2200, y: 300 }, { kind: 'tent', x: 3800, y: 1800 }],
+};
+/** Lockdown worlds (collision / nav only): both gates shut, then only the inner gate. Fully open = FORTRESS_MAP. */
+export const FORTRESS_LOCKED: MapDef = { ...FORTRESS_MAP, id: 'fortress-locked', obstacles: [...FORTRESS_OBSTACLES, FORTRESS_MAIN_GATE, FORTRESS_INNER_GATE] };
+export const FORTRESS_INNER_LOCKED: MapDef = { ...FORTRESS_MAP, id: 'fortress-inner', obstacles: [...FORTRESS_OBSTACLES, FORTRESS_INNER_GATE] };

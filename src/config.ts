@@ -52,6 +52,9 @@ function makeDefaults() {
     // v0.8A Commando: dual pistols (each pistol fires on its own: 2 x 7 dmg x 2.5/s = 35 DPS in theory),
     // 115% of the Infantry move speed, short-medium range (340 px: inside the rifleman's 380, so he has to close in).
     commando: soldierClassStats({ hp: 85, damage: 7, fireRate: 2.5, accuracy: 10, movePenalty: 14, moveSpeed: 172.5, projectileSpeed: 760, reviveTime: 10, range: 340 }),
+    // v0.8C Demolitions Expert: shoulder rocket launcher. `damage` is the direct hit; the blast around the impact
+    // (CFG.rocket) falls off from that to the edge. Slow (0.55 shots/s), tough, a little slower on foot.
+    demolitions: soldierClassStats({ hp: 115, damage: 42, fireRate: 0.55, accuracy: 4, movePenalty: 12, moveSpeed: 138, projectileSpeed: 560, reviveTime: 11, range: 460 }),
     enemy: {
       hp: 40,
       damage: 7,
@@ -109,6 +112,49 @@ function makeDefaults() {
       // hidden damage modifiers by source (never shown in game text)
       modInfantry: 0.75, modHeavy: 0.65, modMedic: 0.75, modGrenade: 1.0, modSniper: 1.6,
       plating: 0.35, // v0.7A: armor share of those modifiers that a Ghost's Phantom Shot can pierce (precision rounds only)
+    },
+    // v0.8C Mission 15 boss: GENERAL VOSS (general.ts). A rifleman-sized commander: rifle shots on a fixed cadence (no
+    // spread jitter on the timing), same projectiles / walls / line of sight as every enemy round. Phases by HP.
+    general: {
+      // accuracy / projectileSpeed / range: an ordinary enemy round (readable and sidestep-able like a rifleman's; v0.8C
+      // sims: a 6 deg, 520 px/s, 500 px rifle hit ~75% of shots and out-ranged most soldiers), range <= the soldiers' 420
+      hp: 2200, damage: 20, accuracy: 10, movePenalty: 0, fireRate: 1.5, range: 400, moveSpeed: 62, projectileSpeed: 430,
+      turnRate: 3.2, aimTolerance: 10, radius: 17, speedVariance: 0, reactionMin: 0.4, reactionMax: 0.4, advanceChance: 0, advanceMinDist: 1, aggroRadius: 2000,
+      fireRate3: 1.95, // shots/s in phase 3 (below phase3 of max HP)
+      phase2: 0.7, // phase 2 below this share of max HP (reinforcements once)
+      phase3: 0.35, // phase 3 below this share (reinforcements + the resistance once, faster rifle)
+      callPause: 2.5, // s he holds fire while radioing a phase's reinforcements
+      rallyRadius: 300, // Rally: enemies (not Voss) within this many px of him...
+      rallyBonus: 0.2, // ...deal +20% weapon damage...
+      rallyDuration: 8, // ...for this many s (a new Rally refreshes, never stacks)
+      rallyCooldown: 25, // s from one Rally to the next
+      rallyFirst: 6, // s into the fight before the first Rally
+      keepMin: 220, keepMax: 340, // px he likes to keep from the nearest soldier (closes in without a clear shot)
+    },
+    // v0.8C Demolitions Expert rocket (combat.ts fireRocket / rocketImpact). The direct-hit target takes the soldier's
+    // damage once; everyone else in the blast takes the falloff (centre = damage, edge = edgeFrac x damage). Enemies only.
+    rocket: {
+      splashRadius: 55, // px
+      edgeFrac: 0.36, // 42 at the centre, ~29 halfway, ~15 at the edge
+      armorBonus: 0.3, // +30% against Armored Troopers and vehicles (added to the multiplier, see rocketMul)
+      siegeBonus: 0.2, // Siege Breaker: a further +20% against armored, vehicles and bosses
+      pyroRadius: 70, // Pyrotechnic: blast radius
+      length: 14, // drawn rocket length
+    },
+    // v0.8C Demolitions Expert ability: Inferno (abilities.ts InfernoAbility). A flame cone in front of the soldier.
+    inferno: {
+      duration: 10, // s
+      cooldown: 50, // s, after the effect ends
+      range: 155, // px
+      cone: 65, // full cone angle (deg)
+      dps: 16, // damage per second to every enemy in the cone (ticked every `tick` s)
+      burnDps: 4, // after leaving the flames: burn damage per second...
+      burnTime: 3, // ...for this many s (refreshed, never stacked)
+      bypass: 0.35, // share of armor (Armored Trooper plate) the flames ignore
+      tick: 0.25, // s between damage ticks (simulation time)
+      siegeBypass: 0.6, // Siege Breaker
+      pyroDuration: 14, // Pyrotechnic
+      pyroBurnDps: 6, // Pyrotechnic
     },
     truck: {
       hp: 1000, damage: 0, accuracy: 0, movePenalty: 0, fireRate: 0, range: 0, moveSpeed: 52, projectileSpeed: 1,

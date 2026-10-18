@@ -9,6 +9,8 @@ import {
   RELAY_POINTS, STRONGHOLD_MAP, RESISTANCE_MAP, SAFEHOUSE_POSTS, SAFEHOUSE_ZONE, VILLAGE_ZONES, ARTILLERY_GUNS, ARTILLERY_MAP,
   HOLD_CACHES, HOLD_CC, HOLD_COMMAND_ZONE, HOLD_GATED_MAP, HOLD_MAP, HOLD_TURRET_SLOTS, HOLD_ALLY_POSTS, HOLD_WAVE_POINTS,
   SUPPLY_DEPOTS, SUPPLY_EXTRACTION, SUPPLY_MAP, SUPPLY_ROUTE,
+  FORTRESS_ALLY_ENTRY, FORTRESS_ARENA, FORTRESS_CALL_POINTS, FORTRESS_EXTRACTION, FORTRESS_GENERATOR,
+  FORTRESS_INNER_GATE, FORTRESS_INNER_LOCKED, FORTRESS_LOCKED, FORTRESS_MAIN_GATE, FORTRESS_MAP, FORTRESS_RELAYS, FORTRESS_VOSS,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -23,6 +25,7 @@ import { squadCentre } from './squad';
 import { ALLY_NAMES, AlliesAliveOptional, ArtilleryObjective, LiberateZonesObjective, NoArtilleryAlertOptional, SafehouseDefenseObjective } from './chapter3';
 import { AssetHpOptional, PrepareDefenseObjective, WaveDefenseObjective, type DefenseWaveDef, type TurretCache } from './defense';
 import { CaptureVehicleObjective, CountDestroyObjective, EscortObjective, type AmbushDef } from './escort';
+import { ClearGroupsObjective, ClearRemainingObjective, FortressRelaysObjective, GeneralObjective, GeneratorObjective, ResistanceSurvivesOptional } from './fortress';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -486,7 +489,47 @@ const SUPPLY_LINE: MissionScript = {
   extraction: { zone: SUPPLY_EXTRACTION, countdown: () => 12 },
 };
 
+// ---- v0.8C Mission 15: General's Last Stand (fortress assault + boss, 6 soldiers; Chapter 3 finale) ----
+// Enemy budget (48 + Voss, every one finite, nothing respawns):
+//  outer 12 (6 R, 4 A, 2 SN): the field 3 R + 1 A, the wall 2 R + 1 A + 1 SN, the generator annex 1 R + 2 A + 1 SN;
+//  inner 16 (7 R, 6 A, 3 SN): north relay 2 R + 2 A + 1 SN, south relay 2 R + 2 A + 1 SN, the courtyard 3 R + 2 A + 1 SN;
+//  arena 8 (3 R, 4 A, 1 SN): the front guard 2 R + 2 A, Voss's guard 1 R + 2 A + 1 SN; Voss's calls 5 (3 R, 2 A) in phase 2 and 7 (3 R, 3 A, 1 SN) in phase 3 (general.ts).
+// Each group wakes on its own (aggro 380-460 px, 600+ px apart) so the fight moves through the fortress in stages.
+// No scripted heal or refill anywhere: the medkits sit in the field, the annex and the courtyard (none past the
+// inner gate). Snipers (v0.8B.2: 65 damage, 935 px/s) all stand behind cover with a telegraphed shot and none can see
+// the start, a gate mouth from point blank, or the arena entry from the barracks.
+const LAST_STAND: MissionScript = {
+  id: 'last-stand', map: FORTRESS_MAP,
+  groups: () => [
+    { tag: 'outer-field', points: [{ x: 1020, y: 1180 }, { x: 1120, y: 1260 }, { x: 980, y: 1300 }, k(1150, 1050, 'armored')], aggro: 420 },
+    { tag: 'outer-wall', points: [{ x: 1640, y: 1180 }, { x: 1660, y: 1300 }, k(1620, 1360, 'armored'), k(1700, 880, 'sniper')], aggro: 440 },
+    { tag: 'generator', points: [{ x: 1420, y: 330 }, k(1340, 420, 'armored'), k(1580, 420, 'armored'), k(1540, 320, 'sniper')], aggro: 420 },
+    { tag: 'relay-n', points: [{ x: 2300, y: 580 }, { x: 2460, y: 580 }, k(2280, 460, 'armored'), k(2480, 460, 'armored'), k(2620, 520, 'sniper')], aggro: 420 },
+    { tag: 'relay-s', points: [{ x: 2380, y: 1820 }, { x: 2540, y: 1820 }, k(2360, 1940, 'armored'), k(2560, 1940, 'armored'), k(2720, 1840, 'sniper')], aggro: 420 },
+    // the inner-gate guard (east end of the courtyard, away from the relays: fought last, before the arena)
+    { tag: 'courtyard', points: [{ x: 2820, y: 1060 }, { x: 2820, y: 1340 }, { x: 2900, y: 1200 }, k(2760, 1140, 'armored'), k(2760, 1260, 'armored'), k(2900, 1480, 'sniper')], aggro: 300 },
+    // the arena (8): the front guard holds the entrance, Voss's own guard stands with him at the far end
+    { tag: 'arena-front', points: [{ x: 3400, y: 960 }, { x: 3400, y: 1440 }, k(3500, 1110, 'armored'), k(3500, 1290, 'armored')], aggro: 420 },
+    { tag: 'arena-guard', points: [{ x: 4000, y: 1000 }, k(4040, 1110, 'armored'), k(4040, 1300, 'armored'), k(4180, 1420, 'sniper')], aggro: 300 },
+  ],
+  triggers: [],
+  primaries: () => [
+    new ClearGroupsObjective('outer', 'Break through the outer defenses', ['outer-field', 'outer-wall']),
+    new GeneratorObjective('generator', 'Destroy the gate generator', FORTRESS_GENERATOR, 1200),
+    new FortressRelaysObjective('relays', 'Destroy the 2 communications relays', FORTRESS_RELAYS, 1000),
+    new ClearGroupsObjective('assault', 'Storm the command area', ['arena-front'], 'GUARD'),
+    new GeneralObjective('voss', 'Defeat General Voss'),
+    new ClearRemainingObjective('clear', 'Clear the remaining defenders'),
+  ],
+  optionals: () => [new ResistanceSurvivesOptional('allies-alive', 'Mara, Elias and Tessa survive')],
+  hint: 'The main gate is locked: clear the outer defenses, then destroy the generator in the north-west annex',
+  general: { spawn: FORTRESS_VOSS, arena: FORTRESS_ARENA, gates: FORTRESS_CALL_POINTS, allyEntry: FORTRESS_ALLY_ENTRY },
+  lockdown: { worlds: [FORTRESS_LOCKED, FORTRESS_INNER_LOCKED], gates: [FORTRESS_MAIN_GATE, FORTRESS_INNER_GATE] },
+  // the fortress has fallen: the helicopter lands on Voss's helipad (no extraction wave: the 48-enemy budget is final)
+  extraction: { zone: FORTRESS_EXTRACTION, countdown: () => 10 },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

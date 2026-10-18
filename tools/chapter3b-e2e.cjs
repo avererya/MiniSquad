@@ -82,7 +82,7 @@ const OUT = process.env.OUT || '';
   check('M14: escort won (truck arrived), nothing unlocked (Mission 15 not built)', m14.res.phase === 'won' && m14.out.reward && m14.out.reward.won && m14.out.reward.unlocked === '', JSON.stringify({ t: m14.res.time, truck: m14.res.truck, gun: m14.res.gun, reward: m14.out.reward }));
   await notices(); await page.click('[data-a="cchap"][data-ch="3"]');
   const fin = await page.evaluate(() => { const rows = [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()); return { rows, saved: JSON.parse(localStorage.getItem(window.__SAVE_KEY)).version }; });
-  check('Campaign after M14: Missions 13 / 14 completed, Mission 15 "coming soon" (not playable); save still v9', fin.saved === 9 && fin.rows.some((r) => /^hold-the-line:.*completed/.test(r)) && fin.rows.some((r) => /^supply-line:.*completed/.test(r)) && fin.rows.some((r) => /^mission-15:.*soon/.test(r)), fin.rows.join(' '));
+  check('Campaign after M14: Missions 13 / 14 completed, Mission 15 available (v0.8C; was "coming soon"); save still v9', fin.saved === 9 && fin.rows.some((r) => /^hold-the-line:.*completed/.test(r)) && fin.rows.some((r) => /^supply-line:.*completed/.test(r)) && fin.rows.some((r) => /^last-stand:.*available/.test(r)), fin.rows.join(' '));
   check('no page errors', errors.length === 0, errors[0] || '');
   console.log(fails ? `${fails} FAILED` : 'all Chapter 3B e2e checks passed');
   await browser.close();

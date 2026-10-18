@@ -1,7 +1,7 @@
 // Aiming, firing, physical projectiles, damage and hit effects.
 import { CFG } from './config';
 import type { Game } from './game';
-import type { Team, Unit } from './unit';
+import { isBoss, type Team, type Unit } from './unit';
 import { DEG, dist, rand, segCircle, turnToward, angleDiff, type Vec } from './util';
 import { sfx } from './audio';
 import { sniperShouldSwitch } from './targeting';
@@ -28,6 +28,8 @@ export interface Projectile {
   from?: Vec;
   /** v0.8B: a round of the escort truck's machine gun (fixed stats: no Elite / class on-hit effects). */
   mounted?: boolean;
+  /** v0.8C: a Demolitions Expert rocket: explodes on the first enemy, wall or at the end of its flight (rocketImpact). */
+  rocket?: boolean;
 }
 
 export interface Particle { pos: Vec; vel: Vec; life: number; maxLife: number; color: string; size: number; z?: number; vz?: number }
@@ -136,11 +138,14 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   const vis = u.classDef?.visual;
   // v0.7A Elite passives decided when the round leaves the barrel (Rally, Perfect Aim charge)
   const el = u.team === 'squad' && (u.elite || u.rallied) ? onFire(u) : null;
+  // v0.8C General Voss's Rally: enemies near him deal +20% for its duration (decided when the round leaves the barrel)
+  const rally = u.team === 'enemy' && u.rallyUntil > game.time ? 1 + CFG.general.rallyBonus : 1;
+  const rocket = vis?.weapon === 'rocket';
   game.projectiles.push({
     pos: { x: u.pos.x + dx * 6 + sx, y: u.pos.y + dy * 6 + sy },
     vel: { x: dx * speed, y: dy * speed },
     team: u.team,
-    damage: el ? st.damage * el.mul : st.damage,
+    damage: el ? st.damage * el.mul : rally !== 1 ? st.damage * rally : st.damage,
     ...(el ? { mul: el.mul, charged: el.charged } : {}),
     life: (st.range * 1.25) / speed,
     trail: { x: u.pos.x, y: u.pos.y },
@@ -150,12 +155,13 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
     hot: u.suppressing,
     precise: aimNeed > 0,
     ...(u.team === 'squad' ? { from: { x: u.pos.x, y: u.pos.y } } : {}),
+    ...(rocket ? { rocket: true } : {}),
   });
   u.aimHeld = 0;
   u.shots++;
   u.fireCooldown = (1 / u.fireRate) * (u.team === 'enemy' ? rand(0.85, 1.2) : rand(0.95, 1.05));
   u.muzzle = CFG.feel.muzzleFlash;
-  if (u.team === 'squad') sfx(aimNeed > 0 ? 'snipe' : 'shot'); else sfx('eshot');
+  if (u.team === 'squad') sfx(rocket ? 'throw' : aimNeed > 0 ? 'snipe' : 'shot'); else sfx('eshot');
 }
 
 /** Reaction before a squad unit's first shot on a new target (0.08 s; v0.8A Quick Draw / Enhanced Bullet Storm: faster). */
@@ -260,7 +266,7 @@ export function updateEnemySniper(u: Unit, game: Game, dt: number, victims: Unit
   const dx = Math.cos(a), dy = Math.sin(a);
   game.projectiles.push({
     pos: { x: u.pos.x + dx * 8, y: u.pos.y + dy * 8 }, vel: { x: dx * C.projectileSpeed, y: dy * C.projectileSpeed },
-    team: 'enemy', damage: C.damage, life: (C.range * 1.3) / C.projectileSpeed, trail: { x: u.pos.x, y: u.pos.y }, owner: u,
+    team: 'enemy', damage: u.rallyUntil > game.time ? C.damage * (1 + CFG.general.rallyBonus) : C.damage, life: (C.range * 1.3) / C.projectileSpeed, trail: { x: u.pos.x, y: u.pos.y }, owner: u,
     width: 4, len: 44, precise: true,
   });
   u.shots++;
@@ -274,7 +280,7 @@ export function updateProjectiles(game: Game, dt: number) {
   const out: Projectile[] = [];
   for (const p of game.projectiles) {
     p.life -= dt;
-    if (p.life <= 0) continue;
+    if (p.life <= 0) { if (p.rocket) rocketImpact(game, p, null, p.pos); continue; }
     const x1 = p.pos.x, y1 = p.pos.y;
     const x2 = x1 + p.vel.x * dt, y2 = y1 + p.vel.y * dt;
     let bestT = game.world.raycast(x1, y1, x2, y2);
@@ -292,6 +298,13 @@ export function updateProjectiles(game: Game, dt: number) {
     }
     const hx = x1 + (x2 - x1) * bestT, hy = y1 + (y2 - y1) * bestT;
     if (hitUnit && p.team === 'enemy') hitUnit = mountedHit(game, hitUnit, p.owner?.target ?? null);
+    if (p.rocket && (hitUnit || hitWall)) {
+      if (hitUnit && p.owner) p.owner.hits++;
+      // the blast centre sits just short of a wall it struck (so the wall itself shelters what is behind it)
+      const back = hitWall ? 3 / (Math.hypot(p.vel.x, p.vel.y) || 1) : 0;
+      rocketImpact(game, p, hitUnit, { x: hx - p.vel.x * back, y: hy - p.vel.y * back });
+      continue;
+    }
     if (hitUnit) {
       if (p.owner) p.owner.hits++;
       // v0.7A Deadeye / Phantom Shot: decided per successful hit (misses never count; never the truck's gun)
@@ -332,6 +345,47 @@ function mountedHit(game: Game, hit: Unit, aimedAt: Unit | null): Unit {
   return hit;
 }
 
+/**
+ * v0.8C DEMOLITIONS EXPERT ROCKET. A rocket explodes on the first enemy it reaches, on a wall, or at the end of its
+ * flight. The enemy it struck takes the shot's damage ONCE (the direct hit; it is not hit by the blast again); every
+ * other enemy whose body is inside the blast radius, with no wall between it and the blast centre, takes the falloff:
+ * the shot's damage at the centre down to CFG.rocket.edgeFrac x that at the edge. Blast damage (DamageOpts.grenade):
+ * no Armored Trooper frontal plate, the usual truck / boss blast rules, x rocketMul. Enemies only (no friendly fire).
+ */
+export function rocketImpact(game: Game, p: Projectile, direct: Unit | null, at: Vec) {
+  const o = p.owner, C = CFG.rocket, R = rocketRadius(o);
+  const opts: DamageOpts = { grenade: true, at, ...(p.from ? { origin: p.from } : {}) };
+  if (direct && direct.active) game.damage(direct, p.damage * rocketMul(o, direct), o, opts);
+  for (const u of game.enemies) {
+    if (u === direct || !u.targetable) continue;
+    const d = dist(at, u.pos);
+    if (d > R + u.radius) continue;
+    if (!game.world.clear(at, u.pos)) continue; // cover between the blast and the enemy
+    const f = Math.min(1, d / R);
+    game.damage(u, p.damage * (1 - f * (1 - C.edgeFrac)) * rocketMul(o, u), o, opts);
+  }
+  if (game.isOnScreen(at, 60)) {
+    game.fx.ring(at, R, 'rgba(255,190,90,0.95)', 0.3, 5);
+    game.fx.burst(at, 14, '#ffb347', 260, 0.35, 4);
+    game.fx.burst(at, 6, '#5e5e5e', 120, 0.6, 6);
+    game.fx.shake = Math.max(game.fx.shake, 5);
+    game.scorches.push({ ...at, r: R * 0.4 });
+    sfx('boom');
+  }
+}
+/** v0.8C rocket blast radius of this shooter (Pyrotechnic: CFG.rocket.pyroRadius). */
+export const rocketRadius = (o: Unit | undefined) => (o?.elite?.id === 'demo-pyro' ? CFG.rocket.pyroRadius : CFG.rocket.splashRadius);
+/**
+ * v0.8C rocket damage multiplier against `u`: +armorBonus against Armored Troopers and vehicles; Siege Breaker adds
+ * +siegeBonus against those and bosses (additive: x1.5 against armor / vehicles, x1.2 against a boss). 1 otherwise.
+ */
+export function rocketMul(o: Unit | undefined, u: Unit): number {
+  const C = CFG.rocket, heavy = u.kind === 'armored' || u.vehicle;
+  let m = 1 + (heavy ? C.armorBonus : 0);
+  if (o?.elite?.id === 'demo-siege' && (heavy || isBoss(u))) m += C.siegeBonus;
+  return m;
+}
+
 /** Area damage to one team only (grenades never hurt friendlies). */
 export function explode(game: Game, pos: Vec, radius: number, damage: number, edgeFrac: number, victims: Unit[], source?: Unit, grenade = false, origin?: Vec) {
   for (const u of victims) {
@@ -364,6 +418,8 @@ export interface DamageOpts {
   support?: 'airstrike' | 'nuke';
   /** v0.8A: where the attack came from (the shooter at firing time / the thrower); enemy group awareness. */
   origin?: Vec;
+  /** v0.8C Inferno flames / burn: hit the Armored Trooper's plate from any side; `pen` = the share of armor ignored. */
+  flame?: boolean;
 }
 
 /**
@@ -378,6 +434,7 @@ export interface DamageOpts {
 export function modifyDamage(game: Game, u: Unit, amount: number, source: Unit | undefined, o: DamageOpts): number {
   if (u.team !== 'enemy' || o.support) return amount;
   const at = o.at ?? u.pos;
+  if (u.kind === 'armored' && o.flame) return amount * penetrate(CFG.armored.frontMul, o.pen ?? 0); // v0.8C Inferno armor bypass
   if (u.kind === 'armored' && o.dir && !o.grenade) {
     const A = CFG.armored;
     const from = Math.atan2(-o.dir.y, -o.dir.x); // direction from the trooper toward the shooter

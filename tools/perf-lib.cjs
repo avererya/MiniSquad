@@ -4,12 +4,28 @@
 /** Page-side: fresh save, everything unlocked, named soldiers at `level`, then deploy `missionId`. */
 function setupMission({ missionId, level }) {
   const g = window.game, a = window.__account(), P = window.__progression;
+  // v0.8C 'last-stand@voss': Mission 15 straight to General Voss (both gates open, objectives 1-4 done, only the
+  // arena's guard left standing), so a short run covers the boss fight, Rally, the radioed calls and the allies
+  const voss = missionId === 'last-stand@voss';
+  if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
   window.__debugUnlockAll();
   const PREF = ['doc', 'tank', 'ace', 'ranger', 'havoc', 'patch'];
   for (const id of PREF) { const s = g.roster.get(id); if (s) { s.progression.xp = P.xpForLevel(level); s.progression.level = level; } }
   g.selectMission(missionId, true);
   const pick = PREF.filter((id) => g.roster.isUnlocked(id) && g.roster.get(id)?.status !== 'kia').slice(0, g.capacity);
   const r = g.deploy(pick.map((id) => g.roster.get(id)), 'roster');
+  if (voss && r.ok) {
+    const m = g.mission;
+    m.openGate(g, ''); m.openGate(g, '');
+    for (const e of g.enemies) if (e.tag !== 'arena-guard' && !e.structure) e.state = 'dead';
+    g.enemies = g.enemies.filter((e) => e.active);
+    for (let i = 0; i < 4; i++) m.primaries[i].state = 'complete';
+    m.current = 4;
+    g.soldiers.forEach((s, i) => { s.pos = { x: 3400 + (i % 3) * 30, y: 1170 + Math.floor(i / 3) * 30 }; s.vel = { x: 0, y: 0 }; });
+    g.anchor = { x: 3430, y: 1200 }; g.cam = { x: 3430, y: 1200 };
+    m.primaries[4].activate(m, g); m.phase = m.primaries[4].phase;
+    g.invuln = true; // the squad stands for the whole run, so it reaches phases 2 / 3, the calls and the allies
+  }
   void a;
   return r.ok ? { ok: true, squad: g.soldiers.map((s) => s.name) } : { ok: false, reason: r.reason };
 }

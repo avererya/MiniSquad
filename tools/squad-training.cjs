@@ -204,7 +204,9 @@ function installHelpers() {
     return JSON.stringify({
       ind: Object.fromEntries(Object.entries(P.TRAINING).map(([k, d]) => [k, [d.costs, d.bonus]])),
       lv: Array.from({ length: 26 }, (_, i) => P.xpForLevel(i + 1)), growth: P.PROGRESSION.growth, missionXp: Array.from({ length: 50 }, (_, i) => P.missionXp(i + 1)),
-      elite: Array.from({ length: 31 }, (_, i) => EL.eliteXpForLevel(i + 1)), eliteProg: EL.ELITE_PROGRESSION, floor: P.PROGRESSION.spreadFloorDeg,
+      elite: Array.from({ length: 31 }, (_, i) => EL.eliteXpForLevel(i + 1)),
+      // v0.8C adds the Demolitions Expert's own Elite 30 extra (a new class): every older entry is compared
+      eliteProg: { ...EL.ELITE_PROGRESSION, classAtCap: Object.fromEntries(Object.entries(EL.ELITE_PROGRESSION.classAtCap).filter(([k]) => k !== 'demolitions')) }, floor: P.PROGRESSION.spreadFloorDeg,
     });
   });
   check('C4 [18][19] individual training (prices, ranks, tables), Recruit / Elite level curves, growth, mission XP, spread floor unchanged vs v0.7C', !BASE || curves.now === curves.base, BASE ? (curves.now === curves.base ? 'identical' : 'DIFFERS') : 'no BASE: skipped');

@@ -1,7 +1,7 @@
 // Target selection as a swappable strategy (future classes can prefer
 // weakest, farthest, highest threat, etc.).
 import type { Game } from './game';
-import type { Unit } from './unit';
+import { isBoss, type Unit } from './unit';
 import { dist2 } from './util';
 
 export interface TargetingStrategy {
@@ -58,7 +58,7 @@ export function nearCover(game: Game, u: Unit, pad = 30): boolean {
 export function sniperPriority(t: Unit): number {
   if (t.structure) return 4;
   if (t.kind === 'sniper') return 0;
-  if (t.kind === 'boss' || t.kind === 'tower' || t.kind === 'armored') return 1;
+  if (isBoss(t) || t.kind === 'tower' || t.kind === 'armored') return 1;
   if (t.vehicle) return 2;
   return 3;
 }

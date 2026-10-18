@@ -40,7 +40,7 @@ import type { Unit } from './unit';
 import type { Game } from './game';
 import { dist } from './util';
 
-export type EliteSpecId = 'inf-trooper' | 'inf-recon' | 'hvy-juggernaut' | 'hvy-weapons' | 'med-surgeon' | 'med-commander' | 'snp-ghost' | 'snp-deadeye' | 'com-gunslinger' | 'com-assault';
+export type EliteSpecId = 'inf-trooper' | 'inf-recon' | 'hvy-juggernaut' | 'hvy-weapons' | 'med-surgeon' | 'med-commander' | 'snp-ghost' | 'snp-deadeye' | 'com-gunslinger' | 'com-assault' | 'demo-siege' | 'demo-pyro';
 
 export interface EliteSpecDef {
   /** Stable save id (never shown; display names can change). */
@@ -101,6 +101,15 @@ export const ELITE_SPECS: Record<EliteSpecId, EliteSpecDef> = {
     id: 'com-assault', classId: 'commando', title: 'Assault Specialist', role: 'Close-Quarters Brawler', passive: 'Close Quarters',
     short: 'AST', desc: '+15% pistol damage against enemies within 160 px. Bullet Storm: each pistol hit restores 1.5 HP (up to 30 HP per Storm, never above max).',
   },
+  // v0.8C Demolitions Expert (numbers in CFG.rocket / CFG.inferno)
+  'demo-siege': {
+    id: 'demo-siege', classId: 'demolitions', title: 'Siege Breaker', role: 'Armor and Fortification Buster', passive: 'Breach', short: 'SGE',
+    desc: 'Rockets deal +20% more damage to Armored Troopers, vehicles and bosses (on top of the usual +30% against armor and vehicles). Inferno ignores 60% of armor instead of 35%.',
+  },
+  'demo-pyro': {
+    id: 'demo-pyro', classId: 'demolitions', title: 'Pyrotechnic', role: 'Area Denial Specialist', passive: 'Wildfire', short: 'PYR',
+    desc: 'Rocket blasts reach 70 px instead of 55 px. Inferno burns for 14 s instead of 10 s, and its afterburn deals 6 damage per second instead of 4.',
+  },
 };
 export const ELITE_SPEC_IDS = Object.keys(ELITE_SPECS) as EliteSpecId[];
 /** The two branches of each class, in display order. */
@@ -110,6 +119,7 @@ export const CLASS_BRANCHES: Record<SoldierClassId, [EliteSpecId, EliteSpecId]> 
   medic: ['med-surgeon', 'med-commander'],
   sniper: ['snp-ghost', 'snp-deadeye'],
   commando: ['com-gunslinger', 'com-assault'],
+  demolitions: ['demo-siege', 'demo-pyro'],
 };
 export const eliteSpec = (id: unknown): EliteSpecDef | null => (typeof id === 'string' && id in ELITE_SPECS ? ELITE_SPECS[id as EliteSpecId] : null);
 /** A valid spec id for this class (save validation, promotion). */
@@ -145,6 +155,7 @@ export const ELITE_PROGRESSION = {
     medic: { healMul: 1.1 }, // +10% Field Treatment healing
     sniper: { aimTimeMul: 0.9 }, // -10% held-aim time before each shot
     commando: { spreadMul: 0.9 }, // v0.8A: -10% pistol spread
+    demolitions: { spreadMul: 0.9 }, // v0.8C: -10% rocket spread
   } as Record<SoldierClassId, StatModifiers>,
 };
 

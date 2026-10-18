@@ -296,8 +296,8 @@ function installHelpers() {
   // ================= C. BRIEFINGS =================
   await fresh();
   const br = await ev(() => window.__campaign.CAMPAIGN.filter((m) => m.playable).map((m) => ({ id: m.id, n: m.number, b: m.brief, opt: m.optional.map((o) => o.label || o.id) })));
-  check('C1 Missions 1-14 all have a briefing (story, objective, tip; v0.8B adds 13 / 14); the optional row lists the mission\'s optionals ("None" when it has none)', br.length === 14 && br.every((m) => m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip), br.filter((m) => !(m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip)).map((m) => `${m.id}:${JSON.stringify(m.b).slice(0, 60)}:${m.opt.length}`).join(' ') + ` (${br.length})`);
-  check('C2 no spoilers: no briefing names General Voss', br.every((m) => !/voss/i.test(JSON.stringify(m.b))), '');
+  check('C1 Missions 1-15 all have a briefing (story, objective, tip; v0.8B adds 13 / 14, v0.8C 15); the optional row lists the mission\'s optionals ("None" when it has none)', br.length === 15 && br.every((m) => m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip), br.filter((m) => !(m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip)).map((m) => `${m.id}:${JSON.stringify(m.b).slice(0, 60)}:${m.opt.length}`).join(' ') + ` (${br.length})`);
+  check('C2 no spoilers: no briefing before Mission 15 names General Voss (v0.8C: Mission 15 is his)', br.filter((m) => m.id !== 'last-stand').every((m) => !/voss/i.test(JSON.stringify(m.b))) && br.some((m) => m.id === 'last-stand'), '');
   await page.click('[data-a="csel"][data-id="first-contact"]');
   await page.click('.c-btns [data-a="deploy"]'); await page.waitForTimeout(80);
   const b1 = await ev(() => { const el = document.querySelector('.brief'); return el ? { t: el.textContent.replace(/\s+/g, ' '), phase: window.game.phase, deployBtn: !!el.querySelector('[data-a="brief-deploy"]'), back: !!el.querySelector('[data-a="brief-back"]') } : null; });

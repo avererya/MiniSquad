@@ -82,8 +82,8 @@ function installHelpers() {
     out.caps = ids.map((id) => C.capacityOf(id)).join('');
     out.chain = [C.campaignMission('artillery-hunt').unlocks.missions.join(), C.campaignMission('hold-the-line').unlocks.missions.join(), C.campaignMission('supply-line').unlocks.missions.join()].join('|');
     out.nums = [C.campaignMission('hold-the-line').number, C.campaignMission('supply-line').number].join();
-    const m15 = C.campaignMission('mission-15');
-    out.m15 = { exists: !!m15, playable: m15 && m15.playable, script: !!window.game.selectMission('mission-15', true) };
+    const m15 = C.campaignMission('last-stand');
+    out.m15 = { exists: !!m15, playable: m15 && m15.playable, placeholder: !!C.campaignMission('mission-15'), script: !!window.game.selectMission('last-stand', true) };
     // fresh save: M13 / M14 locked
     out.lockedFresh = !window.game.selectMission('hold-the-line') && !window.game.selectMission('supply-line') && !T.a.campaign.unlockedMissions.includes('hold-the-line');
     window.__debugUnlockAll();
@@ -131,7 +131,7 @@ function installHelpers() {
     return out;
   });
   check('A1 capacity: M1-2 = 2, M3-5 = 3, M6 = 4, M7-12 = 5, M13 / M14 = 6', A.caps === '22333455555566', A.caps);
-  check('A2 M12 unlocks M13 (number 13), M13 unlocks M14 (14), M14 unlocks nothing; M15 a locked placeholder', A.chain === 'hold-the-line|supply-line|' && A.nums === '13,14' && A.m15.exists && !A.m15.playable && !A.m15.script, JSON.stringify({ c: A.chain, n: A.nums, m15: A.m15 }));
+  check('A2 M12 unlocks M13 (number 13), M13 unlocks M14 (14), M14 unlocks M15 (v0.8C: General\'s Last Stand, playable; the placeholder is gone)', A.chain === 'hold-the-line|supply-line|last-stand' && A.nums === '13,14' && A.m15.exists && A.m15.playable && A.m15.script && !A.m15.placeholder, JSON.stringify({ c: A.chain, n: A.nums, m15: A.m15 }));
   check('A3 a fresh save cannot select M13 / M14', A.lockedFresh);
   check('A4 deploy 6 into M13 (capacity 6); 4 and 1 also deploy (no forced sixth)', A.d6 && A.cap === 6 && A.d4 && A.d1, JSON.stringify({ d6: A.d6, cap: A.cap, d4: A.d4, d1: A.d1 }));
   check('A5 seven soldiers refused in M13; six refused in M12 (5)', !A.d7.ok && /allows 6/.test(A.d7.reason) && !A.m12six.ok, JSON.stringify([A.d7, A.m12six]));

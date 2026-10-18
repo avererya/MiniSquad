@@ -11,20 +11,20 @@
 // Adding a class (Sniper, Commando...) = a CFG group + an entry in CLASSES + an ability
 // factory. No class checks are scattered through gameplay code: it reads the def.
 import { CFG, type SoldierStats } from './config';
-import { BulletStormAbility, FieldTreatmentAbility, FocusAbility, GrenadeAbility, SuppressiveFireAbility, type Ability } from './abilities';
+import { BulletStormAbility, FieldTreatmentAbility, FocusAbility, GrenadeAbility, InfernoAbility, SuppressiveFireAbility, type Ability } from './abilities';
 import { TRAITS, applyModifiers, combineModifiers, type EffectiveStats, type StatModifiers, type TraitId } from './traits';
 import { NO_PROGRESSION, PROGRESSION, bonusFractions, clean, getAccount, grownStats, newTraining, softFloor, type ProgressionInputs, type TrainingRanks } from './progression';
 import { CLASS_BRANCHES, eliteModifiers } from './elite';
 
-export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper' | 'commando';
-export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment' | 'focus' | 'bulletStorm';
-export type WeaponKind = 'rifle' | 'mg' | 'smg' | 'sniper' | 'pistols';
+export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper' | 'commando' | 'demolitions';
+export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment' | 'focus' | 'bulletStorm' | 'inferno';
+export type WeaponKind = 'rifle' | 'mg' | 'smg' | 'sniper' | 'pistols' | 'rocket';
 
 export interface ClassVisual {
   bodyW: number; // torso width (Infantry 14)
   weapon: WeaponKind;
-  pack: 'none' | 'ammo' | 'medical' | 'vest';
-  helmet: 'standard' | 'heavy' | 'medic' | 'boonie' | 'beret' | 'cap';
+  pack: 'none' | 'ammo' | 'medical' | 'vest' | 'fuel';
+  helmet: 'standard' | 'heavy' | 'medic' | 'boonie' | 'beret' | 'cap' | 'blast';
   tracerWidth: number; // bullet streak width
   tracerLen: number;
 }
@@ -45,9 +45,10 @@ export const ABILITY_FACTORIES: Record<AbilityId, () => Ability> = {
   fieldTreatment: () => new FieldTreatmentAbility(),
   focus: () => new FocusAbility(),
   bulletStorm: () => new BulletStormAbility(),
+  inferno: () => new InfernoAbility(),
 };
 
-export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', suppressive: 'Suppressive Fire', fieldTreatment: 'Field Treatment', focus: 'Focus', bulletStorm: 'Bullet Storm' };
+export const ABILITY_NAMES: Record<AbilityId, string> = { grenade: 'Grenade', suppressive: 'Suppressive Fire', fieldTreatment: 'Field Treatment', focus: 'Focus', bulletStorm: 'Bullet Storm', inferno: 'Inferno' };
 
 export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
   infantry: {
@@ -72,6 +73,12 @@ export const CLASSES: Record<SoldierClassId, SoldierClassDef> = {
   commando: {
     id: 'commando', label: 'Commando', short: 'CDO', abilityId: 'bulletStorm',
     visual: { bodyW: 13, weapon: 'pistols', pack: 'vest', helmet: 'beret', tracerWidth: 2.5, tracerLen: 13 }, eliteBranches: CLASS_BRANCHES.commando,
+  },
+  // v0.8C: unlocked by Mission 15's first clear (General's Last Stand), recruited in the Recruitment Office only.
+  // Shoulder rocket launcher (combat.ts rockets: direct hit + blast), Inferno flamethrower, fuel tank on the back.
+  demolitions: {
+    id: 'demolitions', label: 'Demolitions Expert', short: 'DEM', abilityId: 'inferno',
+    visual: { bodyW: 16, weapon: 'rocket', pack: 'fuel', helmet: 'blast', tracerWidth: 5, tracerLen: 14 }, eliteBranches: CLASS_BRANCHES.demolitions,
   },
 };
 

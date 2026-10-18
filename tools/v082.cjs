@@ -315,7 +315,7 @@ runSuite(async () => {
   });
   const cfgIsDefault = async (p = page) => p.evaluate(() => { const now = JSON.stringify(window.__CFG); window.__resetConfig(); return now === JSON.stringify(window.__CFG); });
   check('C1 normal Settings: no HP / damage (or any other tuning) slider, no debug actions, no config JSON', def.sliders === 0 && def.hpLabels === 0 && def.debug === 0 && /^SETTINGS/.test(def.head), JSON.stringify(def));
-  check('C2 normal Settings keep the frame cap, performance overlay and the version label', def.fps && def.overlay && /0\.8B\.2/.test(def.version) && def.btn, def.version);
+  check('C2 normal Settings keep the frame cap, performance overlay and the version label (package.json versionLabel)', def.fps && def.overlay && def.version.includes(`v${require('../package.json').versionLabel}`) && def.btn, def.version);
   check('C3 fresh save: gameplay numbers are the shipped defaults (all multipliers 1.0)', await cfgIsDefault(), '');
   // the main-menu ⚙ opens Settings (player view)
   const opened = await ev(() => {

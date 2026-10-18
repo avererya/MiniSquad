@@ -125,12 +125,12 @@ const SAVE = fs.readFileSync(path.join(__dirname, 'fixtures-v08b', 'v0.8B-m12-cl
   const o14 = await results();
   check('10 M14 depots destroyed and truck captured, gunner chosen by tapping a row + CONFIRM', gunnerPick && gunnerPick.disabledBefore && gunnerPick.modal === null && !!gunnerPick.gunner && gunnerPick.depots === 'complete' && gunnerPick.captured === 'complete', JSON.stringify(gunnerPick));
   check('11 M14 the long road: all five ambushes fired (54 ambushers), the truck reached the new end', r14.ambush && r14.ambush.fired === 5 && r14.ambush.spawned === 54 && r14.truck && r14.truck.s >= 5860 && r14.truck.state === 'arrived', JSON.stringify({ amb: r14.ambush, truck: r14.truck, truckAt: r14.truckAt }));
-  check('12 M14 won by extraction at the road end; nothing unlocked (Mission 15 not built)', o14.phase === 'won' && o14.reward && o14.reward.won && o14.reward.unlocked === '', JSON.stringify({ t: r14.time, phases: r14.phases, reward: o14.reward }));
+  check('12 M14 won by extraction at the road end; Mission 15 unlocked (v0.8C)', o14.phase === 'won' && o14.reward && o14.reward.won && o14.reward.unlocked === 'last-stand', JSON.stringify({ t: r14.time, phases: r14.phases, reward: o14.reward }));
   await page.click('[data-a="campaign"]');
   await page.waitForTimeout(100);
   await notices(); await page.click('[data-a="cchap"][data-ch="3"]');
   const fin = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
-  check('13 Campaign: Missions 13 / 14 completed, Mission 15 "coming soon" and not playable', fin.some((r) => /^hold-the-line:.*completed/.test(r)) && fin.some((r) => /^supply-line:.*completed/.test(r)) && fin.some((r) => /^mission-15:.*soon/.test(r)) && !(await page.evaluate(() => !!window.game.selectMission('mission-15'))), fin.filter((r) => /hold|supply|mission-15/.test(r)).join(' '));
+  check('13 Campaign: Missions 13 / 14 completed, Mission 15 available and playable (v0.8C; was "coming soon")', fin.some((r) => /^hold-the-line:.*completed/.test(r)) && fin.some((r) => /^supply-line:.*completed/.test(r)) && fin.some((r) => /^last-stand:.*available/.test(r)) && (await page.evaluate(() => !!window.game.selectMission('last-stand'))), fin.filter((r) => /hold|supply|last-stand/.test(r)).join(' '));
   // ---- reload: progress and the purchase survive ----
   await page.reload(); await page.waitForTimeout(250);
   const re = await page.evaluate(() => ({ st: window.__loadStatus.status, notes: window.__loadStatus.notes.length, v: JSON.parse(localStorage.getItem('minisquad.save')).version, doc: window.__progression.capacityRank(window.game.roster.get('doc')), m: ['hold-the-line', 'supply-line'].map((id) => (window.__account().missions[id] || {}).completions || 0).join(), un: window.__account().campaign.unlockedMissions.includes('supply-line') }));

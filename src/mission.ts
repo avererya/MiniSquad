@@ -7,11 +7,12 @@
 import { CFG } from './config';
 import type { Game } from './game';
 import type { Unit } from './unit';
-import type { MapDef } from './map';
+import type { MapDef, Obstacle } from './map';
 import { campaignMission, type CampaignMission } from './campaign';
 import type { MissionEvent, ObjPoint, Objective } from './objectives';
 import { Convoy } from './convoy';
 import { BossFight } from './boss';
+import { GeneralFight } from './general';
 import { Artillery, type SpotlightDef } from './artillery';
 import type { EnemyKind } from './unit';
 import { pointInRect, type Rect, type Vec } from './util';
@@ -148,6 +149,14 @@ export interface MissionScript {
   gated?: MapDef;
   /** v0.8B escort vehicle route (Mission 14 truck; escort.ts). */
   escort?: { route: Vec[] };
+  /** v0.8C Mission 15: General Voss (general.ts): his spawn, leash, reinforcement doors and the resistance's entry. */
+  general?: { spawn: Vec; arena: Rect; gates: Vec[]; allyEntry: Vec[] };
+  /**
+   * v0.8C Mission 15 LOCKDOWN: the collision / nav world while gates are shut. `worlds[i]` is the world once i gates
+   * have opened (worlds[0] from the start; the base map once all are open); `gates[i]` the gate the i-th opening
+   * removes (Mission.openGate, called by an objective, in order, each once).
+   */
+  lockdown?: { worlds: MapDef[]; gates: Obstacle[] };
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -173,6 +182,10 @@ export class Mission {
   convoy: Convoy | null = null;
   /** v0.6.2: Mission 10 boss fight (null until it starts). */
   boss: BossFight | null = null;
+  /** v0.8C Mission 15 General Voss (null until he enters). */
+  general: GeneralFight | null = null;
+  /** v0.8C lockdown gates opened so far (Mission 15). */
+  gatesOpened = 0;
   /** v0.8A: Mission 12 searchlights + artillery (null elsewhere). */
   artillery: Artillery | null = null;
   failReason = '';
@@ -252,6 +265,7 @@ export class Mission {
   get inExtraction() { return this.phase === 'toExtraction' || this.phase === 'countdown' || this.phase === 'available'; }
 
   start(game: Game) {
+    if (this.script.lockdown) game.swapWorld(this.script.lockdown.worlds[0]);
     for (const grp of this.script.groups()) {
       const units = this.spawnGroup(game, grp);
       if (grp.defender) this.defenders.push(...units);
@@ -292,6 +306,7 @@ export class Mission {
     if (this.ended) return;
     this.convoy?.update(game, dt);
     this.boss?.update(game, dt);
+    this.general?.update(game, dt);
     this.artillery?.update(game, dt);
     this.escort?.update(game, dt);
   }
@@ -319,6 +334,35 @@ export class Mission {
     const done = (A.t >= T.wreckEarly && !downed.length) || (A.t >= T.wreckTime && !reviving) || A.t >= T.wreckCap;
     game.setObjective('The supply truck was destroyed.', downed.length ? `Revive ${downed.map((s) => s.name).join(', ')} before the squad pulls out` : 'Pulling out…');
     if (done) game.fail();
+  }
+
+  /**
+   * v0.8C Mission 15: open the next lockdown gate (forward only, each once): the world switches to the next one
+   * (nobody is ever left inside a gate), a burst at the gate and the banner show it.
+   */
+  openGate(game: Game, banner: string) {
+    const L = this.script.lockdown;
+    if (!L || this.gatesOpened >= L.gates.length) return;
+    const g = L.gates[this.gatesOpened++];
+    game.swapWorld(L.worlds[this.gatesOpened] ?? this.script.map);
+    const c = { x: g.x + g.w / 2, y: g.y + g.h / 2 };
+    game.fx.burst(c, 30, '#ffd84a', 260, 0.7, 5);
+    game.fx.burst(c, 16, '#666', 160, 1.0, 8);
+    game.fx.shake = Math.max(game.fx.shake, 10);
+    game.banner(banner, '#7dff8a', 3);
+    sfx('boom');
+  }
+  /** v0.8C a lockdown gate is still shut. */
+  gateClosed(i: number) { return !!this.script.lockdown && i >= this.gatesOpened && i < this.script.lockdown.gates.length; }
+
+  /** v0.8C Mission 15: General Voss enters (once). */
+  startGeneral(game: Game) {
+    const spec = this.script.general;
+    if (!spec || this.general) return;
+    const u = game.spawnEnemy(spec.spawn, 'general');
+    u.label = 'GENERAL VOSS'; u.tag = 'voss'; u.guard = false;
+    this.general = new GeneralFight(u, spec.arena, spec.gates, spec.allyEntry);
+    game.banner('GENERAL VOSS', '#ff7a5a', 3);
   }
 
   /** v0.6.2 Mission 10: the Iron Warden enters. */
@@ -550,6 +594,7 @@ export class Mission {
 
   /** Ground-level mission drawing: objective zones, wrecks. */
   draw(ctx: CanvasRenderingContext2D, game: Game) {
+    this.script.lockdown?.gates.forEach((g, i) => drawGates(ctx, [g], this.gateClosed(i)));
     if (this.script.gated) drawGates(ctx, this.script.gated.obstacles.filter((o) => o.kind === 'gate'), this.gatesClosed);
     for (const o of this.primaries) o.draw(ctx, this, game);
     for (const w of this.wrecks) drawWreck(ctx, w.pos, w.kind);
@@ -565,6 +610,12 @@ function compass(from: Vec, to: Vec): string {
 }
 
 function drawWreck(ctx: CanvasRenderingContext2D, p: Vec, kind = '') {
+  if (kind === 'voss') { // v0.8C where General Voss fell: his cap on a scorched patch
+    ctx.fillStyle = 'rgba(30,25,20,0.5)'; ctx.beginPath(); ctx.ellipse(p.x, p.y, 34, 16, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3b3f33'; ctx.beginPath(); ctx.ellipse(p.x + 6, p.y - 2, 10, 5, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c0281e'; ctx.fillRect(p.x, p.y - 4, 12, 2);
+    return;
+  }
   if (kind === 'truck') {
     ctx.fillStyle = 'rgba(25,20,15,0.6)';
     ctx.beginPath(); ctx.ellipse(p.x, p.y, 52, 28, 0, 0, Math.PI * 2); ctx.fill();

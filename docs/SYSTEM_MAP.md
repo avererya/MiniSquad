@@ -48,8 +48,10 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 |---|---|
 | Main | `src/classes.ts` (`SoldierClassId`, `CLASSES`, `ABILITY_FACTORIES`, `effectiveStats`), `src/abilities.ts` (`BaseAbility`, `activateAbility`, `resetCharges`, each ability) |
 | Supporting | `src/config.ts` (class stats, `CFG.grenade/suppressive/fieldTreatment/focus/bulletStorm`), `src/traits.ts`, `src/recruitment.ts` (`RECRUIT_CLASSES`, `RECRUIT_TRAITS`), `src/elite.ts` (`CLASS_BRANCHES`), `src/campaign.ts` (`CLASS_UNLOCK_TEXT`), `src/render.ts` (class visuals), `src/hud.ts` (portrait buttons), `src/tuning.ts` (sliders), `src/save.ts` (unearned-class guard) |
-| Tests | `logic` (Grenade, Suppressive, Field Treatment, traits), `chapter2` (Sniper, Focus), `chapter3a` (Commando, Bullet Storm), `v081` (Ability Capacity), `classes` / `lineup` (screenshots only) |
+| Tests | `logic` (Grenade, Suppressive, Field Treatment, traits), `chapter2` (Sniper, Focus), `chapter3a` (Commando, Bullet Storm), `v08c` E (Demolitions Expert, rocket, Inferno, Siege Breaker / Pyrotechnic), `v081` (Ability Capacity), `classes` / `lineup` (screenshots only) |
 | Watch | A new class touches ~12 files; follow the Commando (`grep -n -i commando src/*.ts`) and the recipe in [ARCHITECTURE.md](ARCHITECTURE.md#recipes). |
+
+**Demolitions Expert** (v0.8C, `grep -n -i 'demolitions\|inferno\|rocket' src/*.ts`): class row in `src/classes.ts` / `CFG.demolitions`; rocket impact and splash `rocketImpact` / `rocketMul` / `rocketRadius` in `src/combat.ts` (`CFG.rocket`); `InfernoAbility` and the afterburn `updateBurns` in `src/abilities.ts` (`CFG.inferno`); Siege Breaker / Pyrotechnic in `src/elite.ts`; recruit pool, price 1,500 / refund 350 and the guaranteed introduction in `src/recruitment.ts`; unlock by the first clear of Mission 15 (`src/campaign.ts`); unearned-class guard in `src/save.ts`; flames / rocket / burn drawing in `src/render.ts` (`drawFlames`). Tests: `v08c` E.
 
 **Ability Capacity** (uses per mission): tables `ABILITY_CAPACITY`, `abilityUses` in `src/progression.ts`; charges in `src/abilities.ts`; purchase `buyAbilityCapacity` in `src/economy.ts`; save clamp in `mergeSoldier` (`src/save.ts`); HUD counter in `src/hud.ts`; Training row in `src/menus.ts`. Tests: `v081` (rules, HUD, keys, saves), `v081-e2e` (bought through the UI), `training-rebalance` F (row fits), `mobile` (NO USES LEFT), `progression` (13 Training controls).
 
@@ -78,7 +80,7 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | Main | `src/campaign.ts` (`CAMPAIGN`, `CHAPTERS`, `CAPACITY_TABLE`, `computeStars`, `unlocks`, `derived*Unlocks`) |
 | Supporting | `src/economy.ts` (`settleMission` applies unlocks), `src/progression.ts` (`CampaignProgress`, `MissionRecord`), `src/save.ts` (re-derives unlocks), `src/menus.ts` (Campaign screen, chapter tabs, briefings) |
 | Tests | `campaign-rules`, `campaign` (autopilot report), `chapter2`, `chapter3a`, `chapter3b`, `barracks` |
-| Watch | Missions are never unlocked without the previous clear; stars never go down; `mission-15` is a non-playable placeholder row. |
+| Watch | Missions are never unlocked without the previous clear; stars never go down. Mission 15 (`last-stand`, v0.8C) is the last mission: no Chapter 4 rows exist yet. |
 
 ## Missions and objectives
 
@@ -86,8 +88,17 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 |---|---|
 | Main | `src/missions.ts` (one `MissionScript` per mission: `FIRST_CONTACT` … `SUPPLY_LINE`, `MISSION_SCRIPTS`), `src/mission.ts` (`Mission`, `MissionScript` fields, extraction, `pressureGroups`), `src/objectives.ts` (base `Objective`, reusable objectives, `MissionEvent`) |
 | Supporting | `src/map.ts` (maps, zones), `src/chapter3.ts` (M11–12), `src/artillery.ts` (M12), `src/convoy.ts` (M8), `src/boss.ts` (M10), `CFG.mission`, `CFG.extractionPressure` |
-| Tests | `maps` (reachability on every map), chapter suites (`chapter2`, `chapter3a`, `chapter3b`, `v081`), sims (`chapter2-sim`, `chapter3b-sim`, `v081-sim`, reports only), `play` |
+| Tests | `maps` (reachability on every map), chapter suites (`chapter2`, `chapter3a`, `chapter3b`, `v081`, `v08c`), sims (`chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, reports only), `play` |
 | Watch | Objectives never pay rewards; a mission has a scripted final wave or extraction pressure, never both. |
+
+## Fortress assault and General Voss (Mission 15)
+
+| | |
+|---|---|
+| Main | `src/fortress.ts` (`ClearGroupsObjective`, `GeneratorObjective`, `FortressRelaysObjective`, `GeneralObjective`, `ClearRemainingObjective`, `ResistanceSurvivesOptional`, `LAST_STAND_BUDGET`), `src/general.ts` (`GeneralFight`: phases, Rally, radioed reinforcements `VOSS_CALLS`, allies, shooting, leash) |
+| Supporting | `src/missions.ts` (`LAST_STAND` groups), `src/map.ts` (`FORTRESS_*`: map, gates, lockdown worlds, generator / relays / arena / call points), `src/mission.ts` (`MissionScript.general` / `lockdown`, `openGate`, `startGeneral`), `src/campaign.ts` (`last-stand` row, Demolitions unlock), `src/hud.ts` (boss bar: name, phase ticks, state), `src/render.ts` (`drawGeneral`, `drawGenerator`, gates, Rally chevrons), `CFG.general` |
+| Tests | `v08c` A–D, F–H (campaign, fortress, gates, Voss, unlock, saves, Missions 1–14 vs v0.8B.2, phones), `fps-parity` (`last-stand@voss`), `v08c-sim` (report: SCEN, RUNS, LEVEL, TWEAK) |
+| Watch | Gates are 'gate' obstacles in lockdown worlds (`game.swapWorld`), so they block movement, not fire. Phases only go forward and fire once; a reload restarts the mission (no checkpoint). Voss's range must stay at or below every soldier's (`v08c` C2). No medkit past the inner gate. |
 
 ## Escort / truck mechanics (Mission 14)
 
@@ -159,17 +170,17 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | Group | Suites | Use for |
 |---|---|---|
 | `smoke` (bare `npm test`) | `logic`, `maps`, `campaign-rules`, `barracks` | quick check while working |
-| `combat` | `logic`, `accuracy`, `elite`, `support`, `v082` | weapons, damage, classes, Tactical Support |
+| `combat` | `logic`, `accuracy`, `elite`, `support`, `v082`, `v08c` | weapons, damage, classes, Tactical Support, Demolitions |
 | `movement` | `logic`, `v081-collision`, `mobile` | squad movement, collisions, joystick |
-| `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks` | Recruitment Office, roster |
+| `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks`, `v08c` | Recruitment Office, roster |
 | `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
 | `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
-| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082` | missions, campaign, escort, defense |
-| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082` | saves, fixtures, economy |
+| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c` | missions, campaign, escort, defense |
+| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c` | saves, fixtures, economy |
 | `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile` | HUD, menus, phone layouts |
 | `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
-| `all` | every rule suite (28) | full regression before a release |
-| `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
+| `all` | every rule suite (29) | full regression before a release |
+| `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
 | `screens` | `shot`, `visual`, `fight`, `classes`, `lineup`, `touch`, `play` | screenshots judged by eye |
 
 | Change | Run at least |
@@ -181,7 +192,7 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | HUD / menus / layout | `ui` |
 | Release | `all` |
 
-**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
+**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
 
 Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#test-status). `maps` only covers the Mission 1–10 maps; `chapter3b-e2e` is superseded (run by name only).
 

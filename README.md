@@ -2,7 +2,7 @@
 
 MiniSquad is a real-time squad action game for mobile (landscape), inspired by Tiny Troopers, with original art. You move a small squad of auto-firing cartoon soldiers through real-time combat, use abilities like grenades, revive downed squadmates, and complete objectives.
 
-MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype built to answer one question: is moving a small squad of auto-firing soldiers through real-time combat fun? It has since grown into a 14-mission campaign with recruitment, permanent death, progression and Elite promotions. The original plan for a native mobile final game, with the design and the tuned numbers in `src/config.ts` carrying forward, is recorded in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype built to answer one question: is moving a small squad of auto-firing soldiers through real-time combat fun? It has since grown into a 15-mission campaign with recruitment, permanent death, progression and Elite promotions. The original plan for a native mobile final game, with the design and the tuned numbers in `src/config.ts` carrying forward, is recorded in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 | Document | Read it for |
 |---|---|
@@ -10,12 +10,12 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 | [docs/DEVELOPMENT_HANDOFF.md](docs/DEVELOPMENT_HANDOFF.md) | Current state, known issues and next priorities |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code fits together, recipes for missions and classes |
 | [docs/SYSTEM_MAP.md](docs/SYSTEM_MAP.md) | Feature → files → tests lookup |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history, v0.1 → v0.8B.1 |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history, v0.1 → v0.8C |
 | [docs/archive/](docs/archive/) | Past test notes, tuning notes, judgment calls, old code map and handoff history |
 
 ## Status
 
-Current release: **v0.8B.2, Gameplay Polish** (package `0.8.3`, save v9). Missions 1-14 are playable across three chapters; Mission 15 and the Demolitions Expert are not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.8C, General's Last Stand & Demolitions Expert** (package `0.8.4`, save v9). Missions 1-15 are playable across three chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class. Chapter 4 (Missions 16+) is not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -79,7 +79,8 @@ Mission data (names, types, objectives, caps, star rules, unlocks) lives in `src
 | 11 | Resistance Rising | Liberation & Defense | 5 | Liberate 3 village zones (any order), return to the safehouse, hold it with 3 resistance allies, extract | All three resistance allies alive through extraction | all optionals / no KIA | Mission 12 |
 | 12 | Artillery Hunt | Search & Destroy (night) | 5 | Destroy the 3 artillery guns (any order), extract | No artillery alert | all optionals / no KIA | **Commando class**, Mission 13 (squad size 6) |
 | 13 | Hold the Line | Defense | 6 | Prepare the defenses, protect the command center, survive four waves, extract | Command center finishes with at least 50% HP | all optionals / no KIA | Mission 14 |
-| 14 | Supply Line Sabotage | Sabotage / Escort | 6 | Destroy three depots, capture the truck, escort it to extraction | Truck finishes with at least 50% HP | all optionals / no KIA | none (Mission 15 not built) |
+| 14 | Supply Line Sabotage | Sabotage / Escort | 6 | Destroy three depots, capture the truck, escort it to extraction | Truck finishes with at least 50% HP | all optionals / no KIA | Mission 15 |
+| 15 | General's Last Stand | Assault / Boss | 6 | Break the outer defenses, destroy the gate generator and 2 relays, storm the command area, defeat General Voss, clear the defenders, extract | Mara, Elias and Tessa survive | all optionals / no KIA | **Demolitions Expert class** (Chapter 3 complete) |
 
 - Stars: 0 on defeat, ★ = primary objectives complete. Best stars are saved per mission and never go down. Missions can be replayed forever (replay rewards as in v0.3).
 - Squad caps by mission number: 1-2 → 2, 3-5 → 3, 6 → 4, 7-12 → 5, 13+ → 6. You may deploy fewer. If the saved squad is larger than the selected mission allows (for example a v0.3 squad of 3 on Mission 1), the extra slots are marked OVER LIMIT and Deploy is disabled until you remove someone or tap **Keep first N**. The saved squad is never trimmed automatically.
@@ -95,7 +96,7 @@ Rules and tables live in `src/recruitment.ts`; the money-moving transactions (re
 - **Offers**: always three cards (name, class, starting level, trait + effect, HP / damage / fire rate / move speed, price, Recruit). Stats are never rolled: class + level + trait, plus Squad Training exactly as on roster cards. Offers are saved; reopening the office, switching tabs or reloading never produces new candidates for free.
 - **Prices** (Credits): Infantry 750, Heavy Gunner 1,000, Medic 1,000. **Refresh** (replace all three) 100. Refresh needs two taps: the first arms it ("TAP AGAIN — 100 CR") for 3 s, a second tap within the window refreshes (a quick double tap does not confirm; same idea as the two-tap save reset, no modal).
 - **Recruit flow** (atomic): check Credits and roster space → deduct → soldier joins (training rank 0, cumulative XP for the starting level) → save → only that offer is replaced. If the save write fails, everything is rolled back. Repeats are refused by state (a recruited offer id no longer exists; a refresh carries the lineup it was drawn for) and every menu tap is ignored for 450 ms after a recruit / refresh / dismissal, so a double tap can never buy the replacement offer.
-- **Classes**: Infantry from the start; Heavy Gunner after Tank's milestone (Mission 1); Medic after Doc's (Mission 2), bought or not (`RECRUIT_CLASSES`, v0.6.1). Havoc and Patch add no class. Sniper: from the Mission 9 milestone (v0.6.2, `class:sniper`), 1,250 CR, refund 300. Random class per offer, duplicates allowed, no guaranteed spread. Tank, Doc, Havoc, Patch (and Ace, Ranger) are unique campaign soldiers and are never generated.
+- **Classes**: Infantry from the start; Heavy Gunner after Tank's milestone (Mission 1); Medic after Doc's (Mission 2), bought or not (`RECRUIT_CLASSES`, v0.6.1). Havoc and Patch add no class. Sniper: from the Mission 9 milestone (v0.6.2, `class:sniper`), 1,250 CR, refund 300. Commando: from Mission 12 (v0.8A), 1,250 CR. Demolitions Expert: from the first clear of Mission 15 (v0.8C, `class:demolitions`), 1,500 CR, refund 350. Random class per offer, duplicates allowed, no guaranteed spread. Tank, Doc, Havoc, Patch (and Ace, Ranger) are unique campaign soldiers and are never generated.
 - **One-time introduction**: when a class first becomes recruitable, the next lineup you see holds at least one offer of it. If offers already exist, the **last** offer is swapped for the new class for free (two new classes at once: the last two). After that, normal randomness. Saves from before v0.5 count the classes they can already recruit as introduced (their first lineup is random): a returning player was never shown a lineup without them.
 - **Traits** (`RECRUIT_TRAITS`): a trait can be rolled once the milestone of the named soldier carrying it is reached, or that soldier was owned before v0.6.1 (Sharpshooter / Quick Reflexes from the start, Tough with Tank, First Responder with Doc, Trigger Happy with Havoc, Healer with Patch). Healer is Medic-only; the others work for every class. This uses the campaign flags (`campaignFlags`), so dismissing a named soldier never removes their trait from the pool.
 - **Starting level** (`RECRUIT_LEVELS`), from the highest unlocked mission (never the selected mission or the strongest soldier): M1-5 → L1, 6-10 → L3, 11-15 → L5, 16-20 → L8, 21-30 → L10, 31-40 → L15, 41+ → L20. The level is fixed when the offer is generated (what the card shows is what you get); offers made before a campaign milestone keep their level.
@@ -442,6 +443,34 @@ Chapter 3 continues with Missions 13 and 14. Mission 15 shows as "coming soon" (
 **Briefings**: the Mission 13 / 14 briefings use the exact story text from the v0.8B brief and list their objectives.
 
 **Saves**: still **v9**, no migration. A save that cleared Mission 12 opens Mission 13 on load without a repair note; Missions 13 / 14 are never unlocked without the clear before them. Every fixture in `tools/fixtures` loads with no notes.
+
+## General's Last Stand & Demolitions Expert (v0.8C)
+
+The Chapter 3 finale and a new class. Save v9 unchanged; Missions 1-14 and every existing class, enemy and price are exactly v0.8B.2's.
+
+**Mission 15: General's Last Stand** (`last-stand`, squad cap 6, map `FORTRESS_MAP` 4,400 × 2,400; objectives `src/fortress.ts`, boss `src/general.ts`). No checkpoints: a reload or Retry starts at the outer defenses. Normal revive, bleed-out, KIA and extraction rules. Objective chain:
+1. **Break through the outer defenses**: 6 Riflemen, 4 Armored Troopers, 2 Snipers in the field, on the wall and around the annex (12).
+2. **Destroy the gate generator** (1,200 HP, sandbagged annex north-west of the wall). The **main gate** is a shut gate in the fortress wall until the generator falls (no way round it); then it opens with a banner.
+3. **Destroy the 2 communications relays** (1,000 HP each, either order) in the courtyard. The HUD shows "Relays destroyed: x/2 · inner gate LOCKED" with a chip per relay. Courtyard defenders: 7 Riflemen, 6 Armored, 3 Snipers (16). Both relays down opens the **inner gate**.
+4. **Storm the command area**: the arena's front guard (2 Riflemen, 2 Armored). Kills made earlier through the open gate count.
+5. **Defeat General Voss**, with the arena guard (1 Rifleman, 2 Armored, 1 Sniper); arena total 8.
+6. **Clear the remaining defenders** (nothing respawns; troops Voss already radioed for still arrive and count), then the helicopter lands in the arena (10 s countdown).
+
+Budget: 48 regular enemies (12 + 16 + 8 placed, 5 + 7 radioed) plus Voss; 7 Snipers in all, every one the v0.8B.2 Sniper (65 damage, 935 px/s). Medkits: three outside the inner gate, none past it (no free heal before the boss). Optional: **Mara, Elias and Tessa survive** (they arrive in Voss's phase 3; the optional fails if one dies or they never come). Stars: ★★ the optional, ★★★ no KIA.
+
+**General Voss** (`CFG.general`): 2,200 HP, rifle 20 damage per round, an ordinary enemy projectile (430 px/s, 10° cone, range 400, never more than any soldier's), cover and line of sight as for every enemy. He keeps 220-340 px from the squad and never leaves his command area. The **GENERAL VOSS** bar sits in the objective panel with phase ticks at 70% and 35% and his state.
+- **Phase 1** (100-70%): 1.5 shots/s, after a 1.5 s entrance.
+- **Phase 2** (below 70%, once): he radios in 3 Riflemen + 2 Armored (banner), arriving in two halves 6 s apart from the barracks doors at the arena's north and south edges, out of view.
+- **Phase 3** (below 35%, once): 1.95 shots/s; 3 Riflemen + 3 Armored + 1 Sniper in two halves; **Mara, Elias and Tessa** (resistance allies, never squad soldiers, never on the account) arrive from the courtyard behind the squad with an on-screen notice; play never pauses.
+- **Rally** (6 s into the fight, then every 25 s): every enemy within 300 px of him (never Voss himself, never soldiers or allies) deals +20% damage for 8 s; a new Rally refreshes the timer, never stacks. Banner, a ring on Voss and chevrons over rallied troops; the objective line says RALLY.
+- A big hit past both thresholds runs phase 2 then phase 3, each once. Phases never go back (healing him changes nothing) and a reload restarts the mission.
+
+**Demolitions Expert** (`CFG.demolitions`, class id `demolitions`, short DEM): HP 115, rocket launcher, 0.55 shots/s, range 460, move 138. Unlocked by the **first** clear of Mission 15 (no soldier is awarded; a replay or a defeat unlocks nothing); recruitable in the Recruitment Office for **1,500 CR** (refund 350), with the usual one-time introduction (the next lineup holds one), random offers, unique names, starting level, roster cap, Individual and Squad Training, levels, traits, Elite, KIA / resurrection / Memorial. A save that holds a Demolitions Expert without the unlock loads it as Infantry (repair note).
+- **Rocket** (`CFG.rocket`): the enemy it strikes takes 42 once (no double hit); every other enemy whose body is inside 55 px of the impact, with no wall between, takes falloff from 42 at the centre to 15 at the edge (about 30 halfway). +30% against Armored Troopers (from any side) and vehicles. Enemies only: no friendly fire on soldiers, allies, captives or assets.
+- **Inferno** (`CFG.inferno`, ✺, 44 × 44 px button): a flamethrower for 10 s, a 65° cone 155 px long in front of the soldier (never through walls), 16 damage per second, ignoring 35% of armor (an Armored plate lets 57.75% through); anything it reaches burns for 4 damage per second for 3 s after leaving the flames (refreshed, never stacked). The launcher holds while the flamer runs. Cooldown 50 s **after the flames end**. Uses per mission follow Ability Capacity (1 / 2 / 3); only a successful activation spends one. Never hurts soldiers or allies.
+- Elite (Recruit 25): **Siege Breaker** (Breach: rockets +20% more against armored, vehicles and bosses, on top of the +30%, so 63 vs armor, 50.4 vs Voss; Inferno ignores 60% of armor) or **Pyrotechnic** (Wildfire: 70 px blasts; Inferno lasts 14 s and burns for 6 per second).
+
+Balance (headless autopilot, `npm test -- v08c-sim`; no cover use, crude dodging, so these are lower bounds and not human timings): an Elite squad with a Siege Breaker won 4/4, a level-18 trained squad 3/4, the same squad without a Demolitions Expert 2/4, level-12 untrained squads 0/4. Headless runs last 150-230 s; the 7-10 minute target is for human play and still needs a playtest.
 
 ## Gameplay Polish (v0.8B.2)
 

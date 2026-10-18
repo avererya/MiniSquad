@@ -14,7 +14,7 @@ import type { MountedGun } from './escort';
 export type Team = 'squad' | 'enemy';
 export type UnitState = 'active' | 'downed' | 'kia' | 'dead';
 /** v0.6.2 enemy kinds; each reads its own CFG group (missing behaviour = rifleman). */
-export type EnemyKind = 'rifleman' | 'sniper' | 'armored' | 'tower' | 'boss' | 'truck';
+export type EnemyKind = 'rifleman' | 'sniper' | 'armored' | 'tower' | 'boss' | 'truck' | 'general';
 type EnemyStats = typeof CFG.enemy;
 export type StatBlock = EffectiveStats | EnemyStats;
 const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
@@ -24,7 +24,11 @@ const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
   tower: () => CFG.tower,
   boss: () => CFG.boss,
   truck: () => CFG.truck,
+  general: () => CFG.general, // v0.8C General Voss (Mission 15)
 };
+
+/** v0.8C: a boss-controlled unit (Iron Warden, General Voss): moved and fired by its controller, never pushed, boss floors and bars. */
+export const isBoss = (u: Pick<Unit, 'kind'>) => u.kind === 'boss' || u.kind === 'general';
 
 /** v0.8B friendly assets: the turret fires (CFG.turret); the command center and the truck only need hp / radius. */
 const cmdStats = { ...CFG.enemy, range: 0, fireRate: 0, damage: 0 };
@@ -152,6 +156,10 @@ export class Unit {
   mount: MountedGun | null = null;
   /** v0.8B enemy: hold this spot (roadblock) instead of pursuing; still turns and fires. */
   holdPos: Vec | null = null;
+  /** v0.8C enemy: General Voss's Rally lasts until this game.time (+CFG.general.rallyBonus weapon damage; refreshed, never stacked). */
+  rallyUntil = -1;
+  /** v0.8C enemy: Inferno burn (seconds left, damage per second, who lit it, tick accumulator, game.time last in the flames); refreshed, never stacked. */
+  burn: { t: number; dps: number; src: Unit | null; acc: number; lit: number } | null = null;
 
   // escort NPC (team 'squad', not a soldier: no identity, no weapon, no ability)
   npc = false;

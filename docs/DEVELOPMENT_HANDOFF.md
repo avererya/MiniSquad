@@ -1,6 +1,6 @@
 # MiniSquad development handoff (current state)
 
-> **Snapshot as of v0.8B.2 Gameplay Polish (on top of v0.8B.1 `601dbc2` and test infrastructure Phase 2), written 2026-10-18.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
+> **Snapshot as of v0.8C General's Last Stand & Demolitions Expert (on top of v0.8B.2 `3199529`), written 2026-10-18.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
 
 Replace this file's sections in place when a milestone ships; do not append release logs. Release history goes in [CHANGELOG.md](CHANGELOG.md), the previous append-only handoff is in [archive/DEVELOPMENT_HANDOFF_HISTORY.md](archive/DEVELOPMENT_HANDOFF_HISTORY.md).
 
@@ -10,9 +10,9 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 
 | | |
 |---|---|
-| Release | v0.8B.2, Gameplay Polish (on v0.8B.1 Difficulty, Extended Escort & Ability Capacity) |
-| `package.json` | `version` 0.8.3, `versionLabel` "0.8B.2" |
-| Commit | the v0.8B.2 commit on `main` (see `git log`; v0.8B.1 gameplay was `601dbc2`) |
+| Release | v0.8C, General's Last Stand & Demolitions Expert (Chapter 3 finale, on v0.8B.2 Gameplay Polish) |
+| `package.json` | `version` 0.8.4, `versionLabel` "0.8C" |
+| Commit | the v0.8C commit on `main` (see `git log`; v0.8B.2 was `3199529`) |
 | Save | v9 (`SAVE_VERSION` in `src/save.ts`), key `minisquad.save` |
 | Deploy | push to `main` → Cloudflare Workers serves `./dist` (`wrangler.jsonc`) |
 
@@ -24,17 +24,18 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 |---|---|
 | 1 | 1 First Contact · 2 Heavy Support · 3 Field Medicine · 4 Red Canyon Ambush · 5 Bring Them Home |
 | 2 Behind Enemy Lines | 6 Bridgehead · 7 Prison Break · 8 Convoy Crusher · 9 Blackout (night) · 10 Operation Iron Fist (Iron Warden boss) |
-| 3 The Resistance | 11 Resistance Rising · 12 Artillery Hunt (night) · 13 Hold the Line (defense) · 14 Supply Line Sabotage (escort) · 15 placeholder, not playable |
+| 3 The Resistance | 11 Resistance Rising · 12 Artillery Hunt (night) · 13 Hold the Line (defense) · 14 Supply Line Sabotage (escort) · 15 General's Last Stand (fortress assault, General Voss) |
 
 Squad caps: M1–2 → 2, M3–5 → 3, M6 → 4, M7–12 → 5, M13+ → 6. Roster cap 12.
 
-**Classes** (`src/classes.ts`): Infantry (Grenade), Heavy Gunner (Suppressive Fire), Medic (Field Treatment), Sniper (Focus; unlocked by the first clear of M9), Commando (dual pistols, Bullet Storm; unlocked by the first clear of M12). Each class has two Elite specializations.
+**Classes** (`src/classes.ts`): Infantry (Grenade), Heavy Gunner (Suppressive Fire), Medic (Field Treatment), Sniper (Focus; unlocked by the first clear of M9), Commando (dual pistols, Bullet Storm; unlocked by the first clear of M12), Demolitions Expert (rocket launcher with splash, Inferno; unlocked by the first clear of M15, 1,500 CR). Each class has two Elite specializations.
 
-**Campaign progression**: a new campaign owns Ace and Ranger. First clears unlock the next mission, named recruit offers (Tank M1, Doc M2, Havoc M5, Patch M7; 1,000 CR each, never free) and classes (Sniper M9, Commando M12). Stars are kept per mission and never go down; replays pay 75% XP.
+**Campaign progression**: a new campaign owns Ace and Ranger. First clears unlock the next mission, named recruit offers (Tank M1, Doc M2, Havoc M5, Patch M7; 1,000 CR each, never free) and classes (Sniper M9, Commando M12, Demolitions Expert M15). Mission 15 is the last mission; no Chapter 4 rows exist. Stars are kept per mission and never go down; replays pay 75% XP.
 
 **Systems shipped**:
 - Real-time squad combat: auto-targeting, physical projectiles, spread cones, cover, downed / revive / bleed-out (20 s), helicopter extraction with the left-behind warning and extraction pressure.
-- Enemies: Riflemen, Snipers (laser telegraph; v0.8B.2: 65 damage, 935 px/s round), Armored Troopers, Watchtowers, convoy trucks, Iron Warden boss; group awareness (v0.8A).
+- Enemies: Riflemen, Snipers (laser telegraph; v0.8B.2: 65 damage, 935 px/s round), Armored Troopers, Watchtowers, convoy trucks, Iron Warden boss, General Voss (M15: three phases, Rally, radioed reinforcements); group awareness (v0.8A).
+- Fortress mechanics (v0.8C): lockdown gates that open when an objective falls (`MissionScript.lockdown`, `Mission.openGate`), live-count group objectives, generator / relay objectives.
 - Recruitment Office (three offers, refresh, rename, dismiss), named campaign recruits, class unlocks.
 - Permanent death: KIA, resurrection prices, Memorial, Operation Phoenix, interrupted-mission recovery.
 - Progression: Recruit Levels 1–25, individual training (10 ranks), Squad Training (10 ranks), accuracy soft floor, mission XP by mission number.
@@ -61,15 +62,18 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 - All damage goes through `Game.damage`: Elite caps (≤ 40% reduction, ≤ ×2 per shot), support floors (boss ≥ 10%, objectives ≥ 1 HP).
 - `activateAbility` is the only path that spends a charge; capacity is capped at 3; charges reset only at deployment / Retry.
 - Allies, captives and assets are never in `Game.soldiers` and never touch the account.
-- Enemy budgets are finite (M13 ≤ 79, M14 ≤ 81); waves and ambushes fire once.
+- Enemy budgets are finite (M13 ≤ 79, M14 ≤ 81, M15 = 48 + Voss); waves, ambushes and Voss's phases fire once.
+- Mission 15: Voss's range ≤ every soldier's; no medkit past the inner gate; no checkpoint (a reload restarts the mission); the gates cannot be bypassed.
 - The truck never moves through a friendly and nobody is teleported.
 - Settlement happens once per run id; a failed mission makes downed soldiers KIA; quitting mid-mission brings downed soldiers home (known, accepted).
 
 ## Test status
 
-Run with `npm test -- all` (28 rule suites, ~27 min headless; `BASE` = v0.8B built automatically, v0.8B.1 for `v082`). Last full run (v0.8B.2, 2026-10-18): 26 of 28 passed on the first pass; `barracks` (dev panel now needs `?dev=1`) and `squad-training` F1 (enemy Sniper delta) were test expectations, fixed and rerun green. tsc and build clean. Per-suite checks as below plus `v082` 36. Phase 2 per-suite checks: `logic` 86, `maps` 10, `accuracy` 31, `barracks` 41, `campaign-rules` 77, `recruitment` 76, `recruit-mobile` 51, `failure-recruit` 56, `failure-recruit-mobile` 36, `permadeath` 107, `permadeath-mobile` 63, `progression` 115, `training-rebalance` 42, `squad-training` 61, `elite` 79, `elite-progression` 63, `support` 81, `mobile` 117, `chapter2` 95, `chapter2-mobile` 36, `chapter3a` 91, `chapter3b` 98, `v081` 67, `v081-collision` 12, `v081-e2e` 15, `fps-default` 15, `fps-parity` 17.
+Run with `npm test -- all` (29 rule suites, ~29 min headless; `BASE` = v0.8B built automatically, v0.8B.1 for `v082`, v0.8B.2 for `v08c`). Last full run (v0.8C, 2026-10-18): 27 of 29 passed on the first pass; `chapter3a` C1 / C2 (briefing count 14, no briefing names Voss) and `v082` C2 (version label hard-coded as 0.8B.2) were test expectations, fixed and rerun green. tsc and build clean. New: `v08c` 81 checks; `fps-parity` 21 (adds the Mission 15 Voss fight, `last-stand@voss`). Other per-suite counts unchanged from v0.8B.2.
 
-**Known failures:** none.
+**Known failures:** none. Flaky: `chapter3a` A5 (alerted enemies walk to the last known position) failed once in 6 runs here and 1 in 12 on the v0.8B.2 build; pre-existing, not touched.
+
+**v0.8C test changes (behaviour changed on purpose, assertions kept):** Mission 15 is playable and unlocked by Mission 14, so `campaign-rules` (Chapter 3 tab: 5 missions, 15 stars), `chapter2` / `chapter3b` (M15 playable, chain ends `last-stand`), `v081-e2e` 12 / 13 and the legacy `chapter3b-e2e` now expect `last-stand` instead of the `mission-15` placeholder; `barracks` (unlock-all opens 15 missions); `recruitment` (Demolitions 1,500 / 350 added to the price list); `elite` A1 (12 specializations); `support` A2 (three six-soldier missions); `chapter3a` C1 (15 briefings) and C2 (no briefing before Mission 15 names Voss); `v082` C2 reads the label from `package.json`. BASE comparisons in `training-rebalance` E5 and `squad-training` C4 skip only the new v0.8C groups (`demolitions`, `general`, `rocket`, `inferno`, the Demolitions Elite 30 extra); `v08c` G1 compares every older CFG group and Missions 1-14 with v0.8B.2.
 
 **v0.8B.2 test changes (behaviour changed on purpose, assertions kept):** `support` E8, `training-rebalance` E5 and `squad-training` F1 compare enemy numbers with the v0.8B BASE; they now accept exactly the enemy Sniper delta (30 → 65 damage, 1100 → 935 px/s) and still require every other number to match. `barracks` opens the dev panel with `?dev=1` (unlock-all, dev squad preset). New `v082` suite (36 checks; BASE v0.8B.1).
 
@@ -85,6 +89,8 @@ Run with `npm test -- all` (28 rule suites, ~27 min headless; `BASE` = v0.8B bui
 
 ## Known issues
 
+- **Mission 15 balance is autopilot-only (open decision).** Headless `v08c-sim` (RUNS=4): Elite squad with a Siege Breaker 4/4 wins, level-18 trained squad 3/4, the same without a Demolitions Expert 2/4 (winnable without the class), level-12 untrained squads 0/4 (all lost at Voss, mostly to his rifle and Rally-boosted guards). The autopilot uses no cover and dodges crudely; it also loses Mission 10 at level 12. Headless runs last 150-230 s against the 7-10 minute human target. Levers if playtests find it too hard: `CFG.general` (accuracy 10, projectileSpeed 430, fireRate), `CALL_STAGGER` (6 s) in `src/general.ts`, `arena-guard` aggro and composition, generator / relay HP (1,200 / 1,000), the courtyard medkit.
+- Off-screen "ENEMIES" / objective arrows at the top edge can sit over the objective panel (and the boss bar) on phones; pre-existing in every mission, more visible with the Voss bar. Not changed (render-only, all missions).
 - v0.8B.2 enemy Sniper buff vs Mission 13 (autopilot, which never or only crudely dodges lasers): level-12 "mod" squad with both caches won 4/10 vs 8/10 on v0.8B.1, with sniper-caused downs up 2-5×; trained ("well") squads unchanged (4/4). Mission 14 win rates unchanged within noise. Waves were left as approved; see the v0.8B.2 report for the open decision.
 - Mission 14 with an untrained level 12 squad wins about 60% with a gunner and loses without one (autopilot); trained / Elite squads win reliably. Levers: `RoadblockTargeting` and Ambush 4–5 `after` staggers in `src/missions.ts`.
 - Mission 14's map is 6,300 × 2,000 (~50 MB ground, kept as 2,048 px strips). Watch memory on older iPhones.
@@ -95,8 +101,8 @@ Run with `npm test -- all` (28 rule suites, ~27 min headless; `BASE` = v0.8B bui
 ## Outstanding work and approved priorities
 
 **Next gameplay milestones (not started):**
-1. **Mission 15: General's Last Stand** (end of Chapter 3; the `mission-15` row in `src/campaign.ts` is a placeholder). Earlier notes also mention Inferno and General Voss for Chapter 3.
-2. **Recruitable Demolitions Expert** class (must extend `BaseAbility` so Ability Capacity applies; reuse `--t44` for new HUD controls).
+1. **Human playtest of Mission 15 on phones** (length, Voss difficulty for level 12-18 squads, Rally readability, Inferno use). See the known issue above for the levers.
+2. Chapter 4 (Missions 16+): not started; needs new `CHAPTERS` / `CAMPAIGN` rows. Done in v0.8C: Mission 15 General's Last Stand and the Demolitions Expert.
 
 **Approved playtest feedback:**
 - Mission 13's harder difficulty: approved, keep.

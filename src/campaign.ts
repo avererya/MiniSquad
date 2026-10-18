@@ -290,12 +290,22 @@ export const CAMPAIGN: CampaignMission[] = [
       objectives: ['Destroy three depots', 'Capture the truck', 'Escort it to extraction'],
       tip: 'The truck follows your squad along the road and stops at roadblocks. Clear the road ahead of it.',
     },
-    unlocks: { missions: [], recruits: [] },
+    unlocks: { missions: ['last-stand'], recruits: [] },
   },
+  // ---- v0.8C Chapter 3 finale ----
   {
-    id: 'mission-15', number: 15, name: 'Coming soon', type: 'elimination', playable: false,
-    briefing: 'The next part of Chapter 3 is coming in a future update.', primary: ['Not available yet'], optional: [],
-    stars: { two: 'fullExtraction', three: 'noDowns' }, teaches: 'Chapter 3', unlocks: { missions: [], recruits: [] },
+    id: 'last-stand', number: 15, name: "General's Last Stand", type: 'assault', playable: true,
+    briefing: 'Storm General Voss\'s fortress: cut the gate generator, destroy the relays and defeat the General.',
+    primary: ['Break through the outer defenses', 'Destroy the gate generator', 'Destroy the 2 communications relays', 'Storm the command area', 'Defeat General Voss', 'Clear the remaining defenders', 'Extract'],
+    optional: [{ id: 'allies-alive', label: 'Mara, Elias and Tessa survive' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Chapter 3 finale: a fortress assault and a three-phase boss',
+    brief: {
+      story: 'General Voss has retreated to his fortress. Breach the outer defenses, cut the power to the main gate, silence his communications and end his command. Chapter 3 ends here.',
+      objective: 'Breach the fortress, destroy the generator and relays, defeat General Voss, extract.',
+      objectives: ['Break through the outer defenses', 'Destroy the gate generator (opens the main gate)', 'Destroy the 2 relays (opens the inner gate)', 'Defeat General Voss', 'Clear the defenders, extract'],
+      tip: 'Voss rallies nearby troops (+20% damage for 8 s). Pull his guards away from him, use cover, and keep a revive ready.',
+    },
+    unlocks: { missions: [], recruits: [], classes: ['demolitions'], capacityNote: 'Chapter 3 complete' },
   },
 ];
 
@@ -363,6 +373,11 @@ export const CLASS_UNLOCK_TEXT: Record<string, { title: string; body: string; un
     title: 'NEW CLASS UNLOCKED! COMMANDO',
     body: 'Fast dual-pistol close-assault specialists are now available in the Recruitment Office.',
     unlockText: 'Unlock the Commando class for recruitment',
+  },
+  demolitions: {
+    title: 'NEW CLASS UNLOCKED! DEMOLITIONS EXPERT',
+    body: 'Rocket-launcher and flamethrower specialists who break armor and fortifications are now available in the Recruitment Office.',
+    unlockText: 'Unlock the Demolitions Expert class for recruitment',
   },
 };
 

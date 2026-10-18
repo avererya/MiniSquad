@@ -333,13 +333,13 @@ const V03 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.3-save.json'), 'ut
     await page.goto(URL); await page.waitForTimeout(200);
     const rows = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
     const tabs = await page.evaluate(() => [...document.querySelectorAll('.c-tab')].map((t) => t.textContent.replace(/\s+/g, ' ').trim()));
-    check('Campaign shows Chapter 1 (M1-M5; M1 available, M2-M5 locked) + chapter tabs CH 1 / CH 2 / CH 3 (v0.8B: CH 3 playable, 4 missions = 12 stars)', rows.length === 5 && /first-contact:available/.test(rows[0]) && rows.slice(1, 5).every((r) => /locked/.test(r)) && tabs.length === 3 && /CH 1/.test(tabs[0]) && /CH 2/.test(tabs[1]) && /CH 3/.test(tabs[2]) && /0\/12/.test(tabs[2]), rows.join(' ') + ' | ' + tabs.join(','));
+    check('Campaign shows Chapter 1 (M1-M5; M1 available, M2-M5 locked) + chapter tabs CH 1 / CH 2 / CH 3 (v0.8C: CH 3 playable, 5 missions = 15 stars)', rows.length === 5 && /first-contact:available/.test(rows[0]) && rows.slice(1, 5).every((r) => /locked/.test(r)) && tabs.length === 3 && /CH 1/.test(tabs[0]) && /CH 2/.test(tabs[1]) && /CH 3/.test(tabs[2]) && /0\/15/.test(tabs[2]), rows.join(' ') + ' | ' + tabs.join(','));
     await page.click('[data-a="cchap"][data-ch="2"]');
     const rows2 = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
     check('Chapter 2 tab: Missions 6-10 listed, all locked on a fresh save', rows2.length === 5 && rows2[0].startsWith('bridgehead') && rows2[4].startsWith('iron-fist') && rows2.every((r) => /locked/.test(r)), rows2.join(' '));
     await page.click('[data-a="cchap"][data-ch="3"]');
     const rows3 = await page.evaluate(() => [...document.querySelectorAll('.c-row')].map((r) => r.dataset.id + ':' + r.className.replace('c-row', '').trim()));
-    check('Chapter 3 tab (v0.8B): Missions 11-14 locked on a fresh save, Mission 15 coming soon', rows3.length === 5 && ['resistance-rising', 'artillery-hunt', 'hold-the-line', 'supply-line'].every((id, i) => rows3[i].startsWith(id) && /locked/.test(rows3[i])) && rows3[4].startsWith('mission-15'), rows3.join(' '));
+    check('Chapter 3 tab (v0.8C): Missions 11-15 locked on a fresh save (Mission 15 General\'s Last Stand replaces the v0.8B placeholder)', rows3.length === 5 && ['resistance-rising', 'artillery-hunt', 'hold-the-line', 'supply-line', 'last-stand'].every((id, i) => rows3[i].startsWith(id) && /locked/.test(rows3[i])), rows3.join(' '));
     await page.click('[data-a="cchap"][data-ch="1"]');
     await page.click('[data-a="csel"][data-id="red-canyon"]');
     const lockTxt = await page.textContent('.c-detail');
