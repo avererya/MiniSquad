@@ -453,7 +453,8 @@ export const SUPPLY_AMBUSHES: AmbushDef[] = [
     // Arrivals are staggered: roadblock first, the western ridge 6 s / 9 s later, the hunters behind 10 s later, the eastern
     // ridge 15 s later (groups still on their way when the truck arrives land anyway: ProgressAmbushes.drain).
     // (Truck-pressure tuning: only the 2 hunters prefer the truck; everyone else fights the escort first.)
-    at: 4880, delay: 4, banner: 'FINAL GAUNTLET! ENEMIES ON BOTH RIDGES, AHEAD AND BEHIND',
+    // v0.8B.2: the banner no longer says FINAL GAUNTLET (the HUD hides how far the convoy still has to go).
+    at: 4880, delay: 4, banner: 'AMBUSH! ENEMIES ON BOTH RIDGES, AHEAD AND BEHIND',
     groups: [
       { kinds: [A, A, A], road: [{ s: 5345, side: -24 }, { s: 5360, side: 24 }, { s: 5400, side: 0 }], hold: true, escortFirst: true },
       { kinds: [R, R, A, SN, R], points: [{ x: 5850, y: 1340 }, { x: 5960, y: 1300 }, { x: 5880, y: 1450 }, { x: 6060, y: 1120 }, { x: 5940, y: 1420 }], escortFirst: true, after: 15 },

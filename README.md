@@ -15,7 +15,7 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 
 ## Status
 
-Current release: **v0.8B.1, Difficulty, Extended Escort & Ability Capacity** (package `0.8.2`, save v9). Missions 1-14 are playable across three chapters; Mission 15 and the Demolitions Expert are not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.8B.2, Gameplay Polish** (package `0.8.3`, save v9). Missions 1-14 are playable across three chapters; Mission 15 and the Demolitions Expert are not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -40,11 +40,12 @@ npm run build:single   # one self-contained file: dist-single/index.html
 | Campaign | click a mission (↑ / ↓), Enter opens the briefing, Enter again deploys (Esc back), B opens the Barracks | tap a mission, DEPLOY, then DEPLOY / BACK in the briefing |
 | Pick squad | Barracks: click a soldier's ADD / ✕, click a slot then a soldier to replace; Enter deploys; Esc / C back to Campaign | tap |
 | Results | Enter retry · C Campaign · B / Esc Barracks | buttons |
-| Dev squad | Tuning panel → Squad preset (generic soldiers), `?squad=ii\|ih\|im\|ihm\|hh\|mm`, or `?squad=ace,doc` (roster soldiers, temporary). None of these change the saved squad | same |
-| Tuning panel | ` (backtick) or ⚙ | ⚙ |
+| Dev squad | Dev tuning (`?dev=1`) → Squad preset (generic soldiers), `?squad=ii\|ih\|im\|ihm\|hh\|mm`, or `?squad=ace,doc` (roster soldiers, temporary). None of these change the saved squad | same |
+| Settings (frame cap, performance overlay, version) | ` (backtick) or ⚙ | ⚙ |
+| Developer tuning (live CFG sliders, debug actions, config JSON) | open the game with `?dev=1`, then Settings | same |
 | Mute / Pause | M / P | 🔊 / ⏸ |
 
-Reset all progress: Campaign screen → **NEW CAMPAIGN…** (confirmation screen; the old save is backed up to `minisquad.save.pre-reset`), or tuning panel → Debug → "Reset save…" (tap twice). "Unlock all missions + soldiers (modifies save)…" (tap twice) unlocks everything in your save for testing. The tuning panel's Mission picker starts any mission; a mission started while still locked pays no rewards and unlocks nothing.
+Reset all progress: Campaign screen → **NEW CAMPAIGN…** (confirmation screen; the old save is backed up to `minisquad.save.pre-reset`), or (with `?dev=1`) Settings → Debug → "Reset save…" (tap twice). "Unlock all missions + soldiers (modifies save)…" (tap twice) unlocks everything in your save for testing. The dev Mission picker starts any mission; a mission started while still locked pays no rewards and unlocks nothing.
 
 Debug keys: F spawn friendly · G spawn enemy group · K down a soldier · I invulnerable · Shift+R restart.
 
@@ -330,7 +331,7 @@ Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps
 - **M9 Blackout** (night, cap 5): three relays (900 HP). The ALARM meter fills over time, faster while more relays are up (0.75 / 0.5 / 0.3 points per second with 3 / 2 / 1 relays up). While relays stand, the base calls reinforcement waves from six spawn points. Fewer relays means smaller, rarer waves, and none once all three are down. At most 12 living enemies at a time. Optional: every relay down before the alarm maxes out. Clearing M9 **unlocks the Sniper class**. The Results screen shows "NEW CLASS UNLOCKED: SNIPER", and the Campaign screen then shows the notice "NEW CLASS UNLOCKED! SNIPER — Long-range precision specialists are now available in the Recruitment Office." with LATER / VISIT RECRUITMENT OFFICE. The next lineup is guaranteed to hold a Sniper (one-time class introduction). No Sniper is given for free, and the unlock is saved permanently.
 - **M10 Operation Iron Fist** (cap 5): destroy two installations (700 HP each), storm the stronghold arena, defeat the **Iron Warden**, then extract (8 s countdown). Optional: no soldier KIA. After the boss falls, the remaining garrison routs.
 - **Enemies** (`CFG.enemySniper / armored / tower / truck / boss`):
-  - **Sniper**: 45 HP, 30 damage, range 600. A red laser tracks its target, then freezes for 0.45 s before the shot, so you can step aside. Prefers exposed soldiers, meaning no solid cover within about 30 px.
+  - **Sniper**: 45 HP, 65 damage (v0.8B.2; was 30), round 935 px/s (was 1100), range 600. A red laser tracks its target, then freezes for 0.45 s before the shot, so you can step aside. Prefers exposed soldiers, meaning no solid cover within about 30 px.
   - **Watchtower**: static, 80 HP, range 520.
   - **Armored Trooper**: 140 HP. Takes 35% damage from the front (±65°) and 125% from behind.
   - **Trucks**: drive on rails and escape at the road's end. Escorts march with their truck and leave it to fight freely once it is destroyed.
@@ -441,6 +442,16 @@ Chapter 3 continues with Missions 13 and 14. Mission 15 shows as "coming soon" (
 **Briefings**: the Mission 13 / 14 briefings use the exact story text from the v0.8B brief and list their objectives.
 
 **Saves**: still **v9**, no migration. A save that cleared Mission 12 opens Mission 13 on load without a repair note; Missions 13 / 14 are never unlocked without the clear before them. Every fixture in `tools/fixtures` loads with no notes.
+
+## Gameplay Polish (v0.8B.2)
+
+Three approved playtest changes. No new missions, classes or enemies; save v9 unchanged.
+
+**Enemy Sniper** (`CFG.enemySniper`, fired in `updateEnemySniper`): a hit now costs **65 HP** (was 30), 65% of a fresh Infantry's 100 HP, so a healthy untrained Infantry, Medic, Sniper or Commando survives one hit and goes down to the second (a Heavy Gunner, 150 HP, to the third). The round flies **935 px/s** (was 1100, -15%), so stepping off the frozen laser works at every range: in headless duels a soldier who starts moving 0.35 s (300 px), 0.5-0.55 s (450 px) or 0.65-0.7 s (580 px) after the lock still dodges (v0.8B.1: 0.3-0.35 / 0.4-0.5 / 0.55-0.6 s). Unchanged: cadence (one shot every 5.2 s against a target it keeps), the 1.6 s laser with its 0.45 s lock, the 0.6° cone, 600 px range, cover and line of sight, Elite damage reduction (a Juggernaut takes 52). The player Sniper class, riflemen, Armored Troopers, towers and the Iron Warden are untouched.
+
+**Mission 14 suspense** (`EscortObjective.hud` in `src/escort.ts`): during the escort the HUD shows the objective, the truck state and gun, and the **TRUCK** HP meter, but no route-progress bar, no distance and no ambush count. A landed ambush shows one unnumbered **AMBUSH** chip while its fighters are up. Ambush 5's banner reads "AMBUSH! ENEMIES ON BOTH RIDGES, AHEAD AND BEHIND" (no longer "FINAL GAUNTLET"). Route, truck, ambush points, groups and timing are exactly v0.8B.1's; extraction guidance after the escort is unchanged.
+
+**Settings** (⚙ / backtick, `src/tuning.ts`): players see the frame cap, the performance overlay and the version label. The developer tuning (every live `CFG` slider, including the class and enemy HP / Damage sliders, the debug actions and the config JSON) is built only when the page is opened with **`?dev=1`**. Tuning was never stored: `CFG` lives in memory, a reload without `?dev=1` plays the shipped numbers, and normal play resets `CFG` to them explicitly at start-up. Save fields that look like multipliers (no build ever wrote any) are ignored and dropped on the next save.
 
 ## Difficulty, Extended Escort & Ability Capacity (v0.8B.1)
 

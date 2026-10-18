@@ -1,6 +1,6 @@
 # MiniSquad system map
 
-Feature → files → tests, for finding where to work without reading the repository. All paths are relative to the repo root and were checked against v0.8B.1 (`601dbc2`). For how the pieces fit together see [ARCHITECTURE.md](ARCHITECTURE.md); for the rules and numbers players see, the [README](../README.md).
+Feature → files → tests, for finding where to work without reading the repository. All paths are relative to the repo root and were checked against v0.8B.1 (`601dbc2`); v0.8B.2 changes are noted in their rows. For how the pieces fit together see [ARCHITECTURE.md](ARCHITECTURE.md); for the rules and numbers players see, the [README](../README.md).
 
 How to use it: find the row, open the main file, then `grep -n` the named symbol instead of reading the whole file. Every number lives in `src/config.ts` (`CFG.<group>`) unless a row says otherwise. Tests are `tools/<name>.cjs`, run with `npm test -- <name>` (see [Which tests to run](#which-tests-to-run)).
 
@@ -13,7 +13,7 @@ How to use it: find the row, open the main file, then `grep -n` the named symbol
 | Tests | `logic` (projectile speeds, spread, walls, damage stats), `accuracy` (spread floor), `balance` (`MODE=accuracy` hit-rate experiments, report only), `elite` (passive damage), `squads` (damage ledger, report) |
 | Watch | All damage must go through `Game.damage` (Elite caps ≤40% reduction / ≤×2 per shot, support floors, awareness, stats). Rounds are not led (target leading is an open design item). |
 
-Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy Sniper damage: `CFG.enemySniper` (`damage`, `projectileSpeed`, `aimTime`, `lockTime`), fired in `updateEnemySniper`, laser telegraph drawn in `src/render.ts` (grep `enemySniper`), standoff in `src/awareness.ts`. Tests: `chapter2` (aim, lock, shot, cover), `chapter2-mobile` (laser on phones).
+Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy Sniper damage: `CFG.enemySniper` (`damage`, `projectileSpeed`, `aimTime`, `lockTime`), fired in `updateEnemySniper`, laser telegraph drawn in `src/render.ts` (grep `enemySniper`), standoff in `src/awareness.ts`. Tests: `chapter2` (aim, lock, shot, cover), `chapter2-mobile` (laser on phones), `v082` A (v0.8B.2: 65 damage, 935 px/s, two-hit lethality, cadence, dodge window per range, Elite mitigation, friendly Sniper unchanged).
 
 ## Enemy AI and awareness
 
@@ -95,8 +95,8 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 |---|---|
 | Main | `src/escort.ts` (`EscortVehicle`, `MountedGun`, `CaptureVehicleObjective`, `ProgressAmbushes`, `EscortObjective`, `CountDestroyObjective`) |
 | Supporting | `src/missions.ts` (`SUPPLY_LINE`, `SUPPLY_AMBUSHES`), `src/map.ts` (`SUPPLY_ROUTE`, `SUPPLY_ROUTE_V08B`, `SUPPLY_DEPOTS`), `src/game.ts` (gunner modal `openGunnerSelect` / `chooseGunner`, `pushOut`, pinned check, ceasefire), `src/squad.ts`, `src/targeting.ts` (`RoadblockTargeting`, `VehicleHunterTargeting`), `src/render.ts` (`drawEscortTruck`), `src/hud.ts`, `CFG.escortTruck` / `CFG.mountedGun` |
-| Tests | `chapter3b` C, `v081` (route, Ambushes 4–5), `v081-collision`, `v081-e2e`, `v081-sim` (report), `perf-lib` (answers the gunner selection) |
-| Watch | `chapter3b-e2e` is superseded since v0.8B.1 (its autopilot loses the harder missions). Mission 5/7 captive escort is a different system (`updateEscort`, `FreeCaptiveObjective`). Planned: hide the route-progress indicator (not implemented). |
+| Tests | `chapter3b` C, `v081` (route, Ambushes 4–5), `v081-collision`, `v081-e2e`, `v082` B (no route progress / ambush count on the HUD, route identical to v0.8B.1), `v081-sim` (report), `perf-lib` (answers the gunner selection) |
+| Watch | `chapter3b-e2e` is superseded since v0.8B.1 (its autopilot loses the harder missions). Mission 5/7 captive escort is a different system (`updateEscort`, `FreeCaptiveObjective`). Since v0.8B.2 `EscortObjective.hud` shows no progress bar, distance or ambush count (truck HP meter and unnumbered AMBUSH chips only); keep it that way. |
 
 ## Defense / wave mechanics (Missions 11 and 13)
 
@@ -130,9 +130,9 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | | |
 |---|---|
 | Main | `src/hud.ts` (in-mission DOM HUD, portraits, chips, meters, support buttons, extraction warning), `src/menus.ts` (all screens), `src/style.css` |
-| Supporting | `src/main.ts` (`resize`, safe areas, `--t44`), `src/input.ts`, `src/tuning.ts` (⚙ panel, sliders, debug), `src/version.ts` (label + commit in Settings) |
+| Supporting | `src/main.ts` (`resize`, safe areas, `--t44`), `src/input.ts`, `src/tuning.ts` (⚙ Settings: frame cap, overlay, version; with `?dev=1` also `devTuningEnabled` sliders, debug, config JSON), `src/version.ts` (label + commit in Settings) |
 | Tests | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile`, `touch`, plus phone sections in `chapter3a`, `chapter3b`, `squad-training`, `progression` |
-| Watch | Landscape on iPhone SE (667×375), iPhone 14 (844×390), Pixel 7 (915×412); touch targets ≥ 44 CSS px via `var(--t44)`; joystick zone (left half) stays free. Planned: hide player-facing damage/HP sliders in `src/tuning.ts` while keeping developer tuning (not implemented). |
+| Watch | Landscape on iPhone SE (667×375), iPhone 14 (844×390), Pixel 7 (915×412); touch targets ≥ 44 CSS px via `var(--t44)`; joystick zone (left half) stays free. Since v0.8B.2 the tuning sliders and debug actions exist only with `?dev=1` (`v082` C). |
 
 ## Rendering and performance
 
@@ -159,16 +159,16 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | Group | Suites | Use for |
 |---|---|---|
 | `smoke` (bare `npm test`) | `logic`, `maps`, `campaign-rules`, `barracks` | quick check while working |
-| `combat` | `logic`, `accuracy`, `elite`, `support` | weapons, damage, classes, Tactical Support |
+| `combat` | `logic`, `accuracy`, `elite`, `support`, `v082` | weapons, damage, classes, Tactical Support |
 | `movement` | `logic`, `v081-collision`, `mobile` | squad movement, collisions, joystick |
 | `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks` | Recruitment Office, roster |
 | `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
 | `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
-| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e` | missions, campaign, escort, defense |
-| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e` | saves, fixtures, economy |
+| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082` | missions, campaign, escort, defense |
+| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082` | saves, fixtures, economy |
 | `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile` | HUD, menus, phone layouts |
 | `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
-| `all` | every rule suite (27) | full regression before a release |
+| `all` | every rule suite (28) | full regression before a release |
 | `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
 | `screens` | `shot`, `visual`, `fight`, `classes`, `lineup`, `touch`, `play` | screenshots judged by eye |
 

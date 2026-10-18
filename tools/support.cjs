@@ -515,7 +515,11 @@ function installHelpers() {
     // v0.8A adds Commando-only Elite keys (Quick Draw, Close Quarters): every older key must keep its value, new keys are allowed
     const sub = (x, y) => y !== null && typeof y === 'object' ? Object.keys(y).every((k) => sub(x && x[k], y[k])) : x === y;
     const addKeys = (x, y) => x && typeof x === 'object' ? Object.keys(x).flatMap((k) => y && k in y ? addKeys(x[k], y[k]).map((n) => k + '.' + n) : [k]) : [];
-    check('E8 enemy, boss, grenade, revive and Elite passive numbers identical to v0.7B.1 (no unrelated balance change; v0.8A only ADDS Commando Elite keys)', sub(JSON.parse(a.enemies), JSON.parse(b.enemies)), 'added: ' + addKeys(JSON.parse(a.enemies), JSON.parse(b.enemies)).join());
+    // v0.8B.2 enemy Sniper rebalance (on purpose, tools/v082.cjs): damage 30 -> 65, round 1100 -> 935 px/s; every other number must match
+    const ea = JSON.parse(a.enemies), eb = JSON.parse(b.enemies);
+    const snDelta = ea[1].damage === 65 && ea[1].projectileSpeed === 935 && eb[1].damage === 30 && eb[1].projectileSpeed === 1100;
+    ea[1] = { ...ea[1], damage: eb[1].damage, projectileSpeed: eb[1].projectileSpeed };
+    check('E8 enemy, boss, grenade, revive and Elite passive numbers identical to v0.7B.1 (no unrelated balance change; v0.8A only ADDS Commando Elite keys; v0.8B.2 enemy Sniper 65 dmg / 935 px/s)', snDelta && sub(ea, eb), 'added: ' + addKeys(ea, eb).join());
   } else console.log('SKIP  E4-E8 (set BASE= to a v0.7B.1 build to compare rewards, XP, KIA prices, training and enemy numbers)');
 
   // [38] KIA with support in play; [43] victory / failure transitions

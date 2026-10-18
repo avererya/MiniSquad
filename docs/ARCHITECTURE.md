@@ -62,8 +62,8 @@ The simulation **always** steps 1/60 s. The frame cap only changes how many step
 | Tactical Support | `src/support.ts` (eligibility, airstrike, nuke, damage, floors, shop catalog) | Wired in `Game` (`useAirstrike`, `launchNuke`…), damage via `Game.damage` with `opts.support`; purchase `economy.buySupport`. |
 | Save / load | `src/save.ts` (`SAVE_VERSION = 9`, `parseSave`, `mergeSoldier`, `clean*` repairs, backups) | Types in `src/progression.ts` and `src/classes.ts` (`SoldierIdentity`, `ProgressionRecord`). Key `minisquad.save`. |
 | Rendering | `src/render.ts` (`render(ctx, game)`: ground strips, units, class and Elite looks, effects, mission drawings) | Mission modules also draw through `Objective.draw` and module `draw*` methods. |
-| HUD, menus, tuning | `src/hud.ts` (in-mission DOM HUD), `src/menus.ts` (Campaign, Barracks, Results, briefings, decisions, Memorial), `src/tuning.ts` (⚙ panel: sliders, debug, performance), `src/style.css` | HUD writes are skipped when values are unchanged. Layout is a scaled 1280×720 stage. |
-| Config | `src/config.ts` (`CFG`, `DEFAULTS`, `applyConfigJSON`) | Every gameplay number lives here; the tuning panel edits it live. |
+| HUD, menus, tuning | `src/hud.ts` (in-mission DOM HUD), `src/menus.ts` (Campaign, Barracks, Results, briefings, decisions, Memorial), `src/tuning.ts` (⚙ Settings: performance + version; sliders, debug and config JSON only with `?dev=1`), `src/style.css` | HUD writes are skipped when values are unchanged. Layout is a scaled 1280×720 stage. |
+| Config | `src/config.ts` (`CFG`, `DEFAULTS`, `applyConfigJSON`) | Every gameplay number lives here; the `?dev=1` tuning panel edits it live (memory only, never saved). |
 | Performance | `src/perf.ts`, `src/perfoverlay.ts`, `src/clock.ts` | `?fps=30|60`, `?perf=1`; settings stored in `minisquad.dev.perf`, never in the save. |
 | Audio | `src/audio.ts` | Generated sounds, suspended while hidden. |
 

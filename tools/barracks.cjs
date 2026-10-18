@@ -39,7 +39,8 @@ runSuite(async () => {
   const sq = await page.evaluate(() => ({ all: document.querySelectorAll('.b-slots .slot').length, open: document.querySelectorAll('.b-slots .slot:not(.locked)').length, locked: document.querySelectorAll('.b-slots .slot.locked').length, deploy: document.querySelectorAll('[data-a="deploy"]').length }));
   check('Mission 1: 6 squares, 2 open + 4 locked; no Deploy in the Barracks (v0.6.1)', sq.all === 6 && sq.open === 2 && sq.locked === 4 && sq.deploy === 0, JSON.stringify(sq));
 
-  // dev: two-tap "unlock all" (clearly says it modifies the save)
+  // dev: two-tap "unlock all" (clearly says it modifies the save; v0.8B.2: in the ?dev=1 tuning panel)
+  await reload('?dev=1'); await toBarracks();
   await page.keyboard.press('Backquote');
   const lbl0 = await page.textContent('[data-a="unlockAll"]');
   await page.click('[data-a="unlockAll"]');
@@ -90,7 +91,8 @@ runSuite(async () => {
   // persistence
   await reload();
   check('selection + selected mission persist after reload', (await slots()) === 'patch,ace,havoc' && (await page.evaluate(() => window.game.missionId)) === 'field-medicine', await slots());
-  // dev tools must not overwrite the saved squad
+  // dev tools must not overwrite the saved squad (v0.8B.2: the dev presets live in the ?dev=1 tuning panel)
+  await reload('?dev=1');
   await page.keyboard.press('Backquote');
   await page.selectOption('#tuning select:not([data-k])', 'hh');
   const genericIds = await page.evaluate(() => window.game.soldiers.map((s) => s.identity.id + ':' + (s.identity.traitId || '-')));
@@ -171,7 +173,7 @@ runSuite(async () => {
 
   // dev reset with confirmation (legacy v1 save -> everything unlocked -> reset = new player)
   await page.evaluate(() => localStorage.setItem('minisquad.save', JSON.stringify({ version: 1, roster: [], squad: ['patch', null, null] })));
-  await reload();
+  await reload('?dev=1');
   await page.keyboard.press('Backquote');
   await page.click('[data-a="resetSave"]');
   const armed = { slots: await slots(), label: await page.textContent('[data-a="resetSave"]') };

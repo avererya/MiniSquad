@@ -15,6 +15,8 @@
 // Groups are unions of suite names; `all` is every `rules` suite (full regression). Keep SYSTEM_MAP.md's
 // "Which tests to run" table in step with this file.
 const PREV = { ref: 'c3cae3d', label: 'v0.8B' };
+// v0.8B.2's own suite compares against the release it changes (the older suites stay on PREV, see above).
+const V081 = { ref: 'c6ae985', label: 'v0.8B.1' };
 
 const SUITES = [
   // ---- rule suites (PASS / FAIL per check) ----
@@ -43,6 +45,7 @@ const SUITES = [
   { name: 'v081', kind: 'rules', base: PREV, about: 'v0.8B.1 difficulty, extended escort, Ability Capacity' },
   { name: 'v081-collision', kind: 'rules', base: PREV, about: 'truck / squad collision stress (12 scenarios)' },
   { name: 'v081-e2e', kind: 'rules', about: 'Missions 13-14 end to end through the menus from a v0.8B save' },
+  { name: 'v082', kind: 'rules', base: V081, about: 'v0.8B.2 enemy Sniper rebalance, Mission 14 suspense HUD, Settings without tuning sliders' },
   { name: 'fps-default', kind: 'rules', about: 'default frame cap (30 phone / 60 desktop) and Settings' },
   { name: 'fps-parity', kind: 'rules', about: '30 / 60 FPS play identically (seeded autopilot, Missions 1-14)' },
 
@@ -76,13 +79,13 @@ const RULES = SUITES.filter((s) => s.kind === 'rules').map((s) => s.name);
 
 const GROUPS = {
   smoke: { about: 'fast routine check (default for a bare `npm test`)', suites: ['logic', 'maps', 'campaign-rules', 'barracks'] },
-  combat: { about: 'weapons, damage, accuracy, Elite passives, Tactical Support', suites: ['logic', 'accuracy', 'elite', 'support'] },
+  combat: { about: 'weapons, damage, accuracy, Elite passives, Tactical Support', suites: ['logic', 'accuracy', 'elite', 'support', 'v082'] },
   movement: { about: 'squad movement, collisions, joystick', suites: ['logic', 'v081-collision', 'mobile'] },
   recruitment: { about: 'Recruitment Office, named recruits, roster', suites: ['recruitment', 'recruit-mobile', 'failure-recruit', 'failure-recruit-mobile', 'barracks'] },
   progression: { about: 'XP, training, Squad Training, Elite', suites: ['progression', 'training-rebalance', 'squad-training', 'accuracy', 'elite', 'elite-progression'] },
   permadeath: { about: 'KIA, resurrection, Memorial, failed missions', suites: ['permadeath', 'permadeath-mobile', 'failure-recruit'] },
-  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-14', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e'] },
-  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e'] },
+  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-14', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082'] },
+  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082'] },
   ui: { about: 'phone layouts and touch (HUD / menus)', suites: ['mobile', 'chapter2-mobile', 'permadeath-mobile', 'failure-recruit-mobile', 'recruit-mobile'] },
   fps: { about: '30 / 60 FPS parity and default frame cap', suites: ['fps-default', 'fps-parity'] },
   all: { about: 'full regression: every rule suite', suites: RULES },

@@ -1,4 +1,7 @@
-// In-game tuning panel: live sliders on CFG, JSON export/import, reset, debug actions.
+// Settings panel (⚙ / backtick). Players see only the normal settings (Performance) and the version.
+// v0.8B.2: the developer tuning (live CFG sliders incl. class / enemy HP and damage, JSON export / import, reset,
+// debug actions) is built only with `?dev=1` in the URL. It is never stored: CFG lives in memory, so a reload
+// without `?dev=1` always plays the shipped defaults, and normal play resets CFG to them explicitly at start-up.
 import { DEFAULT_FPS_CAP, fpsCapChosen, fpsCapFromUrl, isMobileDevice, perfSettings, setPerfSettings } from './perf';
 import { VERSION_LABEL } from './version';
 import { CFG, DEFAULTS, applyConfigJSON, getPath, resetConfig, setPath } from './config';
@@ -7,6 +10,12 @@ import { CLASS_IDS, PRESETS } from './classes';
 import { CAMPAIGN } from './campaign';
 
 type S = [label: string, path: string, min: number, max: number, step: number];
+
+/** v0.8B.2: developer tuning only with `?dev=1` (or `?dev`) in the URL, read once per page load, never saved. */
+export function devTuningEnabled(search = location.search): boolean {
+  const v = new URLSearchParams(search).get('dev');
+  return v !== null && v !== '0' && v !== 'false';
+}
 
 const classSliders = (c: string): S[] => [
   ['HP', `${c}.hp`, 20, 400, 5],
@@ -165,7 +174,13 @@ export class Tuning {
   private ovBox!: HTMLInputElement;
   private fpsNote!: HTMLElement;
 
-  constructor(private root: HTMLElement, private game: Game) {
+  /** v0.8B.2: true when this page load shows the developer tuning (`?dev=1`). */
+  readonly dev: boolean;
+
+  constructor(private root: HTMLElement, private game: Game, dev = devTuningEnabled()) {
+    this.dev = dev;
+    // normal play always runs the shipped numbers (CFG is never persisted; this makes it explicit)
+    if (!dev) resetConfig();
     this.build();
   }
 
@@ -179,9 +194,23 @@ export class Tuning {
     r.innerHTML = '';
     const head = document.createElement('div');
     head.className = 'tune-head';
-    head.innerHTML = `<b>TUNING</b> <span class="dim">(\` to toggle · changes apply live)</span><button class="x">✕</button>`;
+    head.innerHTML = this.dev
+      ? `<b>SETTINGS · DEV TUNING</b> <span class="dim">(\` to toggle · live, this page load only, never saved)</span><button class="x">✕</button>`
+      : `<b>SETTINGS</b><button class="x">✕</button>`;
     head.querySelector('.x')!.addEventListener('click', () => this.toggle());
     r.appendChild(head);
+    if (this.dev) this.buildDebug(r);
+    this.buildPerf(r);
+    if (this.dev) this.buildDev(r);
+
+    const ver = document.createElement('div');
+    ver.className = 'tune-version';
+    ver.textContent = VERSION_LABEL;
+    r.appendChild(ver);
+    this.refresh();
+  }
+
+  private buildDebug(r: HTMLElement) {
 
     // debug actions
     const dbg = document.createElement('div');
@@ -256,7 +285,9 @@ export class Tuning {
       this.refresh();
     }));
     r.appendChild(dbg);
+  }
 
+  private buildPerf(r: HTMLElement) {
     // Performance (v0.6.3; v0.6.4: 30 FPS default on mobile, 60 on desktop), stored apart from the save
     const pf = document.createElement('div');
     pf.className = 'tune-sec';
@@ -274,7 +305,10 @@ export class Tuning {
     this.ovBox.addEventListener('change', () => { setPerfSettings({ overlay: this.ovBox.checked }); this.refreshPerf(); });
     this.refreshPerf();
     r.appendChild(pf);
+  }
 
+  /** Developer tuning: every CFG slider section and the JSON export / import / reset (`?dev=1` only). */
+  private buildDev(r: HTMLElement) {
     // sliders
     for (const [title, sliders] of SECTIONS) {
       const sec = document.createElement('div');
@@ -332,12 +366,6 @@ export class Tuning {
       this.refresh();
     }));
     r.appendChild(io);
-
-    const ver = document.createElement('div');
-    ver.className = 'tune-version';
-    ver.textContent = VERSION_LABEL;
-    r.appendChild(ver);
-    this.refresh();
   }
 
   /** Shows the ACTIVE frame cap and overlay state (explicit pick, device default or URL override). */

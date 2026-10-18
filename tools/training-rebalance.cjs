@@ -305,8 +305,12 @@ function installHelpers() {
       return JSON.stringify(await basePage.evaluate(f)) === JSON.stringify(await page.evaluate(f));
     })();
     check('E4 rank 1 of every individual category identical to v0.7B (v0.7D squad rank 1 is stronger by design)', r1same, '');
-    const enemies = async (p) => p.evaluate(() => { const C = window.__CFG; return JSON.stringify(Object.fromEntries(Object.entries(C).filter(([k]) => !['infantry', 'heavy', 'medic', 'sniper', 'debug', 'perf', 'airstrike', 'nuke', 'support', 'turret', 'commandCenter', 'defense', 'escortTruck', 'mountedGun'].includes(k)))); });
-    check('E5 enemies, bosses, abilities and Elite passives tuning identical to v0.7B (no Mission 1-10 difficulty change)', (await enemies(page)) === (await enemies(basePage)), '');
+    const enemies = async (p) => p.evaluate(() => { const C = window.__CFG; return Object.fromEntries(Object.entries(C).filter(([k]) => !['infantry', 'heavy', 'medic', 'sniper', 'debug', 'perf', 'airstrike', 'nuke', 'support', 'turret', 'commandCenter', 'defense', 'escortTruck', 'mountedGun'].includes(k))); });
+    // v0.8B.2 enemy Sniper rebalance (on purpose, tools/v082.cjs): damage 30 -> 65, round 1100 -> 935 px/s; every other number must match
+    const ea = await enemies(page), eb = await enemies(basePage);
+    const snDelta = ea.enemySniper.damage === 65 && ea.enemySniper.projectileSpeed === 935 && eb.enemySniper.damage === 30 && eb.enemySniper.projectileSpeed === 1100;
+    ea.enemySniper = { ...ea.enemySniper, damage: eb.enemySniper.damage, projectileSpeed: eb.enemySniper.projectileSpeed };
+    check('E5 enemies, bosses, abilities and Elite passives tuning identical to v0.7B (no Mission 1-10 difficulty change; v0.8B.2 enemy Sniper 65 dmg / 935 px/s)', snDelta && JSON.stringify(ea) === JSON.stringify(eb), '');
   }
   await fresh();
   const sv = await page.evaluate(async () => {

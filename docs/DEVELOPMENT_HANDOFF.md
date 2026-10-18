@@ -1,6 +1,6 @@
 # MiniSquad development handoff (current state)
 
-> **Snapshot as of v0.8B.1 (gameplay commit `601dbc2`), test infrastructure Phase 2, written 2026-10-18.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
+> **Snapshot as of v0.8B.2 Gameplay Polish (on top of v0.8B.1 `601dbc2` and test infrastructure Phase 2), written 2026-10-18.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
 
 Replace this file's sections in place when a milestone ships; do not append release logs. Release history goes in [CHANGELOG.md](CHANGELOG.md), the previous append-only handoff is in [archive/DEVELOPMENT_HANDOFF_HISTORY.md](archive/DEVELOPMENT_HANDOFF_HISTORY.md).
 
@@ -10,9 +10,9 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 
 | | |
 |---|---|
-| Release | v0.8B.1, Difficulty, Extended Escort & Ability Capacity |
-| `package.json` | `version` 0.8.2, `versionLabel` "0.8B.1" |
-| Commit | `601dbc2` on `main` (gameplay); docs-only commits may follow |
+| Release | v0.8B.2, Gameplay Polish (on v0.8B.1 Difficulty, Extended Escort & Ability Capacity) |
+| `package.json` | `version` 0.8.3, `versionLabel` "0.8B.2" |
+| Commit | the v0.8B.2 commit on `main` (see `git log`; v0.8B.1 gameplay was `601dbc2`) |
 | Save | v9 (`SAVE_VERSION` in `src/save.ts`), key `minisquad.save` |
 | Deploy | push to `main` → Cloudflare Workers serves `./dist` (`wrangler.jsonc`) |
 
@@ -34,7 +34,7 @@ Squad caps: M1–2 → 2, M3–5 → 3, M6 → 4, M7–12 → 5, M13+ → 6. Ros
 
 **Systems shipped**:
 - Real-time squad combat: auto-targeting, physical projectiles, spread cones, cover, downed / revive / bleed-out (20 s), helicopter extraction with the left-behind warning and extraction pressure.
-- Enemies: Riflemen, Snipers (laser telegraph), Armored Troopers, Watchtowers, convoy trucks, Iron Warden boss; group awareness (v0.8A).
+- Enemies: Riflemen, Snipers (laser telegraph; v0.8B.2: 65 damage, 935 px/s round), Armored Troopers, Watchtowers, convoy trucks, Iron Warden boss; group awareness (v0.8A).
 - Recruitment Office (three offers, refresh, rename, dismiss), named campaign recruits, class unlocks.
 - Permanent death: KIA, resurrection prices, Memorial, Operation Phoenix, interrupted-mission recovery.
 - Progression: Recruit Levels 1–25, individual training (10 ranks), Squad Training (10 ranks), accuracy soft floor, mission XP by mission number.
@@ -42,6 +42,8 @@ Squad caps: M1–2 → 2, M3–5 → 3, M6 → 4, M7–12 → 5, M13+ → 6. Ros
 - Ability Capacity: 1 / 2 / 3 uses per mission per soldier (0 / 1,500 / 3,000 CR); revives unlimited.
 - Tactical Support: free airstrike with 3 deployed Elites, Nuclear Strike (3,000 CR, stock) with 6.
 - Friendly assets (command center, turrets, escort truck), mounted gun, resistance allies, gunner selection.
+- Settings (⚙) for players: frame cap, performance overlay, version. Developer tuning (CFG sliders, debug actions, config JSON) only with `?dev=1`, memory only, never saved (v0.8B.2).
+- Mission 14 hides route progress, distance and the ambush count during the escort (v0.8B.2).
 - Mobile: landscape layout on a scaled 1280×720 stage, safe areas, rotation re-layout, ≥ 44 CSS px touch areas, 30 FPS default on phones with identical simulation at 60.
 
 ## Save compatibility requirements
@@ -65,9 +67,11 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 
 ## Test status
 
-Run with `npm test -- all` (27 rule suites, ~26 min headless; `BASE` = v0.8B built automatically). Last full run (Phase 2, 2026-10-18, gameplay unchanged since `601dbc2`): **25 passed, 2 failed** (both fixed in the follow-up, see below), tsc and build clean. Per-suite checks: `logic` 86, `maps` 10, `accuracy` 31, `barracks` 41, `campaign-rules` 77, `recruitment` 76, `recruit-mobile` 51, `failure-recruit` 56, `failure-recruit-mobile` 36, `permadeath` 107, `permadeath-mobile` 63, `progression` 115, `training-rebalance` 42, `squad-training` 61, `elite` 79, `elite-progression` 63, `support` 81, `mobile` 117, `chapter2` 95, `chapter2-mobile` 36, `chapter3a` 91, `chapter3b` 98, `v081` 67, `v081-collision` 12, `v081-e2e` 15, `fps-default` 15, `fps-parity` 17.
+Run with `npm test -- all` (28 rule suites, ~27 min headless; `BASE` = v0.8B built automatically, v0.8B.1 for `v082`). Last full run (v0.8B.2, 2026-10-18): 26 of 28 passed on the first pass; `barracks` (dev panel now needs `?dev=1`) and `squad-training` F1 (enemy Sniper delta) were test expectations, fixed and rerun green. tsc and build clean. Per-suite checks as below plus `v082` 36. Phase 2 per-suite checks: `logic` 86, `maps` 10, `accuracy` 31, `barracks` 41, `campaign-rules` 77, `recruitment` 76, `recruit-mobile` 51, `failure-recruit` 56, `failure-recruit-mobile` 36, `permadeath` 107, `permadeath-mobile` 63, `progression` 115, `training-rebalance` 42, `squad-training` 61, `elite` 79, `elite-progression` 63, `support` 81, `mobile` 117, `chapter2` 95, `chapter2-mobile` 36, `chapter3a` 91, `chapter3b` 98, `v081` 67, `v081-collision` 12, `v081-e2e` 15, `fps-default` 15, `fps-parity` 17.
 
-**Known failures:** none after the Phase 2 follow-up (see below).
+**Known failures:** none.
+
+**v0.8B.2 test changes (behaviour changed on purpose, assertions kept):** `support` E8, `training-rebalance` E5 and `squad-training` F1 compare enemy numbers with the v0.8B BASE; they now accept exactly the enemy Sniper delta (30 → 65 damage, 1100 → 935 px/s) and still require every other number to match. `barracks` opens the dev panel with `?dev=1` (unlock-all, dev squad preset). New `v082` suite (36 checks; BASE v0.8B.1).
 
 **Resolved in the Phase 2 follow-up:**
 - `squad-training` E1 (Squad Training buy buttons 32 px on phones since `601dbc2`): CSS fix. The phone-landscape `min-height: 32px` rule in `src/style.css` now targets `.t-panel:not(.q-panel) .t-buy` (Individual Training only); Squad Training and the Support shop are back to 36 px on iPhone SE / iPhone 14 / Pixel 7, desktop unchanged.
@@ -81,6 +85,7 @@ Run with `npm test -- all` (27 rule suites, ~26 min headless; `BASE` = v0.8B bui
 
 ## Known issues
 
+- v0.8B.2 enemy Sniper buff vs Mission 13 (autopilot, which never or only crudely dodges lasers): level-12 "mod" squad with both caches won 4/10 vs 8/10 on v0.8B.1, with sniper-caused downs up 2-5×; trained ("well") squads unchanged (4/4). Mission 14 win rates unchanged within noise. Waves were left as approved; see the v0.8B.2 report for the open decision.
 - Mission 14 with an untrained level 12 squad wins about 60% with a gunner and loses without one (autopilot); trained / Elite squads win reliably. Levers: `RoadblockTargeting` and Ambush 4–5 `after` staggers in `src/missions.ts`.
 - Mission 14's map is 6,300 × 2,000 (~50 MB ground, kept as 2,048 px strips). Watch memory on older iPhones.
 - Mission lengths are measured with the autopilot only; human timings on phones are still needed.
@@ -96,9 +101,8 @@ Run with `npm test -- all` (27 rule suites, ~26 min headless; `BASE` = v0.8B bui
 **Approved playtest feedback:**
 - Mission 13's harder difficulty: approved, keep.
 - Mission 14's extended route and difficulty: approved, keep.
-- *Planned, not implemented:* hide Mission 14's route-progress indicator, keeping truck health and objective information.
-- *Planned, not implemented:* hide the player-facing damage / HP tuning sliders while keeping developer tuning (`src/tuning.ts`).
-- *Planned, not implemented:* enemy sniper rebalance: significantly more damage, slightly slower and more dodgeable projectiles (`CFG.enemySniper` `damage` / `projectileSpeed`, possibly `lockTime`). Final values need verification and testing.
+- Done in v0.8B.2: Mission 14 route-progress hidden; player-facing tuning sliders moved behind `?dev=1`; enemy Sniper 65 damage / 935 px/s (`lockTime` unchanged: the measured dodge window was already enough).
+- Open: human playtest of the sniper buff in Missions 13-14 on phones (autopilot shows Mission 13 harder for level-12 squads).
 
 **Investigations:**
 - None open from Phase 2.

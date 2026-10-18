@@ -72,8 +72,10 @@ function makeDefaults() {
       aggroRadius: 600, // guards (outpost defenders) wake up when a soldier is this close
     },
     // ---- v0.6.2 enemy kinds (same fields as the rifleman above; missing behaviour = rifleman) ----
+    // v0.8B.2 rebalance: a hit costs 65% of a fresh Infantry's 100 HP (was 30), the round flies 15% slower (was 1100
+    // px/s) so stepping off the locked laser works at every range; cadence, aim / lock times and accuracy unchanged.
     enemySniper: {
-      hp: 45, damage: 30, accuracy: 0.6, movePenalty: 10, fireRate: 0.28, range: 600, moveSpeed: 70, projectileSpeed: 1100,
+      hp: 45, damage: 65, accuracy: 0.6, movePenalty: 10, fireRate: 0.28, range: 600, moveSpeed: 70, projectileSpeed: 935,
       turnRate: 4, aimTolerance: 4, radius: 12, speedVariance: 0.1, reactionMin: 0.4, reactionMax: 0.8, advanceChance: 0, advanceMinDist: 0.9, aggroRadius: 700,
       aimTime: 1.6, // telegraph: the laser tracks the target for aimTime - lockTime, then holds still
       lockTime: 0.45, // s the line is frozen (bright) before the shot: step aside to dodge

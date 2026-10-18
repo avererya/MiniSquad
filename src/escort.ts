@@ -571,14 +571,20 @@ export class EscortObjective extends Objective {
       offroad: 'Truck waiting — get back to the road, it follows the squad along it',
     };
     const gun = v.gun.manned ? `gun: ${v.gun.gunner!.name}` : v.gun.gunner === null && !v.gun.lost ? 'no gunner' : 'gun silent';
-    return {
-      text: this.label, sub: `${st[v.state]} · ambushes ${this.ambushes.fired.length}/${this.ambushes.defs.length} · ${gun}`,
-      progress: v.s / v.total, chips: this.chips(), meter: assetMeter(v.unit, 'TRUCK'),
-    };
+    // v0.8B.2 suspense: no route-progress bar, no distance and no ambush count (x/5) while escorting; truck HP stays
+    return { text: this.label, sub: `${st[v.state]} · ${gun}`, chips: this.chips(), meter: assetMeter(v.unit, 'TRUCK') };
   }
+  /**
+   * v0.8B.2: one unnumbered AMBUSH chip per ambush that has landed and still has fighters left (enemies cleared
+   * shown as the fill). Ambushes still ahead never show, so the HUD doesn't tell how many remain.
+   */
   chips(): HudChip[] {
-    const A = this.ambushes;
-    return A.defs.map((_, i) => ({ label: `AMB ${i + 1}`, frac: A.fired.includes(i) ? (A.units[i].length ? 1 - A.left(i) / A.units[i].length : 0) : 0, state: !A.fired.includes(i) ? 'idle' : A.units[i].length && A.left(i) === 0 ? 'done' : 'live' }));
+    const A = this.ambushes, out: HudChip[] = [];
+    for (const i of A.fired) {
+      const n = A.units[i].length, left = A.left(i);
+      if (n && left > 0) out.push({ label: 'AMBUSH', frac: 1 - left / n, state: 'live' });
+    }
+    return out;
   }
   point(m: Mission): ObjPoint | null {
     const v = m.escort;
