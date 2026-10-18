@@ -27,3 +27,6 @@ Thumbs.db
 
 # wrangler local state
 .wrangler/
+
+# test runner output (npm test)
+test-results/

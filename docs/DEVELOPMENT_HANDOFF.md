@@ -1,6 +1,6 @@
 # MiniSquad development handoff (current state)
 
-> **Snapshot as of v0.8B.1, commit `601dbc2`, written 2026-10-18.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
+> **Snapshot as of v0.8B.1 (gameplay commit `601dbc2`), test infrastructure Phase 2, written 2026-10-18.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
 
 Replace this file's sections in place when a milestone ships; do not append release logs. Release history goes in [CHANGELOG.md](CHANGELOG.md), the previous append-only handoff is in [archive/DEVELOPMENT_HANDOFF_HISTORY.md](archive/DEVELOPMENT_HANDOFF_HISTORY.md).
 
@@ -63,16 +63,19 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 - The truck never moves through a friendly and nobody is teleported.
 - Settlement happens once per run id; a failed mission makes downed soldiers KIA; quitting mid-mission brings downed soldiers home (known, accepted).
 
-## Test status at v0.8B.1
+## Test status
 
-From the v0.8B.1 report (`/mnt/project-files/minisquad-reports/v0.8B.1-report.md` in the project files): `tsc` and build clean; `v081` 67/67, `v081-collision` 12/12, `v081-e2e`, `chapter3b` 98/98, `chapter3a` 91/91, `elite` 79/79, `elite-progression` 63/63, `support` 81/81, `accuracy` 31/31, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `campaign-rules`, `barracks`, `chapter2`, all five phone suites, `fps-default` and `fps-parity` pass.
+Run with `npm test -- all` (27 rule suites, ~26 min headless; `BASE` = v0.8B built automatically). Last full run (Phase 2, 2026-10-18, gameplay unchanged since `601dbc2`): **25 passed, 2 failed**, tsc and build clean. Per-suite checks: `logic` 86, `maps` 10, `accuracy` 31, `barracks` 41, `campaign-rules` 77, `recruitment` 76, `recruit-mobile` 51, `failure-recruit` 56, `failure-recruit-mobile` 36, `permadeath` 107, `permadeath-mobile` 63, `progression` 115, `training-rebalance` 42, `squad-training` 61, `elite` 79, `elite-progression` 63, `support` 81, `mobile` 117, `chapter2` 95, `chapter2-mobile` 36, `chapter3a` 91, `chapter3b` 98, `v081` 67, `v081-collision` 12, `v081-e2e` 15, `fps-default` 15, `fps-parity` 17.
 
-**Known failures (pre-existing, also fail on v0.8B):**
-- `squad-training` C6b (57/58): squad accuracy rank 0 with max individual training versus the v0.7D expectation.
-- `training-rebalance` E2 (41/42): "previously trained soldiers get the new benefits automatically".
-- `logic` "Quick Reflexes in combat" (85–86/86): intermittent speed-ratio check, flaky since v0.6.1.
+**Known failures:**
+- `squad-training` E1 on iPhone SE / iPhone 14 / Pixel 7 (3 checks): Squad Training buy buttons are 32 px tall, the check wants ≥ 36. Introduced by `601dbc2` (`.t-buy { min-height: 32px }` in the phone-landscape block of `src/style.css`, meant for the six-row Training tab, also hits the four-row Squad Training tab); passes on `9f2cb00`. A UI decision: scope the rule to the Training tab, or accept 32 px and update the check. Not changed in Phase 2 (no `src/` changes).
+- `chapter3a` D7 "allies join and fight" (intermittent, 2 of 10 runs): the three allies fire 0 shots in the 8 s window. Likely the invulnerable squad clears the wave before the allies acquire targets (unseeded spawns / advancers); unconfirmed, test left intact.
 
-**Other notes:** `chapter3b-e2e` is superseded (its v0.8B autopilot now loses the harder missions); use `v081-e2e`. `fps-parity BASE=<v0.8B>` differs on Missions 1–12 by design (one ability use per mission). Under heavy parallel load `elite` D5 and some `progression` double-tap checks have flaked.
+**Resolved in Phase 2 (test-only, assertions kept):**
+- `logic` "Quick Reflexes in combat": 5 of 20 old runs failed (ratio 1.008–1.098 vs a 1.03–1.07 window). Cause: the measured walk included the random wander wobble (`unit.wander = Math.random() * 100`, ±6 px on the goal) and bumps into randomly spawned Mission 3 enemies. Both soldiers now start at the same wobble phase with the lane kept clear: ratio 1.051 in every run. Class speeds (150 / 157.5) were always right; not a gameplay bug.
+- `squad-training` C6b and `training-rebalance` E2: release-delta checks that compared against `BASE` and so only passed with BASE = v0.7D / v0.7B, while the same suites' "identical to BASE" checks need the latest release (against v0.7B / v0.7C, D9, E5, C4, F1 fail by design). Their v0.7D / v0.7B side is now the recorded output of the real 4edf546 / 095bba2 builds, so they pass against the v0.8B base. Not gameplay bugs.
+
+**Other notes:** `accuracy` and `support` fail without `BASE` (the runner always provides it). `chapter3b-e2e` is superseded (run by name only); use `v081-e2e`. `fps-parity --base <v0.8B>` differs on Missions 1–12 by design (one ability use per mission). Under heavy parallel load `elite` D5 and some `progression` double-tap checks have flaked; the runner runs suites one at a time. `maps` covers only the Mission 1–10 maps.
 
 ## Known issues
 
@@ -96,11 +99,12 @@ From the v0.8B.1 report (`/mnt/project-files/minisquad-reports/v0.8B.1-report.md
 - *Planned, not implemented:* enemy sniper rebalance: significantly more damage, slightly slower and more dodgeable projectiles (`CFG.enemySniper` `damage` / `projectileSpeed`, possibly `lockTime`). Final values need verification and testing.
 
 **Investigations:**
-- The three pre-existing failures above (`squad-training` C6b, `training-rebalance` E2, `logic` Quick Reflexes): decide for each whether the test or the expectation is stale. Do not weaken assertions to pass.
+- `squad-training` E1 (Squad Training buttons 32 px on phones since `601dbc2`): decide between a CSS fix and an updated expectation.
+- `chapter3a` D7 intermittent ally-shots check: confirm the cause (seed the wave or measure across the whole defense).
 
 **Efficiency programme:**
 - Phase 1, navigation docs (this file, CLAUDE.md, ARCHITECTURE, SYSTEM_MAP, archives): done.
-- Phase 2, centralized test runner: not started, separate assignment.
+- Phase 2, centralized test runner (`npm test`, `tools/test.cjs`, `tools/test-suites.cjs`, `tools/lib.cjs`): done. Follow-ups: move more suites onto `tools/lib.cjs` (only `maps`, `barracks`, `recruit-mobile` so far; the rest still hard-code the `/opt/node22` Playwright path), widen `maps` to Missions 11–14, optional parallel jobs.
 - Phase 3, mission-mechanic architecture improvements (reduce `Game` hub coupling): not started, separate assignment.
 
 **Roadmap:** Missions 16–25 (Chapters 4–5); land mines provisionally planned for Chapter 4, enemy vehicles for Chapter 5. Missions 16+ would raise recruit starting levels (`RECRUIT_LEVELS`) and mission XP automatically.

@@ -44,22 +44,25 @@ The visible label is `versionLabel` in `package.json`; `vite.config.ts` injects 
 
 ## Tests
 
-No unit-test framework: `tools/*.cjs` are standalone headless-Chromium scripts (Playwright at `/opt/node22/lib/node_modules/playwright`) that drive `window.game` against a served build.
+No unit-test framework: `tools/*.cjs` are standalone headless-Chromium scripts (Playwright) that drive `window.game` against a served build. `npm test` wraps them:
 
 ```
-npm ci                                       # once per checkout
-npx tsc --noEmit && npm run build            # always
-npx vite preview --port 4173 &               # serve dist/ for the suites
-node tools/<suite>.cjs                       # URL=… OUT=dir BASE=<older build url>
+npm ci                                  # once per checkout
+npm test -- --list                      # groups and suites
+npm test                                # smoke group (~25 s)
+npm test -- progression                 # a group: combat movement recruitment progression permadeath missions persistence ui fps
+npm test -- logic squad-training        # named suites
+npm test -- all                         # full regression (27 rule suites, ~26 min)
+npm test -- logic --repeat 10 --no-build   # flake hunt; -v streams full output
 ```
 
-Pick suites from the "Which tests to run" table in [docs/SYSTEM_MAP.md](docs/SYSTEM_MAP.md#which-tests-to-run). `BASE=` comparisons need a second build served on another port (recipe there). Sims (`*-sim.cjs`, `campaign.cjs`, `balance.cjs`) and perf tools print reports, not PASS/FAIL. There is no central runner yet.
+The runner builds (`tsc` + vite), serves `dist/` on a free port, builds and serves the previous release as `BASE` for the suites that compare against it, runs suites one at a time and prints one line each (PASS / FAIL / ERROR, check count, time). Full output: `test-results/<run>/<suite>.log` and `summary.json`. Exit 0 all passed, 1 a check failed, 3 a suite crashed or timed out, 2 setup / usage error. Direct runs still work: `npx vite preview --port 4173 &` then `node tools/<suite>.cjs` (`URL=`, `BASE=`, `OUT=`). Pick suites from [docs/SYSTEM_MAP.md](docs/SYSTEM_MAP.md#which-tests-to-run); runner details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#tests-and-fixtures). Sims (`*-sim`, `campaign`, `balance`) and `perf` print reports, not PASS/FAIL (`npm test -- reports`, slow).
 
 ## Required validation for gameplay changes
 
-1. `npx tsc --noEmit` and `npm run build` clean.
-2. The feature's suites plus `logic` and `fps-parity`; saves / economy changes also run the save suites; UI changes run the phone suites.
-3. Compare against the known failures in the handoff (C6b, E2, Quick Reflexes). For any other failure, rerun it on the previous commit (`BASE=` or a worktree) before calling it pre-existing.
+1. `npx tsc --noEmit` and `npm run build` clean (`npm test` does both first).
+2. The feature's group plus `logic` and `fps-parity` (`npm test -- <group> logic fps-parity`); saves / economy changes also run `persistence`; UI changes run `ui`. Before a release, `npm test -- all`.
+3. Compare against the known failures in the handoff. For any other failure, rerun it on the previous commit (`--base <ref>`, `--url` of an older build, or a worktree) before calling it pre-existing.
 4. Update test expectations only when behaviour changed on purpose, and say so in the report. Never weaken or delete an assertion just to get green; never skip a test.
 5. `git diff --check` before committing.
 

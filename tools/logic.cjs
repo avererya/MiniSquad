@@ -399,10 +399,16 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
     check('Sharpshooter in combat: Ace shots within ±5.4°, Ranger uses ±6°', Math.max(...dAce) <= 5.4 + 1e-6 && Math.max(...dAce) > 4.8 && Math.max(...dRanger) > 5.4,
       `Ace max dev ${r1(Math.max(...dAce))}° (${dAce.length} shots), Ranger max dev ${r1(Math.max(...dRanger))}° (${dRanger.length} shots)`);
     // Quick Reflexes: Ranger alone moves 5% faster than Ace alone
+    // Phase 2 (test isolation): the measured walk used to include two random effects that are not about speed, so the
+    // ratio drifted 1.01-1.09 against a 1.03-1.07 window: the organic wander wobble (unit.wander starts at
+    // Math.random() * 100, +-6 px on the goal) and bumps into the Mission 3 enemies the walk triggers (random spawn
+    // points / advancers). Both soldiers now start at the same wobble phase and the lane is kept clear while measuring.
+    const walk = (sec) => { for (let i = 0; i < Math.round(sec * 60); i++) { clearEnemies(); g.update(1 / 60); } };
     const soloSpeed = (id) => {
       deployIds([id]); g.invuln = true; g.pickups = [];
       const st = { x: 300, y: 1350 }; g.anchor = { ...st }; g.soldiers[0].pos = { ...st };
-      g.input.move = () => ({ x: 1, y: 0 }); step(2); const x0 = g.soldiers[0].pos.x, a0 = g.anchor.x; step(5);
+      g.soldiers[0].wander = -g.soldiers[0].id * 1.7 / 0.7; // x wobble term sin(wander * 0.7 + id * 1.7) starts at 0 for both
+      g.input.move = () => ({ x: 1, y: 0 }); walk(2); const x0 = g.soldiers[0].pos.x, a0 = g.anchor.x; walk(5);
       g.input.move = Object.getPrototypeOf(g.input).move.bind(g.input);
       return [(g.soldiers[0].pos.x - x0) / 5, (g.anchor.x - a0) / 5, g.soldiers[0].stats.moveSpeed];
     };

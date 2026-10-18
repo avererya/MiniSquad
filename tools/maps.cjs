@@ -1,15 +1,15 @@
 // v0.4 map checks: every mission map is navigable (A* path from the squad start to every enemy
 // group point, reinforcement point, objective and extraction zone, none inside an obstacle),
 // plus a top-down overview image per map (OUT=dir) with zones, spawns and the start marked.
-const { chromium } = require('/opt/node22/lib/node_modules/playwright');
+// Phase 2: uses the shared helpers in tools/lib.cjs (check lines + result line for the runner).
+const { chromium, URL, OUT, createChecks, runSuite } = require('./lib.cjs');
 const fs = require('fs');
-const OUT = process.env.OUT || '';
-(async () => {
+runSuite(async () => {
+  const { check, finish } = createChecks({ pad: 16, detailMax: Infinity });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = []; page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(process.env.URL || 'http://localhost:4173/');
-  let fails = 0;
+  await page.goto(URL);
   for (const id of ['first-contact', 'heavy-support', 'field-medicine', 'red-canyon', 'bring-them-home', 'bridgehead', 'prison-break', 'convoy-crusher', 'blackout', 'iron-fist']) {
     const r = await page.evaluate((id) => {
       const g = window.game; g.selectMission(id, true); g.reset(['infantry', 'infantry', 'infantry']);
@@ -56,11 +56,10 @@ const OUT = process.env.OUT || '';
       g.toCampaign();
       return { n: pts.length, bad, png: c.toDataURL('image/png').split(',')[1], size: `${map.w}x${map.h}`, obstacles: map.obstacles.length };
     }, id);
-    const ok = r.bad.length === 0; if (!ok) fails++;
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${id.padEnd(16)} ${r.size}, ${r.obstacles} obstacles, ${r.n} points reachable from the start${ok ? '' : ': ' + r.bad.join('; ')}`);
+    const ok = r.bad.length === 0;
+    check(id, ok, `${r.size}, ${r.obstacles} obstacles, ${r.n} points reachable from the start${ok ? '' : ': ' + r.bad.join('; ')}`);
     if (OUT) fs.writeFileSync(`${OUT}/map-${id}.png`, Buffer.from(r.png, 'base64'));
   }
-  console.log('ERRORS', errors);
   await browser.close();
-  process.exit(fails || errors.length ? 1 : 0);
-})();
+  return finish(errors);
+});

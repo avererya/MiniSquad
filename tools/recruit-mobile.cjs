@@ -3,18 +3,16 @@
 // Dismiss, the dismissal confirmation, the rename dialog with the input focused and a
 // simulated on-screen keyboard (shorter viewport), the owned-only roster, and the Campaign
 // screen's New Campaign dialog. Devices: iPhone SE, iPhone 14, Pixel 7 (landscape + portrait).
-const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const OUT = process.env.OUT || '';
-const URL = process.env.URL || 'http://localhost:4173/';
+// Phase 2: uses the shared helpers in tools/lib.cjs (check lines + result line for the runner).
+const { chromium, URL, OUT, createChecks, runSuite } = require('./lib.cjs');
 const DEVICES = [
   { name: 'iphoneSE', land: [667, 375], dpr: 2 },
   { name: 'iphone14', land: [844, 390], dpr: 3 },
   { name: 'pixel7', land: [915, 412], dpr: 2.625 },
 ];
-(async () => {
+runSuite(async () => {
   const browser = await chromium.launch();
-  let fails = 0;
-  const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name.padEnd(74)} ${String(detail).slice(0, 200)}`); };
+  const { check, finish, state } = createChecks({ pad: 74, detailMax: 200 });
   for (const dev of DEVICES) {
     const [W, H] = dev.land;
     const ctx = await browser.newContext({ viewport: { width: W, height: H }, hasTouch: true, isMobile: true, deviceScaleFactor: dev.dpr });
@@ -118,7 +116,7 @@ const DEVICES = [
     check(`${dev.name}: no page errors`, errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
-  console.log(fails ? `\n${fails} FAILED` : '\nall recruit mobile checks passed');
+  console.log(state.failed ? `\n${state.failed} FAILED` : '\nall recruit mobile checks passed');
   await browser.close();
-  process.exit(fails ? 1 : 0);
-})();
+  return finish();
+});

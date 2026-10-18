@@ -250,11 +250,15 @@ function installHelpers() {
   // v0.7D.1 soft floors: standing eases into 1° (above it, never below), the moving penalty keeps shrinking (never 0, never above the v0.7D frozen value)
   const floorOk = ['infantry', 'heavy', 'medic', 'sniper'].every((c) => fl[c].every(([a, m]) => a > 1 && m > 0) && fl[c][10][0] < 1.03 && fl[c][10][1] <= fl[c + 'Base'][1] / fl[c + 'Base'][0] + 1e-4 && fl[c].every(([a, m], i) => i === 0 || (a < fl[c][i - 1][0] - 1e-9 && m < fl[c][i - 1][1] - 1e-9)));
   check('C6 [21] soft spread floor (v0.7D.1): max individual + squad accuracy -> standing just above 1° (never below), moving penalty > 0; EVERY squad rank narrows both cones', floorOk, ['infantry', 'heavy', 'medic', 'sniper'].map((c) => `${c} ${fl[c].map(([a]) => a).join('/')} moving+${fl[c][10][1]}`).join(' | '));
-  if (BASE) {
+  {
     // v0.7D.1: Infantry / Heavy / Medic at squad rank 0 are identical to v0.7D (their standing cone is far above the soft zone); the Sniper
     // (2.5° base, I10/S0 = 1.13° in v0.7D) is inside the soft zone and eases to 1.24° / 8.44° (documented, no hit loss)
-    const same3 = ['infantry', 'heavy', 'medic'].every((c) => near(floor.base[c][0][0], fl[c][0][0], 1e-6) && near(floor.base[c][0][1], fl[c][0][1], 1e-6));
-    check('C6b squad accuracy rank 0 with max individual training: Infantry / Heavy / Medic identical to v0.7D; Sniper 1.125°/8.325° -> 1.236°/8.436° (soft zone)', same3 && near(floor.base.sniper[0][0], 1.125, 2e-3) && near(fl.sniper[0][0], 1.24, 0.01) && near(fl.sniper[0][0] + fl.sniper[0][1], 8.44, 0.02), JSON.stringify({ base: floor.base.sniper[0], now: fl.sniper[0] }));
+    // Phase 2: the v0.7D side is the recorded output of this exact setup on the v0.7D build (4edf546), [standing, moving penalty] at
+    // squad rank 0. It used to come from BASE, so the check only passed with BASE=<v0.7D> and failed against any newer base (the
+    // v0.8B.1 "C6b" failure); every other BASE check in this suite needs the latest release as BASE.
+    const V07D = { infantry: [5.4, 8.1], heavy: [6.75, 11.25], medic: [4.5, 8.1], sniper: [1.125, 7.2] };
+    const same3 = ['infantry', 'heavy', 'medic'].every((c) => near(V07D[c][0], fl[c][0][0], 1e-6) && near(V07D[c][1], fl[c][0][1], 1e-6));
+    check('C6b squad accuracy rank 0 with max individual training: Infantry / Heavy / Medic identical to v0.7D; Sniper 1.125°/8.325° -> 1.236°/8.436° (soft zone)', same3 && near(fl.sniper[0][0], 1.24, 0.01) && near(fl.sniper[0][0] + fl.sniper[0][1], 8.44, 0.02), JSON.stringify({ v07d: V07D.sniper, now: fl.sniper[0], same3 }));
   }
   // [22] fire-rate / projectile stability: fully upgraded Heavy Gunners
   await fresh();

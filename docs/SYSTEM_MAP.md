@@ -2,7 +2,7 @@
 
 Feature → files → tests, for finding where to work without reading the repository. All paths are relative to the repo root and were checked against v0.8B.1 (`601dbc2`). For how the pieces fit together see [ARCHITECTURE.md](ARCHITECTURE.md); for the rules and numbers players see, the [README](../README.md).
 
-How to use it: find the row, open the main file, then `grep -n` the named symbol instead of reading the whole file. Every number lives in `src/config.ts` (`CFG.<group>`) unless a row says otherwise. Tests are `tools/<name>.cjs` run against a served build (see [Which tests to run](#which-tests-to-run)).
+How to use it: find the row, open the main file, then `grep -n` the named symbol instead of reading the whole file. Every number lives in `src/config.ts` (`CFG.<group>`) unless a row says otherwise. Tests are `tools/<name>.cjs`, run with `npm test -- <name>` (see [Which tests to run](#which-tests-to-run)).
 
 ## Combat and projectiles
 
@@ -143,19 +143,47 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | Tests | `fps-parity` (30/60 FPS identical; `BASE=` compares builds), `fps-default`, `perf` (headless profile), `shot` / `visual` / `fight` (screenshots) |
 | Watch | Headless numbers are not phone measurements. Mission 14's 6,300×2,000 ground is kept as 2,048 px strips. Never render hundreds of frames in one synchronous `page.evaluate`. |
 
+## Test infrastructure
+
+| | |
+|---|---|
+| Main | `tools/test.cjs` (`npm test`: args, build, serve, baselines, run, classify, summary), `tools/test-suites.cjs` (suite registry, groups, `PREV` baseline) |
+| Supporting | `tools/lib.cjs` (`createChecks`, `runSuite`, `serveDir`, `loadPlaywright`, result line), `.gitignore` (`test-results/`), `package.json` `test` script |
+| Tests | the runner itself: `npm test -- --help`, `--list`, an unknown name (exit 2), `maps barracks recruit-mobile` (migrated suites) |
+| Watch | Register every new `tools/*.cjs` in `test-suites.cjs`. Never count a suite as PASS without checks; keep suites runnable standalone (`node tools/<suite>.cjs`). |
+
 ## Which tests to run
 
-Start a build server once: `npm run build && npx vite preview --port 4173 &`, then `node tools/<name>.cjs` (`URL=` to target another server, `OUT=dir` for screenshots). To compare with an older build: `git worktree add /tmp/base <commit> && (cd /tmp/base && npm ci && npm run build)`, `npx vite preview --port 4174 --outDir /tmp/base/dist`, then `BASE=http://localhost:4174/ node tools/<name>.cjs` (suites that support it: `accuracy`, `elite-progression`, `fps-parity`, `squad-training`, `support`, `training-rebalance`, `v081`, `v081-collision`).
+`npm test -- <group|suite>...` builds, serves and runs them (see [CLAUDE.md](../CLAUDE.md#tests)); `npm test -- --list` prints this table from `tools/test-suites.cjs`. Suite names in the rows above are runnable directly (`npm test -- chapter2`).
+
+| Group | Suites | Use for |
+|---|---|---|
+| `smoke` (bare `npm test`) | `logic`, `maps`, `campaign-rules`, `barracks` | quick check while working |
+| `combat` | `logic`, `accuracy`, `elite`, `support` | weapons, damage, classes, Tactical Support |
+| `movement` | `logic`, `v081-collision`, `mobile` | squad movement, collisions, joystick |
+| `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks` | Recruitment Office, roster |
+| `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
+| `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
+| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e` | missions, campaign, escort, defense |
+| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e` | saves, fixtures, economy |
+| `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile` | HUD, menus, phone layouts |
+| `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
+| `all` | every rule suite (27) | full regression before a release |
+| `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
+| `screens` | `shot`, `visual`, `fight`, `classes`, `lineup`, `touch`, `play` | screenshots judged by eye |
 
 | Change | Run at least |
 |---|---|
-| Any gameplay change | `npx tsc --noEmit`, `npm run build`, the feature's suites above, `logic`, `fps-parity` |
-| Combat numbers / classes | + `accuracy`, `elite`, `training-rebalance`, `squad-training`, the chapter suite that uses the class |
-| Missions / campaign | + `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081` |
-| Saves / economy | + `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite-progression`, `support`, `v081-e2e` |
-| HUD / menus / layout | + the five `*-mobile` suites and `mobile` |
+| Any gameplay change | `npm test -- <feature group> logic fps-parity` |
+| Combat numbers / classes | `combat progression` + the chapter suite that uses the class |
+| Missions / campaign | `missions` |
+| Saves / economy | `persistence` |
+| HUD / menus / layout | `ui` |
+| Release | `all` |
 
-Known failures at v0.8B.1 that also fail on v0.8B: `squad-training` C6b, `training-rebalance` E2, and the intermittent `logic` "Quick Reflexes in combat" speed-ratio check. Under heavy parallel load `elite` D5 and some `progression` double-tap checks have also flaked.
+**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
+
+Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#test-status). `maps` only covers the Mission 1–10 maps; `chapter3b-e2e` is superseded (run by name only).
 
 **Coverage gaps** (no direct suite): `src/audio.ts`; rendering correctness (screenshots only, judged by eye); Mission 5/7 captive escort beyond the `chapter2` / `logic` checks; the truck back-up rescue (`pinBackAfter` / `pinBackMax`, never triggered in sims); real-device performance.
 

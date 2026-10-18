@@ -287,8 +287,12 @@ function installHelpers() {
     const oldSave = JSON.parse(old.raw);
     const rankSame = oldSave.roster.every((s) => JSON.stringify(s.training) === JSON.stringify(now.training[s.id])) && JSON.stringify(oldSave.account.squadTraining) === JSON.stringify(now.squad);
     check('E1 v0.7B save loads as-is (v9, no migration): every training rank, squad rank and Credit kept', now.st === 'loaded' && now.notes === 0 && rankSame && now.credits === 12345 && JSON.parse(now.raw).version === 9, `${now.st}, notes ${now.notes}, credits ${now.credits}`);
-    const better = ['havoc', 'ace'].every((id) => now.stats[id].hp > old.stats[id].hp && now.stats[id].damage > old.stats[id].damage && now.stats[id].accuracy < old.stats[id].accuracy && now.stats[id].moveSpeed >= old.stats[id].moveSpeed && now.stats[id].fireRate >= old.stats[id].fireRate);
-    check('E2 previously trained soldiers get the new benefits automatically (every stat ≥ v0.7B, no repurchase)', better, `havoc dmg ${r2(old.stats.havoc.damage)} -> ${r2(now.stats.havoc.damage)}, hp ${r2(old.stats.havoc.hp)} -> ${r2(now.stats.havoc.hp)}; ace (Elite 9) hp ${r2(old.stats.ace.hp)} -> ${r2(now.stats.ace.hp)}, cone ${r2(old.stats.ace.accuracy)} -> ${r2(now.stats.ace.accuracy)}`);
+    // Phase 2: the v0.7B side is the recorded output of mk() on the v0.7B build (095bba2). It used to be old.stats from BASE, so E2 only
+    // passed with BASE=<v0.7B> and failed against any newer base (same stats on both sides: the v0.8B.1 "E2" failure), while D9 / E5
+    // need the latest release as BASE.
+    const v07b = { havoc: { hp: 228, damage: 8.835, fireRate: 9.59175, accuracy: 12.15, moveSpeed: 124.8 }, ace: { hp: 196.689655, damage: 14.631379, fireRate: 3.48, accuracy: 4.830952, moveSpeed: 180 } };
+    const better = ['havoc', 'ace'].every((id) => now.stats[id].hp > v07b[id].hp && now.stats[id].damage > v07b[id].damage && now.stats[id].accuracy < v07b[id].accuracy && now.stats[id].moveSpeed >= v07b[id].moveSpeed && now.stats[id].fireRate >= v07b[id].fireRate);
+    check('E2 previously trained soldiers get the new benefits automatically (every stat ≥ v0.7B, no repurchase)', better, `havoc dmg ${r2(v07b.havoc.damage)} -> ${r2(now.stats.havoc.damage)}, hp ${r2(v07b.havoc.hp)} -> ${r2(now.stats.havoc.hp)}; ace (Elite 9) hp ${r2(v07b.ace.hp)} -> ${r2(now.stats.ace.hp)}, cone ${r2(v07b.ace.accuracy)} -> ${r2(now.stats.ace.accuracy)}`);
     // only squad training applies to Ranger: rank 0 individual
     const same0 = await (async () => {
       await fresh(basePage, BASE); await fresh(page, URL);

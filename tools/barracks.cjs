@@ -3,13 +3,11 @@
 // squad cap, persistence, invalid-save recovery, dev tools not touching the saved squad, the
 // two-tap debug "unlock all", no trait stacking across reloads, Results -> Retry / Campaign /
 // Barracks, dev reset with confirmation.
-const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const URL = process.env.URL || 'http://localhost:4173/';
-const OUT = process.env.OUT || '';
-(async () => {
+// Phase 2: uses the shared helpers in tools/lib.cjs (check lines + result line for the runner).
+const { chromium, URL, OUT, createChecks, runSuite } = require('./lib.cjs');
+runSuite(async () => {
   const browser = await chromium.launch();
-  let fails = 0;
-  const check = (name, ok, detail = '') => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name.padEnd(74)} ${detail}`); };
+  const { check, finish, state } = createChecks({ pad: 74, detailMax: Infinity });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   const errors = [];
@@ -210,7 +208,7 @@ const OUT = process.env.OUT || '';
   check('New Campaign: old save backed up once under minisquad.save.pre-reset (not overwritten by the 2nd tap)', rs.bk && rs.bk.save === beforeReset && rs.bk.at > 0, rs.bk ? rs.bk.save.length + ' chars' : 'none');
 
   check('no page errors', errors.length === 0, errors.join(' | '));
-  console.log(fails ? `\n${fails} FAILED` : '\nall barracks checks passed');
+  console.log(state.failed ? `\n${state.failed} FAILED` : '\nall barracks checks passed');
   await browser.close();
-  process.exit(fails ? 1 : 0);
-})();
+  return finish();
+});
