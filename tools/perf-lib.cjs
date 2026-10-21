@@ -6,7 +6,10 @@ function setupMission({ missionId, level }) {
   const g = window.game, a = window.__account(), P = window.__progression;
   // v0.8C 'last-stand@voss': Mission 15 straight to General Voss (both gates open, objectives 1-4 done, only the
   // arena's guard left standing), so a short run covers the boss fight, Rally, the radioed calls and the allies
-  const voss = missionId === 'last-stand@voss';
+  // v0.8C.1 'last-stand@story': the same, but the pre-boss cinematic plays out on its own (auto-advance) first;
+  // '@voss' skips it, so its run still covers the fight as in v0.8C.
+  const story = missionId === 'last-stand@story';
+  const voss = missionId === 'last-stand@voss' || story;
   if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
   window.__debugUnlockAll();
   const PREF = ['doc', 'tank', 'ace', 'ranger', 'havoc', 'patch'];
@@ -24,6 +27,7 @@ function setupMission({ missionId, level }) {
     g.soldiers.forEach((s, i) => { s.pos = { x: 3400 + (i % 3) * 30, y: 1170 + Math.floor(i / 3) * 30 }; s.vel = { x: 0, y: 0 }; });
     g.anchor = { x: 3430, y: 1200 }; g.cam = { x: 3430, y: 1200 };
     m.primaries[4].activate(m, g); m.phase = m.primaries[4].phase;
+    if (!story && g.story) g.story.skip(g);
     g.invuln = true; // the squad stands for the whole run, so it reaches phases 2 / 3, the calls and the allies
   }
   void a;

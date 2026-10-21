@@ -1,6 +1,6 @@
 # MiniSquad development handoff (current state)
 
-> **Snapshot as of v0.8C General's Last Stand & Demolitions Expert (on top of v0.8B.2 `3199529`), written 2026-10-18.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
+> **Snapshot as of v0.8C.1 Story & Cinematic Presentation (on top of v0.8C `1acc610`), written 2026-10-21.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
 
 Replace this file's sections in place when a milestone ships; do not append release logs. Release history goes in [CHANGELOG.md](CHANGELOG.md), the previous append-only handoff is in [archive/DEVELOPMENT_HANDOFF_HISTORY.md](archive/DEVELOPMENT_HANDOFF_HISTORY.md).
 
@@ -10,9 +10,9 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 
 | | |
 |---|---|
-| Release | v0.8C, General's Last Stand & Demolitions Expert (Chapter 3 finale, on v0.8B.2 Gameplay Polish) |
-| `package.json` | `version` 0.8.4, `versionLabel` "0.8C" |
-| Commit | the v0.8C commit on `main` (see `git log`; v0.8B.2 was `3199529`) |
+| Release | v0.8C.1, Story & Cinematic Presentation (Mission 15 story, reusable dialogue system; on v0.8C General's Last Stand) |
+| `package.json` | `version` 0.8.5, `versionLabel` "0.8C.1" |
+| Commit | the v0.8C.1 commit on `main` (see `git log`; v0.8C was `1acc610`) |
 | Save | v9 (`SAVE_VERSION` in `src/save.ts`), key `minisquad.save` |
 | Deploy | push to `main` → Cloudflare Workers serves `./dist` (`wrangler.jsonc`) |
 
@@ -45,6 +45,7 @@ Squad caps: M1–2 → 2, M3–5 → 3, M6 → 4, M7–12 → 5, M13+ → 6. Ros
 - Friendly assets (command center, turrets, escort truck), mounted gun, resistance allies, gunner selection.
 - Settings (⚙) for players: frame cap, performance overlay, version. Developer tuning (CFG sliders, debug actions, config JSON) only with `?dev=1`, memory only, never saved (v0.8B.2).
 - Mission 14 hides route progress, distance and the ambush count during the escort (v0.8B.2).
+- Story (v0.8C.1, `src/story.ts`, `src/storyview.ts`): data-driven scenes at mission cues (`MissionScript.story`, `Mission.cue`, once per attempt). Mission 15: a blocking pre-boss cinematic when Voss enters (simulation suspended via `Game.modal = 'story'`), non-blocking radio lines at his 70% / 35% phases, a blocking victory cinematic once the defenders are cleared, then the normal extraction. Tap / Enter / Space next, SKIP / Esc skip, auto-advance in simulation time (~10 s each). OVERWATCH is Command's callsign; lines never name a recruit. Text-only comic panels; `portrait` fields take artwork later (`public/story/`).
 - Mobile: landscape layout on a scaled 1280×720 stage, safe areas, rotation re-layout, ≥ 44 CSS px touch areas, 30 FPS default on phones with identical simulation at 60.
 
 ## Save compatibility requirements
@@ -65,13 +66,16 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 - Enemy budgets are finite (M13 ≤ 79, M14 ≤ 81, M15 = 48 + Voss); waves, ambushes and Voss's phases fire once.
 - Mission 15: Voss's range ≤ every soldier's; no medkit past the inner gate; no checkpoint (a reload restarts the mission); the gates cannot be bypassed.
 - The truck never moves through a friendly and nobody is teleported.
+- Story cinematics never change gameplay: anything added to `Game.update` before the `modal` return must be presentation only; auto-advance runs on the fixed step; no save fields for cues.
 - Settlement happens once per run id; a failed mission makes downed soldiers KIA; quitting mid-mission brings downed soldiers home (known, accepted).
 
 ## Test status
 
-Run with `npm test -- all` (29 rule suites, ~29 min headless; `BASE` = v0.8B built automatically, v0.8B.1 for `v082`, v0.8B.2 for `v08c`). Last full run (v0.8C, 2026-10-18): 27 of 29 passed on the first pass; `chapter3a` C1 / C2 (briefing count 14, no briefing names Voss) and `v082` C2 (version label hard-coded as 0.8B.2) were test expectations, fixed and rerun green. tsc and build clean. New: `v08c` 81 checks; `fps-parity` 21 (adds the Mission 15 Voss fight, `last-stand@voss`). Other per-suite counts unchanged from v0.8B.2.
+Run with `npm test -- all` (30 rule suites, ~29 min headless; `BASE` = v0.8B built automatically, v0.8B.1 for `v082`, v0.8B.2 for `v08c`). v0.8C.1 run (2026-10-21, groups `logic missions ui persistence fps` = 27 suites incl. the new `story`, 56 checks): 24 passed on the first pass. `v08c` B10 needed the pre-boss cinematic skipped (test change, below) and is green 2/2. `v082` A12 (enemy Sniper behind cover, 8 s) failed once and passed 10 reruns on this build and 8 on the v0.8C build (`--url`; there only C2 fails, by design, since it reads the label from the current `package.json`); `elite` D23 (Perfect Aim charge while moving) failed once in the 28-minute run and passed on rerun; neither touches Mission 15 or the story code. tsc and build clean. Not run this release: `combat`, `progression`, `permadeath`, `recruitment` groups outside those listed (no code there changed); last full `all` was v0.8C. Earlier (v0.8C, 2026-10-18): 27 of 29 passed on the first pass; `chapter3a` C1 / C2 and `v082` C2 were test expectations, fixed and rerun green.
 
-**Known failures:** none. Flaky: `chapter3a` A5 (alerted enemies walk to the last known position) failed once in 6 runs here and 1 in 12 on the v0.8B.2 build; pre-existing, not touched.
+**Known failures:** none. Flaky: `chapter3a` A5 (alerted enemies walk to the last known position) failed once in 6 runs in v0.8C and 1 in 12 on the v0.8B.2 build; v0.8C.1: 11 of 11 runs passed (not reproduced, not investigated further). `v082` A12 and `elite` D23 each failed once in a long combined run (see above), not reproduced.
+
+**v0.8C.1 test changes (behaviour changed on purpose, assertions kept):** the pre-boss cinematic now suspends the mission when Voss enters, so the Voss setup helpers in `v08c` (`T.voss`, C20, the D chain) and `tools/perf-lib.cjs` (`last-stand@voss`) call `game.story.skip(game)` right after starting his objective; `fps-parity` adds `last-stand@story` (the cinematic plays out, then the fight) and hashes the story state. New `story` suite (BASE v0.8C).
 
 **v0.8C test changes (behaviour changed on purpose, assertions kept):** Mission 15 is playable and unlocked by Mission 14, so `campaign-rules` (Chapter 3 tab: 5 missions, 15 stars), `chapter2` / `chapter3b` (M15 playable, chain ends `last-stand`), `v081-e2e` 12 / 13 and the legacy `chapter3b-e2e` now expect `last-stand` instead of the `mission-15` placeholder; `barracks` (unlock-all opens 15 missions); `recruitment` (Demolitions 1,500 / 350 added to the price list); `elite` A1 (12 specializations); `support` A2 (three six-soldier missions); `chapter3a` C1 (15 briefings) and C2 (no briefing before Mission 15 names Voss); `v082` C2 reads the label from `package.json`. BASE comparisons in `training-rebalance` E5 and `squad-training` C4 skip only the new v0.8C groups (`demolitions`, `general`, `rocket`, `inferno`, the Demolitions Elite 30 extra); `v08c` G1 compares every older CFG group and Missions 1-14 with v0.8B.2.
 
@@ -101,6 +105,7 @@ Run with `npm test -- all` (29 rule suites, ~29 min headless; `BASE` = v0.8B bui
 ## Outstanding work and approved priorities
 
 **Next gameplay milestones (not started):**
+0. Comic artwork for the Mission 15 cinematics (v0.8C.1 left `portrait` slots; files go in `public/story/`). Human check of the cinematic pacing on phones.
 1. **Human playtest of Mission 15 on phones** (length, Voss difficulty for level 12-18 squads, Rally readability, Inferno use). See the known issue above for the levers.
 2. Chapter 4 (Missions 16+): not started; needs new `CHAPTERS` / `CAMPAIGN` rows. Done in v0.8C: Mission 15 General's Last Stand and the Demolitions Expert.
 

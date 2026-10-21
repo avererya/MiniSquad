@@ -995,3 +995,75 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   /* compact buy buttons on the six-row Individual Training panel only; Squad Training and the Support shop (.q-panel) keep 36 px */
   .t-panel:not(.q-panel) .t-buy { min-height: 32px; padding: 0.2em 0.4em; }
 }
+
+/* ================= v0.8C.1 story: cinematic panels (#cine) and the radio strip (#radio) =================
+   Stage px (the 1280x720 stage is scaled: an iPhone SE draws it at ~0.52). Text-only by default: comic panel
+   borders, a hard offset shadow, halftone dots and a speaker plate; Command gets radio scanlines, the enemy a
+   darker red treatment. Artwork (optional) sits in .cine-art when the line names a portrait (.has-art).
+   Transform / opacity animations only. */
+#cine { position: absolute; inset: 0; z-index: 6; pointer-events: auto; cursor: pointer; touch-action: none; background: radial-gradient(ellipse at 50% 40%, rgba(0,0,0,0.25), rgba(0,0,0,0.62)); }
+#cine.cine-enemy { background: radial-gradient(ellipse at 50% 40%, rgba(40,0,0,0.3), rgba(20,0,0,0.72)); }
+#cine .cine-bar { position: absolute; left: 0; right: 0; height: max(64px, calc(var(--t44, 44px) + 18px)); background: #000; }
+#cine .cine-top { top: 0; } #cine .cine-bot { bottom: 0; height: 40px; }
+#cine .cine-skip { position: absolute; z-index: 2; top: 9px; right: 18px; min-width: 150px; height: max(48px, var(--t44, 0px)); padding: 0 20px; border-radius: 10px; border: 3px solid rgba(255,255,255,0.55); background: rgba(30,30,30,0.92); color: #fff; font-size: 22px; font-weight: 900; letter-spacing: 1.5px; cursor: pointer; touch-action: none; }
+#cine .cine-skip:hover { border-color: #fff; }
+#cine .cine-panel { position: absolute; bottom: 70px; left: 70px; right: 190px; display: flex; gap: 20px; align-items: stretch; padding: 18px 26px 22px; border: 4px solid #7dd3ff; background: linear-gradient(160deg, #10232f, #081118 70%); box-shadow: 10px 10px 0 rgba(0,0,0,0.85); overflow: hidden; }
+#cine.cine-enemy .cine-panel { left: 190px; right: 70px; flex-direction: row-reverse; border-color: #ff4a30; background: linear-gradient(200deg, #2c0b08, #110403 70%); }
+/* halftone corner + radio scanlines (Command) */
+#cine .cine-panel::before { content: ''; position: absolute; right: -10px; top: -10px; width: 260px; height: 180px; background: radial-gradient(rgba(125,211,255,0.22) 1.6px, transparent 1.9px) 0 0 / 11px 11px; transform: rotate(8deg); pointer-events: none; -webkit-mask-image: linear-gradient(225deg, #000, transparent 70%); mask-image: linear-gradient(225deg, #000, transparent 70%); }
+#cine.cine-enemy .cine-panel::before { right: auto; left: -10px; transform: rotate(-8deg); background-image: radial-gradient(rgba(255,74,48,0.26) 1.6px, transparent 1.9px); -webkit-mask-image: linear-gradient(135deg, #000, transparent 70%); mask-image: linear-gradient(135deg, #000, transparent 70%); }
+#cine.cine-command .cine-panel::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 2px, transparent 2px 5px); pointer-events: none; }
+#cine .cine-panel.in { animation: cine-in-l 0.26s cubic-bezier(.2,.9,.3,1.2); }
+#cine.cine-enemy .cine-panel.in { animation: cine-in-r 0.26s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes cine-in-l { from { transform: translateX(-60px) skewX(-6deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cine-in-r { from { transform: translateX(60px) skewX(6deg); opacity: 0; } to { transform: none; opacity: 1; } }
+#cine .cine-art { display: none; flex: 0 0 210px; height: 210px; border: 4px solid currentColor; color: #7dd3ff; background: #000; transform: rotate(-2deg); box-shadow: 6px 6px 0 rgba(0,0,0,0.8); overflow: hidden; }
+#cine.cine-enemy .cine-art { color: #ff4a30; transform: rotate(2deg); }
+#cine .cine-panel.has-art .cine-art { display: block; }
+#cine .cine-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#cine .cine-body { position: relative; z-index: 1; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+#cine .cine-who { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+#cine .cine-icon { display: inline-flex; width: 38px; height: 38px; color: #7dd3ff; }
+#cine .cine-icon svg, #radio .rd-icon svg { width: 100%; height: 100%; }
+#cine.cine-enemy .cine-icon { color: #ff5a40; }
+#cine .cine-name { display: inline-block; padding: 3px 18px 4px; background: #7dd3ff; color: #061018; font-size: 30px; font-weight: 900; letter-spacing: 3px; transform: skewX(-12deg); box-shadow: 4px 4px 0 rgba(0,0,0,0.8); }
+#cine.cine-enemy .cine-name { background: #c0281a; color: #fff; text-shadow: 0 2px 0 #000; }
+#cine .cine-role { font-size: 15px; font-weight: 900; letter-spacing: 2px; color: #8fb6c8; }
+#cine.cine-enemy .cine-role { color: #e08a7a; }
+#cine.cine-command .cine-role::before { content: '● '; color: #7dff8a; animation: cine-live 1.2s steps(2) infinite; }
+@keyframes cine-live { 50% { opacity: 0.25; } }
+#cine .cine-text { font-size: 33px; font-weight: 800; line-height: 1.3; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,0.9); min-height: 2.6em; }
+#cine.cine-enemy .cine-text { color: #ffe9e4; font-style: italic; }
+#cine .cine-foot { display: flex; justify-content: space-between; align-items: center; font-size: 16px; font-weight: 900; letter-spacing: 2px; color: #9fb6c8; }
+#cine.cine-enemy .cine-foot { color: #d09080; }
+#cine .cine-pips { display: flex; gap: 8px; }
+#cine .cine-pips i { width: 26px; height: 8px; background: rgba(255,255,255,0.22); transform: skewX(-20deg); }
+#cine .cine-pips i.done { background: rgba(255,255,255,0.6); }
+#cine .cine-pips i.on { background: #ffd84a; }
+#cine .cine-next { animation: cine-blink 1.1s ease-in-out infinite alternate; }
+@keyframes cine-blink { from { opacity: 1; } to { opacity: 0.45; } }
+#cine .cine-timer { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(255,255,255,0.08); }
+#cine .cine-timer i { display: block; height: 100%; width: 0; background: #7dd3ff; }
+#cine.cine-enemy .cine-timer i { background: #ff4a30; }
+
+/* radio strip: left side, below the canvas banners (y <= 315) and clear of the objective / boss bar, the
+   support buttons and the soldier panels; never takes a touch (the joystick works through it) */
+#radio { position: absolute; left: 12px; top: 330px; max-width: 470px; display: flex; align-items: center; gap: 12px; padding: 9px 16px 10px 12px; background: rgba(40,6,4,0.74); border-left: 6px solid #ff4a30; box-shadow: 5px 5px 0 rgba(0,0,0,0.6); pointer-events: none; }
+#radio.rd-command { background: rgba(6,24,34,0.74); border-left-color: #7dd3ff; }
+#radio .rd-icon { flex: 0 0 32px; height: 32px; color: #ff5a40; }
+#radio.rd-command .rd-icon { color: #7dd3ff; }
+#radio .rd-body { display: flex; flex-direction: column; min-width: 0; }
+#radio .rd-name { font-size: 15px; font-weight: 900; letter-spacing: 2px; color: #ff7a5a; }
+#radio.rd-command .rd-name { color: #7dd3ff; }
+#radio .rd-text { font-size: 24px; font-weight: 800; font-style: italic; line-height: 1.22; color: #fff; text-shadow: 0 2px 0 #000; }
+#radio.in { animation: rd-in 0.22s ease-out; }
+@keyframes rd-in { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* phones: the stage is drawn at ~0.52-0.71x, so the small labels grow to stay >= 11 CSS px */
+@media (orientation: landscape) and (max-height: 430px) {
+  #cine .cine-role { font-size: 22px; }
+  #cine .cine-foot { font-size: 22px; }
+  #cine .cine-text { font-size: 36px; }
+  #radio .rd-name { font-size: 22px; }
+  #radio .rd-text { font-size: 28px; }
+  #radio { max-width: 520px; }
+}

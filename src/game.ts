@@ -28,6 +28,7 @@ import { eliteAuras, eliteTick, incomingMul, reviveHpFrac } from './elite';
 import { Support, supportRoom } from './support';
 import { raiseAlert, type AlertLog } from './awareness';
 import { siegeAnswer } from './defense';
+import { StoryDirector } from './story';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -84,7 +85,9 @@ export class Game implements InputHandler {
    * v0.8B a mission prompt that suspends the simulation until answered (the Mission 14 gunner selection). Like
    * pause, nothing moves, fires or bleeds out while it is open.
    */
-  modal: 'gunner' | null = null;
+  modal: 'gunner' | 'story' | null = null;
+  /** v0.8C.1 story cinematics and radio lines (story.ts); a cinematic sets modal = 'story'. */
+  story = new StoryDirector();
   enemies: Unit[] = [];
   projectiles: Projectile[] = [];
   grenades: Grenade[] = [];
@@ -252,6 +255,7 @@ export class Game implements InputHandler {
   private leaveMission() {
     this.abandonRunning(); // v0.6: leaving a running roster mission (dev panel) settles its journaled deaths now
     this.phase = 'start';
+    this.story.end(this);
     this.paused = false; this.targeting = null; this.modal = null;
     this.soldiers = []; this.npcs = []; this.allies = []; this.assets = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.ui.rebuildPanels();
@@ -280,6 +284,7 @@ export class Game implements InputHandler {
     this.lastReward = null; this.lastStars = null; this.escortRescues = 0; this.bossDamage = new Map();
     this.soldiers = []; this.npcs = []; this.allies = []; this.assets = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.modal = null;
+    this.story.reset(); // v0.8C.1: per-attempt cues live on the new Mission (Mission.cue)
     this.alertLog = { broadcasts: 0, received: 0 };
     this.scorches = []; this.fx = new Effects(); this.banners = [];
     this.eliteCount = 0; this.eliteCommanders = 0;
@@ -305,6 +310,7 @@ export class Game implements InputHandler {
   win() { if (this.phase !== 'playing') return; this.phase = 'won'; this.end(true); }
   fail() { if (this.phase !== 'playing') return; this.phase = 'failed'; this.end(false); }
   private end(won: boolean) {
+    this.story.end(this);
     this.targeting = null; this.modal = null;
     this.support.cancelAirstrike(); this.support.cancelNuke(); // an open prompt closes; a launched nuke stays spent
     if (!won) this.downedFallOnFailure();
@@ -733,6 +739,12 @@ export class Game implements InputHandler {
       else if (code === 'KeyC') this.toCampaign();
       return;
     }
+    // v0.8C.1 a story cinematic: Enter / Space next panel, Esc skips the rest (nothing else reaches the mission)
+    if (this.modal === 'story') {
+      if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') this.story.advance(this);
+      else if (code === 'Escape') this.story.skip(this);
+      return;
+    }
     if (this.modal) return; // v0.8B the gunner selection takes taps / clicks only (an explicit CONFIRM)
     if (code === 'Escape') { this.targeting = null; this.support.cancelAirstrike(); this.support.cancelNuke(); return; }
     if (code === 'KeyP') { this.paused = !this.paused; return; }
@@ -767,10 +779,12 @@ export class Game implements InputHandler {
     nextStatEpoch();
     this.clock += dt;
     this.fx.update(dt);
-    for (const b of this.banners) b.life -= dt;
+    // v0.8C.1: banners wait under a story cinematic (they are still news when it closes)
+    if (this.modal !== 'story') for (const b of this.banners) b.life -= dt;
     this.banners = this.banners.filter((b) => b.life > 0);
     if (this.notice && (this.notice.life -= dt) <= 0) this.notice = null;
     this.support.tickFx(dt);
+    if (this.phase === 'playing' && !this.paused) this.story.update(this, dt); // fixed step: same at 30 / 60 FPS
     if (this.phase !== 'playing' || this.paused || this.modal) return;
     this.time += dt;
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);

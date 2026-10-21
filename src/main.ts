@@ -21,6 +21,7 @@ import { CAMPAIGN, namedRecruit } from './campaign';
 import * as elite from './elite';
 import * as support from './support';
 import * as targeting from './targeting';
+import * as story from './story';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -213,7 +214,7 @@ Object.assign(window as any, { __CFG: CFG, __applyConfigJSON: applyConfigJSON, _
 // roster / save hooks for tools/ (read-only helpers + the same reset the tuning panel uses)
 Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStats, __parseSave: parseSave, __SAVE_KEY: SAVE_KEY, __resetRosterSave: resetRosterSave, __loadStatus: loaded,
   __progression: progression, __economy: economy, __account: getAccount, __persist: persist, __campaign: campaign, __debugUnlockAll: debugUnlockAll, __recruitment: recruitment, __Roster: Roster,
-  __casualties: casualties, __support: support, __targeting: targeting, __supportItems: support.SUPPORT_ITEMS, __clock: clock, __SimClock: SimClock, __hud: hud, __elite: elite, __debugPromotionReady: debugPromotionReady,
+  __casualties: casualties, __support: support, __targeting: targeting, __supportItems: support.SUPPORT_ITEMS, __clock: clock, __SimClock: SimClock, __hud: hud, __elite: elite, __debugPromotionReady: debugPromotionReady, __story: story,
   // v0.6.3 perf tools (tools/perf.cjs, tools/fps-parity.cjs): one render + HUD pass, and the loop stats
   __render: () => { ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0); if (game.phase !== 'start') render(ctx, game); hud.update(); },
   __perf: { stats: pstats, settings: perfSettings } });

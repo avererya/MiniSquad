@@ -55,6 +55,7 @@ function installHelpers() {
       m.current = 4; this.calm();
       this.pinAt(at); g.cam = { ...at };
       m.primaries[4].activate(m, g); m.phase = m.primaries[4].phase;
+      if (g.story) g.story.skip(g); // v0.8C.1: past the pre-boss cinematic (tools/story.cjs tests it)
       g.banners = [];
       return { g, m, f: m.general, V: m.general.unit };
     },
@@ -232,6 +233,7 @@ runSuite(async () => {
     g.damage(relays[1], 1e5, g.soldiers[0]); T.step(0.1);
     out.cur3 = m.currentObjective && m.currentObjective.id; out.opened2 = m.gatesOpened;
     out.banner2 = g.banners.map((b) => b.text).join(' | ');
+    if (g.story) g.story.skip(g); // v0.8C.1: Voss's objective started, so the pre-boss cinematic opened; past it
     out.p4 = pathTo(arena); out.innerX3 = push(2900, 1200);
     g.invuln = false;
     return out;
@@ -369,6 +371,7 @@ runSuite(async () => {
   await ev(() => {
     const g = T.g; T.deploy(['ace', 'ranger', 'tank', 'doc', 'havoc', 'patch'], 'last-stand');
     const m = g.mission; m.openGate(g, 't'); m.openGate(g, 't'); for (let i = 0; i < 4; i++) m.primaries[i].state = 'complete'; m.current = 4; m.primaries[4].activate(m, g);
+    if (g.story) g.story.skip(g); // v0.8C.1
     g.damage(m.general.unit, 2000, g.soldiers[0]); T.step(0.1);
     return m.general.phase;
   });
@@ -404,6 +407,7 @@ runSuite(async () => {
     kill((e) => e.structure === 'relay');
     kill((e) => e.tag === 'arena-front');
     out.chain = m.currentObjective && m.currentObjective.id;
+    if (g.story) g.story.skip(g); // v0.8C.1: past the pre-boss cinematic (the victory one plays out inside T.extract)
     const V = m.general.unit;
     g.damage(V, V.maxHp * 0.8, g.soldiers[0]); T.step(7);
     out.opt1 = m.optionals[0].status(m);

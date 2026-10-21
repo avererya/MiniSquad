@@ -14,6 +14,7 @@ import { TRAITS } from './traits';
 import { adrenalineActive } from './elite';
 import { getAccount } from './progression';
 import { NUKE_ELITES } from './support';
+import { StoryView } from './storyview';
 
 /** v0.7C: the nuke LAUNCH button arms this long after the confirmation opens (a double tap on NUKE can't launch). */
 const NUKE_ARM_MS = 500;
@@ -89,6 +90,8 @@ export class Hud implements GameUI {
   private gsOpen = false;
   /** Selected row: a unit id, 0 = No Gunner, -1 = nothing yet. */
   private gsPick = -1;
+  /** v0.8C.1 story cinematic + radio strip. */
+  private story: StoryView;
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
@@ -103,6 +106,7 @@ export class Hud implements GameUI {
       <div id="xwarn" role="alert" style="display:none"><div class="xw-title"></div><div class="xw-body"></div><div class="xw-btns"><button data-x="stay">STAY AND RESCUE</button><button data-x="go">CONFIRM EXTRACTION</button></div></div>
       <div id="gunsel" role="dialog" aria-label="Choose the truck gunner" style="display:none"><div class="gs-title">CHOOSE THE TRUCK GUNNER</div><div class="gs-sub">Fixed machine gun: same stats for anyone. The gunner leaves the formation and can't use their own weapon or ability. Locked for the escort.</div><div class="gs-list"></div><div class="gs-btns"><button data-g="go" disabled>CONFIRM</button></div></div>
       <div id="overlay"></div>`;
+    this.story = new StoryView(root, game);
     this.objText = root.querySelector('.obj-text')!;
     this.objSub = root.querySelector('.obj-sub')!;
     this.objBar = root.querySelector('.obj-bar')!;
@@ -248,6 +252,7 @@ export class Hud implements GameUI {
 
     this.updateWarning();
     this.updateGunnerSelect();
+    this.story.update();
 
     const compact = this.panels.length >= 4;
     const crit = CFG.revive.criticalTime;

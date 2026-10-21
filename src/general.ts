@@ -111,6 +111,7 @@ export class GeneralFight {
       this.hold = CFG.general.callPause; // he radios instead of shooting
       sfx('alarm');
     }
+    game.mission.cue(game, p === 2 ? 'bossPhase2' : 'bossPhase3'); // v0.8C.1 his radio line (non-blocking, queued)
     if (p === 2) game.banner('VOSS CALLS FOR REINFORCEMENTS!', '#ffb347', 3);
     if (p === 3) {
       game.banner('VOSS IS DESPERATE: LAST RESERVES INBOUND!', '#ff6040', 3);

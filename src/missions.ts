@@ -527,6 +527,8 @@ const LAST_STAND: MissionScript = {
   lockdown: { worlds: [FORTRESS_LOCKED, FORTRESS_INNER_LOCKED], gates: [FORTRESS_MAIN_GATE, FORTRESS_INNER_GATE] },
   // the fortress has fallen: the helicopter lands on Voss's helipad (no extraction wave: the 48-enemy budget is final)
   extraction: { zone: FORTRESS_EXTRACTION, countdown: () => 10 },
+  // v0.8C.1 story (story.ts): OVERWATCH and Voss before the fight, Voss's phase lines, the victory after the clear-up
+  story: { bossIntro: 'm15-intro', bossPhase2: 'm15-phase2', bossPhase3: 'm15-phase3', victory: 'm15-victory' },
 };
 
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(

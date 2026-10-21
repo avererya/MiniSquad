@@ -22,6 +22,7 @@ import { EXTRACT_REARM_S, EXTRACT_WARN_ARM_S } from './casualties';
 import { EscortVehicle } from './escort';
 import { assetMeter } from './defense';
 import { drawGates } from './render';
+import type { StoryCue } from './story';
 
 /** Anything that can extract the squad (timer + helicopter now; trucks/boats later). */
 export interface Extraction {
@@ -157,6 +158,8 @@ export interface MissionScript {
    * removes (Mission.openGate, called by an objective, in order, each once).
    */
   lockdown?: { worlds: MapDef[]; gates: Obstacle[] };
+  /** v0.8C.1 story scenes (story.ts SCENES ids) played at mission cues, each at most once per attempt (Mission.cue). */
+  story?: Partial<Record<StoryCue, string>>;
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -189,6 +192,8 @@ export class Mission {
   /** v0.8A: Mission 12 searchlights + artillery (null elsewhere). */
   artillery: Artillery | null = null;
   failReason = '';
+  /** v0.8C.1 story cues already played in this attempt (a new Mission = a new attempt, so Retry replays them). */
+  storyCues = new Set<StoryCue>();
   private ended = false;
   /**
    * v0.6 EXTRACTION ATTEMPT (abandonment warning). An attempt starts when extraction is ready
@@ -355,6 +360,17 @@ export class Mission {
   /** v0.8C a lockdown gate is still shut. */
   gateClosed(i: number) { return !!this.script.lockdown && i >= this.gatesOpened && i < this.script.lockdown.gates.length; }
 
+  /**
+   * v0.8C.1 play the script's story scene for this cue, at most once per attempt. A cinematic suspends the
+   * simulation from the next step (Game.modal 'story'); nothing else about the mission changes.
+   */
+  cue(game: Game, key: StoryCue): boolean {
+    const id = this.script.story?.[key];
+    if (!id || this.ended || this.storyCues.has(key)) return false;
+    this.storyCues.add(key);
+    return game.story.play(game, id);
+  }
+
   /** v0.8C Mission 15: General Voss enters (once). */
   startGeneral(game: Game) {
     const spec = this.script.general;
@@ -363,6 +379,7 @@ export class Mission {
     u.label = 'GENERAL VOSS'; u.tag = 'voss'; u.guard = false;
     this.general = new GeneralFight(u, spec.arena, spec.gates, spec.allyEntry);
     game.banner('GENERAL VOSS', '#ff7a5a', 3);
+    this.cue(game, 'bossIntro'); // v0.8C.1: before he can act (his 1.5 s entrance starts once it closes)
   }
 
   /** v0.6.2 Mission 10: the Iron Warden enters. */
@@ -389,7 +406,10 @@ export class Mission {
     }
     if (o !== this.currentObjective) return;
     this.current++;
-    if (this.primariesDone) game.banner('OBJECTIVE COMPLETE — PROCEED TO EXTRACTION', '#7dff8a', 3.5);
+    if (this.primariesDone) {
+      game.banner('OBJECTIVE COMPLETE — PROCEED TO EXTRACTION', '#7dff8a', 3.5);
+      this.cue(game, 'victory'); // v0.8C.1: every primary done (Mission 15: Voss down AND the defenders cleared), before extraction
+    }
     else game.banner(`OBJECTIVE COMPLETE — ${this.currentObjective!.label.toUpperCase()}`, '#7dff8a', 3);
     this.activateCurrent(game);
   }

@@ -63,6 +63,7 @@ The simulation **always** steps 1/60 s. The frame cap only changes how many step
 | Save / load | `src/save.ts` (`SAVE_VERSION = 9`, `parseSave`, `mergeSoldier`, `clean*` repairs, backups) | Types in `src/progression.ts` and `src/classes.ts` (`SoldierIdentity`, `ProgressionRecord`). Key `minisquad.save`. |
 | Rendering | `src/render.ts` (`render(ctx, game)`: ground strips, units, class and Elite looks, effects, mission drawings) | Mission modules also draw through `Objective.draw` and module `draw*` methods. |
 | HUD, menus, tuning | `src/hud.ts` (in-mission DOM HUD), `src/menus.ts` (Campaign, Barracks, Results, briefings, decisions, Memorial), `src/tuning.ts` (⚙ Settings: performance + version; sliders, debug and config JSON only with `?dev=1`), `src/style.css` | HUD writes are skipped when values are unchanged. Layout is a scaled 1280×720 stage. |
+| Story and cinematics (v0.8C.1) | `src/story.ts` (`StoryDirector`, `SCENES`, `SPEAKERS`), `src/storyview.ts` (`#cine` panels, `#radio` strip) | Cues from `Mission.cue` (`MissionScript.story`); a cinematic is `Game.modal = 'story'`. Data-driven; artwork optional. |
 | Config | `src/config.ts` (`CFG`, `DEFAULTS`, `applyConfigJSON`) | Every gameplay number lives here; the `?dev=1` tuning panel edits it live (memory only, never saved). |
 | Performance | `src/perf.ts`, `src/perfoverlay.ts`, `src/clock.ts` | `?fps=30|60`, `?perf=1`; settings stored in `minisquad.dev.perf`, never in the save. |
 | Audio | `src/audio.ts` | Generated sounds, suspended while hidden. |
@@ -72,6 +73,7 @@ The simulation **always** steps 1/60 s. The frame cap only changes how many step
 1. Campaign screen → briefing → DEPLOY (`src/menus.ts`) → `Game.deploySelected` → `Game.startMission`: new `Mission(scriptFor(id))`, `World` for the map, soldiers spawned (charges reset), `Support` counted from deployed Elites, new run id, then `mission.start(game)`.
 2. `mission.start` spawns groups, the captive / allies / protected asset / escort truck / artillery from `MissionScript` fields and activates the first primary objective.
 3. Each step `Mission.update` runs triggers, the current primary, optionals and extraction. `Game` and objectives report through `Mission.emit(game, MissionEvent)` (`enemyKilled`, `soldierDowned`, `assetDestroyed`…).
+   v0.8C.1: a mission can play story scenes at cues (`MissionScript.story`, `Mission.cue`, `src/story.ts`). A cinematic sets `Game.modal = 'story'`, which suspends the step exactly like the Mission 14 gunner prompt; radio lines run alongside combat.
 4. When the primaries are done, the helicopter extraction (with the left-behind warning and extraction pressure) ends the mission. `Game.end` → stars (`computeStars`) → `Game.settle` → `economy.settleMission` (XP, Credits, unlocks, KIA, casualty batch, saved once per run id) → Results.
 
 Objectives are small state machines (`pending → active → complete | failed`) with hooks `onStart`, `update`, `afterComplete`, `onEvent`, `finalize`, `hud`, `status`, `point` and `draw`. They never pay rewards.
@@ -92,6 +94,8 @@ Objectives are small state machines (`pending → active → complete | failed`)
 7. Tests: extend the chapter suite, run the campaign, save and phone suites (see [SYSTEM_MAP.md](SYSTEM_MAP.md#which-tests-to-run)).
 
 **Add a soldier class** (the Demolitions Expert, v0.8C, is the most recent full example: `grep -n -i demolitions src/*.ts`): `SoldierClassId` + `CLASSES` + `ABILITY_FACTORIES` in `src/classes.ts`; a `CFG.<class>` stats group and ability numbers in `src/config.ts`; an ability extending `BaseAbility` in `src/abilities.ts`; `RECRUIT_CLASSES` (price, refund, unlock flag) and class traits in `src/recruitment.ts` / `src/traits.ts`; unlock via `unlocks.classes` and `CLASS_UNLOCK_TEXT` in `src/campaign.ts`; two specializations in `ELITE_SPECS` / `CLASS_BRANCHES` and level extras in `src/elite.ts`; drawing in `src/render.ts`; sliders in `src/tuning.ts`; save guard for unearned classes in `src/save.ts`; recruit price and dismissal refund in `RECRUIT_CLASSES` (resurrection prices in `src/casualties.ts` are per soldier, not per class); class-specific text in `src/menus.ts` (stat labels, the dismissal refund help line).
+
+**Add a story scene** (v0.8C.1, Mission 15 is the example): lines in `SCENES` (`src/story.ts`; `mode` 'cinematic' blocks, 'radio' does not), cue → scene ids in the mission's `MissionScript.story`, and for a new moment a `StoryCue` plus one `mission.cue(game, key)` call (once per attempt). Comic art later: files in `public/story/`, `portrait` on a line or a speaker; the view falls back to text when an image is missing.
 
 **Add a per-soldier purchase**: optional field on `SoldierIdentity` (`src/classes.ts`), table in `src/progression.ts`, atomic purchase in `src/economy.ts`, clamp it in `mergeSoldier` (`src/save.ts`), UI in `src/menus.ts`. Follow `abilityCapacity` (v0.8B.1).
 

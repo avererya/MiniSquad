@@ -15,7 +15,7 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 
 ## Status
 
-Current release: **v0.8C, General's Last Stand & Demolitions Expert** (package `0.8.4`, save v9). Missions 1-15 are playable across three chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class. Chapter 4 (Missions 16+) is not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.8C.1, Story & Cinematic Presentation** (package `0.8.5`, save v9), on v0.8C General's Last Stand & Demolitions Expert. Missions 1-15 are playable across three chapters; Mission 15 closes Chapter 3 with a short OVERWATCH / General Voss story and unlocks the Demolitions Expert class. Chapter 4 (Missions 16+) is not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -44,6 +44,7 @@ npm run build:single   # one self-contained file: dist-single/index.html
 | Settings (frame cap, performance overlay, version) | ` (backtick) or ⚙ | ⚙ |
 | Developer tuning (live CFG sliders, debug actions, config JSON) | open the game with `?dev=1`, then Settings | same |
 | Mute / Pause | M / P | 🔊 / ⏸ |
+| Story cinematic (v0.8C.1) | click, Enter or Space next panel · Esc or SKIP skips the rest | tap next panel · SKIP |
 
 Reset all progress: Campaign screen → **NEW CAMPAIGN…** (confirmation screen; the old save is backed up to `minisquad.save.pre-reset`), or (with `?dev=1`) Settings → Debug → "Reset save…" (tap twice). "Unlock all missions + soldiers (modifies save)…" (tap twice) unlocks everything in your save for testing. The dev Mission picker starts any mission; a mission started while still locked pays no rewards and unlocks nothing.
 
@@ -444,7 +445,19 @@ Chapter 3 continues with Missions 13 and 14. Mission 15 shows as "coming soon" (
 
 **Saves**: still **v9**, no migration. A save that cleared Mission 12 opens Mission 13 on load without a repair note; Missions 13 / 14 are never unlocked without the clear before them. Every fixture in `tools/fixtures` loads with no notes.
 
-## General's Last Stand & Demolitions Expert (v0.8C)
+## Story & Cinematic Presentation (v0.8C.1)
+
+A presentation update: Mission 15 gets a short story, and a small dialogue system (`src/story.ts`, `src/storyview.ts`) can carry future chapter finales. No gameplay, balance, reward or save change (save v9; every number and Missions 1-15 identical to v0.8C).
+
+**Voices.** **OVERWATCH** is Command's callsign: calm, concise, on a secure channel (radio mark, blue panel with scanlines). **General Voss** speaks on an intercepted channel (red, darker panel). Scripted lines never name one of your soldiers: recruits can die, be dismissed or replaced, so Command addresses "Squad".
+
+**Mission 15** (every attempt, first clear and replays alike; a Retry or reload starts over):
+- **Before the fight**: when the arena's front guard falls and Voss enters, a three-panel cinematic plays (OVERWATCH, Voss, OVERWATCH). The mission is suspended while it is open: nothing moves, fires, takes damage or bleeds out, and the mission clock stops. Voss's 1.5 s entrance starts only when it closes.
+- **Phase lines**: at 70% HP Voss radios "Reinforcements! Defend your general!", at 35% "I will not surrender this fortress!". They show for 3-4 s in a small strip on the left (below the banners, clear of the boss bar and the controls, never takes a touch) and **never pause combat**. One big hit past both thresholds plays both, one after the other.
+- **Victory**: only when the remaining defenders are cleared (not when Voss falls), OVERWATCH reports the fortress secured in three panels; then the normal helicopter extraction (it never completes the mission itself). Stars, rewards, the optional and the Demolitions Expert unlock are unchanged.
+
+**Controls.** Tap / click anywhere (or Enter / Space) for the next panel, **SKIP** (top right, at least 44 × 44 CSS px) or Esc closes it at once. Left alone, each panel advances after a reading interval (1.5 s + 0.17 s per word, 2.8-5 s): about 10 s per cinematic. A tap in the first 0.25 s of a panel is ignored, so a tap meant for the game cannot skip a line. Pausing (P, page hidden) freezes the auto-advance.
+
 
 The Chapter 3 finale and a new class. Save v9 unchanged; Missions 1-14 and every existing class, enemy and price are exactly v0.8B.2's.
 

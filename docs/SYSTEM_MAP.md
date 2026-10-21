@@ -100,6 +100,15 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | Tests | `v08c` A–D, F–H (campaign, fortress, gates, Voss, unlock, saves, Missions 1–14 vs v0.8B.2, phones), `fps-parity` (`last-stand@voss`), `v08c-sim` (report: SCEN, RUNS, LEVEL, TWEAK) |
 | Watch | Gates are 'gate' obstacles in lockdown worlds (`game.swapWorld`), so they block movement, not fire. Phases only go forward and fire once; a reload restarts the mission (no checkpoint). Voss's range must stay at or below every soldier's (`v08c` C2). No medkit past the inner gate. |
 
+## Story and cinematics (v0.8C.1)
+
+| | |
+|---|---|
+| Main | `src/story.ts` (`SPEAKERS`, `SCENES`, `StoryDirector`: blocking `cinematic` panels and non-blocking `radio` lines, `readTime`, `TAP_GUARD`), `src/storyview.ts` (`StoryView`: `#cine` comic panel, SKIP, pips, timer bar, optional artwork; `#radio` strip) |
+| Supporting | `src/mission.ts` (`MissionScript.story` cue → scene map, `Mission.cue` once per attempt via `storyCues`, `bossIntro` in `startGeneral`, `victory` when the last primary completes in `objectiveDone`), `src/general.ts` (`enterPhase` cues `bossPhase2` / `bossPhase3`), `src/game.ts` (`story`, `modal: 'story'`, ticked in `update` while playing and not paused, keys in `onKey`, reset in `startMission` / `leaveMission` / `end`; banners do not age under a cinematic), `src/hud.ts` (calls `StoryView.update`), `src/missions.ts` (`LAST_STAND.story`), `src/style.css` ("v0.8C.1 story"), `src/main.ts` (`window.__story`) |
+| Tests | `story` (A–G: data, pre-boss blocking / auto / tap / keys / skip / pause, phase lines and the double-threshold queue, victory waits for the clear-up, extraction, rewards vs skip and vs v0.8C, restart / reload, saves, phones), `fps-parity` (`last-stand@story`), `v08c` (skips the pre-boss cinematic in its Voss helpers) |
+| Watch | A cinematic suspends the simulation like the gunner prompt: anything new in `Game.update` before the `modal` return must not change gameplay. Auto-advance uses simulation time (30 / 60 FPS identical); only the tap guard is real time (input only). Lines never name a recruit. No save fields: cues are per `Mission` (per attempt). Tests that start Voss directly must call `game.story.skip(game)` to get past the intro. |
+
 ## Escort / truck mechanics (Mission 14)
 
 | | |
@@ -175,11 +184,11 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks`, `v08c` | Recruitment Office, roster |
 | `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
 | `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
-| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c` | missions, campaign, escort, defense |
+| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story` | missions, campaign, escort, defense |
 | `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c` | saves, fixtures, economy |
-| `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile` | HUD, menus, phone layouts |
+| `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile`, `story` | HUD, menus, phone layouts |
 | `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
-| `all` | every rule suite (29) | full regression before a release |
+| `all` | every rule suite (30) | full regression before a release |
 | `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
 | `screens` | `shot`, `visual`, `fight`, `classes`, `lineup`, `touch`, `play` | screenshots judged by eye |
 
@@ -192,7 +201,7 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | HUD / menus / layout | `ui` |
 | Release | `all` |
 
-**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
+**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical); `story` against v0.8C (`V08C`, `1acc610`: every CFG group, Missions 1–15 and the Mission 15 rewards identical). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
 
 Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#test-status). `maps` only covers the Mission 1–10 maps; `chapter3b-e2e` is superseded (run by name only).
 
@@ -205,4 +214,5 @@ Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#t
 - **New soldier class**: classes table above and the recipe in [ARCHITECTURE.md](ARCHITECTURE.md#recipes).
 - **Ability Capacity tests**: `v081`, `v081-e2e`, `training-rebalance` F, `mobile`, `progression`.
 - **Save migrations**: `parseSave` in `src/save.ts` (version flags `v5`…`v8`, `clean*`, backups).
+- **A story scene for a new finale** (or comic artwork): add lines to `SCENES` in `src/story.ts` (speaker from `SPEAKERS`, collective address only), map cues in the mission's `MissionScript.story`; a new kind of moment needs a `StoryCue` and one `mission.cue(game, …)` call where it happens. Artwork: put the file in `public/story/` and set `portrait` on the line or the speaker; nothing else changes. Test in `story`.
 - **Adding Mission 15**: campaign row (`mission-15` in `src/campaign.ts`), map, script, objectives (likely `src/defense.ts` patterns for a last stand), `expected` ids in `parseSave`, chapter suite, `campaign-rules` (chapter star totals), `maps`, `fps-parity`.
