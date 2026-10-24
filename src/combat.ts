@@ -356,14 +356,7 @@ export function rocketImpact(game: Game, p: Projectile, direct: Unit | null, at:
   const o = p.owner, C = CFG.rocket, R = rocketRadius(o);
   const opts: DamageOpts = { grenade: true, at, ...(p.from ? { origin: p.from } : {}) };
   if (direct && direct.active) game.damage(direct, p.damage * rocketMul(o, direct), o, opts);
-  for (const u of game.enemies) {
-    if (u === direct || !u.targetable) continue;
-    const d = dist(at, u.pos);
-    if (d > R + u.radius) continue;
-    if (!game.world.clear(at, u.pos)) continue; // cover between the blast and the enemy
-    const f = Math.min(1, d / R);
-    game.damage(u, p.damage * (1 - f * (1 - C.edgeFrac)) * rocketMul(o, u), o, opts);
-  }
+  blastDamage(game, at, { radius: R, damage: p.damage, edgeFrac: C.edgeFrac, victims: game.enemies, source: o, opts, cover: true, skip: direct, mul: (u) => rocketMul(o, u) });
   if (game.isOnScreen(at, 60)) {
     game.fx.ring(at, R, 'rgba(255,190,90,0.95)', 0.3, 5);
     game.fx.burst(at, 14, '#ffb347', 260, 0.35, 4);
@@ -386,15 +379,45 @@ export function rocketMul(o: Unit | undefined, u: Unit): number {
   return m;
 }
 
+/**
+ * Phase 3 SHARED BLAST DAMAGE (no effects: the caller draws its own). Every unit of `victims` that can be targeted and
+ * whose body reaches into `radius` takes `damage` at the centre falling off linearly to `edgeFrac` x that at the edge,
+ * x `mul(u)` when given, through Game.damage (so Elite caps, support floors, armor rules, awareness, kills and mission
+ * events all apply). `cover`: a wall between the centre and the unit shelters it (rockets; grenades ignore walls).
+ * `skip`: a unit already hit directly. Victims are visited in list order and `mul` is applied after the falloff, so
+ * grenades and rockets compute exactly what they did before Phase 3. Pass both teams' lists for a hazard that hurts
+ * everyone (a Chapter 4 mine: `[...game.enemies, ...game.enemyVictims()]`, no source, `opts: { grenade: true, at }`).
+ * Returns how many units it hit.
+ */
+export interface BlastSpec {
+  radius: number;
+  damage: number;
+  edgeFrac: number;
+  victims: readonly Unit[];
+  source?: Unit;
+  opts?: DamageOpts;
+  cover?: boolean;
+  skip?: Unit | null;
+  mul?: (u: Unit) => number;
+}
+export function blastDamage(game: Game, at: Vec, b: BlastSpec): number {
+  let hit = 0;
+  for (const u of b.victims) {
+    if (u === b.skip || !u.targetable) continue;
+    const d = dist(at, u.pos);
+    if (d > b.radius + u.radius) continue;
+    if (b.cover && !game.world.clear(at, u.pos)) continue; // cover between the blast and the unit
+    const f = Math.min(1, d / b.radius);
+    const amount = b.damage * (1 - f * (1 - b.edgeFrac));
+    game.damage(u, b.mul ? amount * b.mul(u) : amount, b.source, b.opts ?? {});
+    hit++;
+  }
+  return hit;
+}
+
 /** Area damage to one team only (grenades never hurt friendlies). */
 export function explode(game: Game, pos: Vec, radius: number, damage: number, edgeFrac: number, victims: Unit[], source?: Unit, grenade = false, origin?: Vec) {
-  for (const u of victims) {
-    if (!u.active) continue;
-    const d = dist(pos, u.pos);
-    if (d > radius + u.radius) continue;
-    const f = Math.min(1, d / radius);
-    game.damage(u, damage * (1 - f * (1 - edgeFrac)), source, origin ? { grenade, origin } : { grenade });
-  }
+  blastDamage(game, pos, { radius, damage, edgeFrac, victims, source, opts: origin ? { grenade, origin } : { grenade } });
   game.fx.ring(pos, radius, 'rgba(255,220,120,0.9)', 0.35, 6);
   game.fx.burst(pos, 26, '#ffb347', 380, 0.45, 5);
   game.fx.burst(pos, 14, '#6b6b6b', 160, 0.8, 7);

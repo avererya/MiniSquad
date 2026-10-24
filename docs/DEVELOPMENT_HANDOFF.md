@@ -1,6 +1,6 @@
 # MiniSquad development handoff (current state)
 
-> **Snapshot as of v0.8C.1 Story & Cinematic Presentation (on top of v0.8C `1acc610`), written 2026-10-21.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
+> **Snapshot as of Phase 3 Architecture Optimization (internal, on v0.8C.1 `924dc13`), written 2026-10-24.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
 
 Replace this file's sections in place when a milestone ships; do not append release logs. Release history goes in [CHANGELOG.md](CHANGELOG.md), the previous append-only handoff is in [archive/DEVELOPMENT_HANDOFF_HISTORY.md](archive/DEVELOPMENT_HANDOFF_HISTORY.md).
 
@@ -14,7 +14,7 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 | `package.json` | `version` 0.8.5, `versionLabel` "0.8C.1" |
 | Commit | the v0.8C.1 commit on `main` (see `git log`; v0.8C was `1acc610`) |
 | Save | v9 (`SAVE_VERSION` in `src/save.ts`), key `minisquad.save` |
-| Deploy | push to `main` → Cloudflare Workers serves `./dist` (`wrangler.jsonc`) |
+| Deploy | push to `main` → Cloudflare Workers serves `./dist` (`wrangler.jsonc`); production https://minisquad.ryanaverett1996.workers.dev (check Settings for the label and commit) |
 
 ## What is in the game
 
@@ -71,6 +71,8 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 
 ## Test status
 
+**Phase 3 run (2026-10-24, on v0.8C.1 + Phase 3):** `npm test -- all` (31 rule suites incl. the new `arch`, 28 min): 29 passed on the first pass. `support` C5 / C7 (airstrike falloff "exact values": an enemy drifted 15.5-22 px off the strike centre before impact, so the `dist[0] < 15` precondition fails; values themselves match) failed 1 of 7 reruns here and **3 of 8 on the untouched v0.8C.1 build** (`--url`), so pre-existing timing flakiness, not Phase 3 (`src/support.ts` untouched). `chapter2` "captive-centred formation" (inside-ring 0.72 vs 0.75 with 2 soldiers) failed once and passed 7 reruns here and 8 of 8 on v0.8C.1; the captive code is untouched and `fps-parity` shows Missions 5 / 7 bit-identical, so it is unseeded randomness (flaky, watch). Equivalence proof: `fps-parity --base 924dc13` with `MISSIONS` = all 15 missions plus `last-stand@voss` / `@story`: 90 / 90 (30 / 60 / 90 / 120 Hz and every mission's 60 s simulation identical to v0.8C.1); `arch` D1 / D2 (CFG, Missions 1-15 data, a seeded grenade + rocket firefight) identical; a deliberate 1% blast change makes `arch` fail (B1, B3, B4, D2), so the suite has teeth.
+
 Run with `npm test -- all` (30 rule suites, ~29 min headless; `BASE` = v0.8B built automatically, v0.8B.1 for `v082`, v0.8B.2 for `v08c`). v0.8C.1 run (2026-10-21, groups `logic missions ui persistence fps` = 27 suites incl. the new `story`, 56 checks): 24 passed on the first pass. `v08c` B10 needed the pre-boss cinematic skipped (test change, below) and is green 2/2. `v082` A12 (enemy Sniper behind cover, 8 s) failed once and passed 10 reruns on this build and 8 on the v0.8C build (`--url`; there only C2 fails, by design, since it reads the label from the current `package.json`); `elite` D23 (Perfect Aim charge while moving) failed once in the 28-minute run and passed on rerun; neither touches Mission 15 or the story code. tsc and build clean. Not run this release: `combat`, `progression`, `permadeath`, `recruitment` groups outside those listed (no code there changed); last full `all` was v0.8C. Earlier (v0.8C, 2026-10-18): 27 of 29 passed on the first pass; `chapter3a` C1 / C2 and `v082` C2 were test expectations, fixed and rerun green.
 
 **Known failures:** none. Flaky: `chapter3a` A5 (alerted enemies walk to the last known position) failed once in 6 runs in v0.8C and 1 in 12 on the v0.8B.2 build; v0.8C.1: 11 of 11 runs passed (not reproduced, not investigated further). `v082` A12 and `elite` D23 each failed once in a long combined run (see above), not reproduced.
@@ -121,6 +123,34 @@ Run with `npm test -- all` (30 rule suites, ~29 min headless; `BASE` = v0.8B bui
 **Efficiency programme:**
 - Phase 1, navigation docs (this file, CLAUDE.md, ARCHITECTURE, SYSTEM_MAP, archives): done.
 - Phase 2, centralized test runner (`npm test`, `tools/test.cjs`, `tools/test-suites.cjs`, `tools/lib.cjs`): done. Follow-ups: move more suites onto `tools/lib.cjs` (only `maps`, `barracks`, `recruit-mobile` so far; the rest still hard-code the `/opt/node22` Playwright path), widen `maps` to Missions 11–14, optional parallel jobs.
-- Phase 3, mission-mechanic architecture improvements (reduce `Game` hub coupling): not started, separate assignment.
+- Phase 3, architecture optimization for Chapters 4–5: done (2026-10-24, on v0.8C.1; no gameplay change, package 0.8.5, label still v0.8C.1, save v9). See [Phase 3](#phase-3-architecture-optimization) below.
+- Follow-ups (not scheduled): move older suites onto `tools/lib.cjs` and its page helpers when they are next edited; widen `maps` to Missions 11–15 (and 16+ as they land); optional parallel jobs.
 
 **Roadmap:** Missions 16–25 (Chapters 4–5); land mines provisionally planned for Chapter 4, enemy vehicles for Chapter 5. Missions 16+ would raise recruit starting levels (`RECRUIT_LEVELS`) and mission XP automatically.
+
+## Phase 3 architecture optimization
+
+Plan written before editing, then implemented as planned: three small extension points, nothing moved, Missions 1–15 and every number unchanged (proven against v0.8C.1 `924dc13`, see Test status).
+
+**Audit (how Chapter 4–5 content would be added on v0.8C.1):**
+- Missions / objectives: good. Objectives are self-contained state machines fed by `MissionEvent`s; triggers, dormant `guard` groups and lockdown worlds already cover ambushes and gating. Friction: every mechanic module (convoy, boss, general, artillery, escort) is a hard-wired `Mission` field with its own lines in `start`, `unitStep`, `emit` and `draw`, so mines / fuel depots / engineers would each have edited `src/mission.ts` in four places.
+- Environment: adequate. `building` obstacles already block movement, line of sight and rounds; Mission 18's streets are map data. Destructible things are `structure` units (targeting, `structureDestroyed`, support floor already work).
+- Damage: `Game.damage` is the single, well-guarded path. Friction: area damage was duplicated (grenade `explode`, rocket splash; support has its own per-class rules) and only ever hurt one team, while mines, fuel tanks and wrecks need a blast that can hurt both teams with wall cover.
+- Enemies: kind-specific behaviour is spread over about eight files (`spawnEnemy`, `enemy.ts`, `awareness.ts`, `targeting.ts`, `combat.ts` armor / `rocketMul`, `support.ts`, `render.ts`); `KIND_CFG` is a typed `Record`, so the compiler finds the first step. The `vehicle` flag means "convoy truck" (never shoots, never pursues, not a kill), so Chapter 5 combat vehicles must be a new kind.
+- HUD: objective lines / chips / meters cover mission information; the boss bar is a two-branch special case (Iron Warden, Voss).
+- Saves: no change needed for in-mission mechanics (per attempt); new missions need campaign rows and the `expected` list in `parseSave` (recipe).
+- Tests: strong regression suites, but every chapter suite re-implements the same page helpers and data snapshot; `fps-parity` with `BASE` is the bit-exact equivalence check.
+
+**Ranked improvements** (value for Chapters 4–5 vs complexity / risk):
+1. Done: `MissionScript.mechanics` / `MissionMechanic` (`src/mission.ts`, +34 lines). A mechanic is one module plus one script line; Mission calls `start` / `step` / `onEvent` / `draw`. Missions 1–15 declare none.
+2. Done: `blastDamage` (`src/combat.ts`). One area-damage loop (falloff, optional wall cover, skip, per-victim multiplier, either or both teams) through `Game.damage`; `explode` and `rocketImpact` call it with the same arithmetic.
+3. Done: shared test page helpers (`tools/lib.cjs`: `openPage`, `seedRandom`, `window.T`, `missionSnapshot`) and the `arch` suite (BASE v0.8C.1).
+4. Deferred: an enemy-kind profile table (targeting / flags / "heavy" in one row). Saves two or three edits per kind but touches eight files to centralise; documented as the "Add an enemy kind" recipe instead.
+5. Deferred: splitting `vehicle` into "convoy truck" and "combat vehicle". Belongs to the Chapter 5 vehicle design; documented in the recipe.
+6. Deferred: a generic boss bar. One `src/hud.ts` branch when Mission 20 is built; generalising now would be speculative.
+7. Deferred: migrating the ~40 older suites onto `tools/lib.cjs` (large churn, no gameplay value now).
+8. Rejected: decomposing `Game.update` / the `Game` hub (high risk, no measurable benefit for the planned content).
+
+**Before / after:** a Chapter 4 mine field before Phase 3 = a `mines` field on `Mission`, a `MissionScript` field, lines in `Mission.start`, `unitStep`, `emit` and `draw`, and a copied blast loop with its own falloff / cover rules. After: `class MineField implements MissionMechanic` in its own file calling `blastDamage(..., { victims: [...g.enemies, ...g.enemyVictims()], cover: true })`, plus `mechanics: () => [new MineField(...)]` in the Mission 16 script; its suite starts from `tools/arch.cjs` with `openPage` / `T` / `missionSnapshot` instead of ~60 copied helper lines. Recipes with code sketches: [ARCHITECTURE.md](ARCHITECTURE.md#recipes).
+
+**Recommended Chapter 4 sequence:** (1) Chapter 4 `CHAPTERS` / `CAMPAIGN` rows, the `expected` id and Mission 16 with the `MineField` mechanic (decide how a detected mine is targeted: structures are only shot when no enemy is in sight); (2) the Scout enemy kind (recipe; flanking in `src/enemy.ts`); (3) Mission 17 fuel infrastructure (structures + a chain-blast mechanic); (4) Mission 18 Ambush Alley (map data, dormant groups, triggers; extend `maps` for reachability); (5) Mission 19 prisoner rescue (captive / escort patterns); (6) Mission 20 boss (`src/general.ts` pattern plus a boss-bar branch). Each mission: a chapter suite on the shared helpers, `fps-parity` with the mission added to `MISSIONS`, and `arch` D1 style "Missions 1–15 unchanged" against the previous release.

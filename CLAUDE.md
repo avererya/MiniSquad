@@ -15,6 +15,7 @@ Do not read [docs/CHANGELOG.md](docs/CHANGELOG.md) or `docs/archive/` unless you
 ## Repository and branches
 
 - Repo `avererya/MiniSquad`, production branch `main`. A push to `main` auto-deploys to Cloudflare Workers (static `./dist`, `wrangler.jsonc`).
+- Production URL: https://minisquad.ryanaverett1996.workers.dev (Settings ⚙ shows the deployed label and commit).
 - Push with a normal fast-forward. Never force-push, rewrite history, or create, move or push tags; never touch `prototype-v0.1`.
 - Before editing: `git status`, `git fetch origin main`, compare `HEAD` with `origin/main`. If someone else's uncommitted work or a newer `main` is in the way, stop and report rather than overwrite.
 

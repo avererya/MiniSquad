@@ -21,6 +21,8 @@ const V081 = { ref: 'c6ae985', label: 'v0.8B.1' };
 const V082 = { ref: '3199529', label: 'v0.8B.2' };
 // v0.8C.1's story suite compares against v0.8C (every number, Missions 1-15 and the Mission 15 rewards unchanged).
 const V08C = { ref: '1acc610', label: 'v0.8C' };
+// Phase 3's suite compares against v0.8C.1 (the architecture changes must not change a single number or outcome).
+const V08C1 = { ref: '924dc13', label: 'v0.8C.1' };
 
 const SUITES = [
   // ---- rule suites (PASS / FAIL per check) ----
@@ -52,6 +54,7 @@ const SUITES = [
   { name: 'v082', kind: 'rules', base: V081, about: 'v0.8B.2 enemy Sniper rebalance, Mission 14 suspense HUD, Settings without tuning sliders' },
   { name: 'v08c', kind: 'rules', base: V082, about: 'v0.8C Mission 15 (gates, relays, General Voss, allies), Demolitions Expert, Inferno, unlock, saves' },
   { name: 'story', kind: 'rules', base: V08C, out: true, about: 'v0.8C.1 story cinematics: Mission 15 pre-boss / phase / victory dialogue, blocking, skip, auto-advance, extraction, rewards, phones' },
+  { name: 'arch', kind: 'rules', base: V08C1, about: 'Phase 3 extension points: MissionScript.mechanics hooks, blastDamage, shared page helpers; Missions 1-15 and a seeded grenade / rocket firefight identical to v0.8C.1' },
   { name: 'fps-default', kind: 'rules', about: 'default frame cap (30 phone / 60 desktop) and Settings' },
   { name: 'fps-parity', kind: 'rules', about: '30 / 60 FPS play identically (seeded autopilot, Missions 7, 9, 10 and the Mission 15 Voss fight)' },
 
@@ -86,12 +89,12 @@ const RULES = SUITES.filter((s) => s.kind === 'rules').map((s) => s.name);
 
 const GROUPS = {
   smoke: { about: 'fast routine check (default for a bare `npm test`)', suites: ['logic', 'maps', 'campaign-rules', 'barracks'] },
-  combat: { about: 'weapons, damage, accuracy, Elite passives, Tactical Support, Demolitions', suites: ['logic', 'accuracy', 'elite', 'support', 'v082', 'v08c'] },
+  combat: { about: 'weapons, damage, accuracy, Elite passives, Tactical Support, Demolitions', suites: ['logic', 'accuracy', 'elite', 'support', 'v082', 'v08c', 'arch'] },
   movement: { about: 'squad movement, collisions, joystick', suites: ['logic', 'v081-collision', 'mobile'] },
   recruitment: { about: 'Recruitment Office, named recruits, roster', suites: ['recruitment', 'recruit-mobile', 'failure-recruit', 'failure-recruit-mobile', 'barracks', 'v08c'] },
   progression: { about: 'XP, training, Squad Training, Elite', suites: ['progression', 'training-rebalance', 'squad-training', 'accuracy', 'elite', 'elite-progression'] },
   permadeath: { about: 'KIA, resurrection, Memorial, failed missions', suites: ['permadeath', 'permadeath-mobile', 'failure-recruit'] },
-  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-15', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story'] },
+  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-15', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch'] },
   persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c'] },
   ui: { about: 'phone layouts and touch (HUD / menus)', suites: ['mobile', 'chapter2-mobile', 'permadeath-mobile', 'failure-recruit-mobile', 'recruit-mobile', 'story'] },
   fps: { about: '30 / 60 FPS parity and default frame cap', suites: ['fps-default', 'fps-parity'] },

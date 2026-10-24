@@ -8,7 +8,7 @@ How to use it: find the row, open the main file, then `grep -n` the named symbol
 
 | | |
 |---|---|
-| Main | `src/combat.ts` (`updateWeapon`, `updateOffhand`, `updateEnemySniper`, `updateProjectiles`, `explode`, `modifyDamage`); `Game.damage` in `src/game.ts` |
+| Main | `src/combat.ts` (`updateWeapon`, `updateOffhand`, `updateEnemySniper`, `updateProjectiles`, `explode`, `blastDamage` (Phase 3 shared area damage), `modifyDamage`); `Game.damage` in `src/game.ts` |
 | Supporting | `src/config.ts` (class groups `CFG.infantry/heavy/medic/sniper/commando`, enemies `CFG.enemy/enemySniper/armored/tower/boss`), `src/targeting.ts`, `src/classes.ts` (`effectiveStats`), `src/elite.ts` (`onFire`, `onHit`, `incomingMul`, caps), `src/world.ts` (line of sight, walls) |
 | Tests | `logic` (projectile speeds, spread, walls, damage stats), `accuracy` (spread floor), `balance` (`MODE=accuracy` hit-rate experiments, report only), `elite` (passive damage), `squads` (damage ledger, report) |
 | Watch | All damage must go through `Game.damage` (Elite caps ≤40% reduction / ≤×2 per shot, support floors, awareness, stats). Rounds are not led (target leading is an open design item). |
@@ -91,6 +91,17 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | Tests | `maps` (reachability on every map), chapter suites (`chapter2`, `chapter3a`, `chapter3b`, `v081`, `v08c`), sims (`chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, reports only), `play` |
 | Watch | Objectives never pay rewards; a mission has a scripted final wave or extraction pressure, never both. |
 
+## Extension points for Chapters 4–5 (Phase 3)
+
+| | |
+|---|---|
+| Main | `src/mission.ts` (`MissionMechanic`: `start` / `step` / `onEvent` / `draw`; `MissionScript.mechanics`; `Mission.mechanics`, `Mission.mechanic(id)`), `src/combat.ts` (`blastDamage`, `BlastSpec`) |
+| Supporting | `src/main.ts` (`window.__missions`, `window.__combat` for tests), `tools/lib.cjs` (`openPage`, `seedRandom`, `installPageHelpers` → `window.T`, `missionSnapshot`), recipes in [ARCHITECTURE.md](ARCHITECTURE.md#recipes) (mission mechanic, area damage, enemy kind, mission suite) |
+| Tests | `arch` (hooks, blast, helpers; Missions 1–15 data and a seeded grenade / rocket firefight identical to v0.8C.1), `fps-parity` (`MISSIONS=` every mission with `--base 924dc13` = bit-identical to v0.8C.1) |
+| Watch | Missions 1–15 declare no mechanics; their convoy / boss / general / artillery / escort stay hard-wired. Mechanic hooks run in the fixed step only and stop when the mission ends. `blastDamage` draws nothing (callers own their effects) and keeps the grenade / rocket arithmetic order. |
+
+Chapter 4–5 feature → where it plugs in: **land mines** a `MissionMechanic` (proximity in `step`, `blastDamage` with both teams' victims and `cover: true`, markers in `draw`; to be shot, give each detected mine a `structure` unit so squad targeting and `structureDestroyed` already work; soldiers shoot structures only when no enemy is in sight, so decide whether mines need a priority rule); **Scouts / Engineers / armored vehicles** a new `EnemyKind` (recipe), Engineer repairs and vehicle patrols steered by a mechanic; **urban streets (Mission 18)** map data only (`building` obstacles already block movement, sight and rounds; ambushes are dormant `guard` groups and `TriggerSpec`s); **fuel depots (17), prisoner rescue (19)** structures / `FreeCaptiveObjective` patterns plus a mechanic for chain explosions; **chapter boss (20)** follow `src/general.ts` (a boss bar branch in `src/hud.ts`).
+
 ## Fortress assault and General Voss (Mission 15)
 
 | | |
@@ -168,7 +179,7 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | | |
 |---|---|
 | Main | `tools/test.cjs` (`npm test`: args, build, serve, baselines, run, classify, summary), `tools/test-suites.cjs` (suite registry, groups, `PREV` baseline) |
-| Supporting | `tools/lib.cjs` (`createChecks`, `runSuite`, `serveDir`, `loadPlaywright`, result line), `.gitignore` (`test-results/`), `package.json` `test` script |
+| Supporting | `tools/lib.cjs` (`createChecks`, `runSuite`, `serveDir`, `loadPlaywright`, result line; Phase 3 page helpers `openPage`, `seedRandom`, `installPageHelpers`, `missionSnapshot`), `.gitignore` (`test-results/`), `package.json` `test` script |
 | Tests | the runner itself: `npm test -- --help`, `--list`, an unknown name (exit 2), `maps barracks recruit-mobile` (migrated suites) |
 | Watch | Register every new `tools/*.cjs` in `test-suites.cjs`. Never count a suite as PASS without checks; keep suites runnable standalone (`node tools/<suite>.cjs`). |
 
@@ -179,16 +190,16 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | Group | Suites | Use for |
 |---|---|---|
 | `smoke` (bare `npm test`) | `logic`, `maps`, `campaign-rules`, `barracks` | quick check while working |
-| `combat` | `logic`, `accuracy`, `elite`, `support`, `v082`, `v08c` | weapons, damage, classes, Tactical Support, Demolitions |
+| `combat` | `logic`, `accuracy`, `elite`, `support`, `v082`, `v08c`, `arch` | weapons, damage, classes, Tactical Support, Demolitions |
 | `movement` | `logic`, `v081-collision`, `mobile` | squad movement, collisions, joystick |
 | `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks`, `v08c` | Recruitment Office, roster |
 | `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
 | `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
-| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story` | missions, campaign, escort, defense |
+| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story`, `arch` | missions, campaign, escort, defense, mechanic hooks |
 | `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c` | saves, fixtures, economy |
 | `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile`, `story` | HUD, menus, phone layouts |
 | `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
-| `all` | every rule suite (30) | full regression before a release |
+| `all` | every rule suite (31) | full regression before a release |
 | `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
 | `screens` | `shot`, `visual`, `fight`, `classes`, `lineup`, `touch`, `play` | screenshots judged by eye |
 
@@ -201,7 +212,7 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 | HUD / menus / layout | `ui` |
 | Release | `all` |
 
-**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical); `story` against v0.8C (`V08C`, `1acc610`: every CFG group, Missions 1–15 and the Mission 15 rewards identical). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
+**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical); `story` against v0.8C (`V08C`, `1acc610`: every CFG group, Missions 1–15 and the Mission 15 rewards identical); `arch` against v0.8C.1 (`V08C1`, `924dc13`). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
 
 Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#test-status). `maps` only covers the Mission 1–10 maps; `chapter3b-e2e` is superseded (run by name only).
 

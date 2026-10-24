@@ -160,6 +160,28 @@ export interface MissionScript {
   lockdown?: { worlds: MapDef[]; gates: Obstacle[] };
   /** v0.8C.1 story scenes (story.ts SCENES ids) played at mission cues, each at most once per attempt (Mission.cue). */
   story?: Partial<Record<StoryCue, string>>;
+  /** Phase 3: self-contained mission mechanics (see MissionMechanic), built fresh for every attempt. */
+  mechanics?: () => MissionMechanic[];
+}
+
+/**
+ * Phase 3 MISSION MECHANIC: a per-mission system that lives in its own module (a Chapter 4 mine field, a fuel depot,
+ * an engineer's repairs) and is declared in MissionScript.mechanics. Mission drives it, so a new mechanic needs no new
+ * Mission field and no edits to Mission.start / unitStep / emit / draw. Every hook is optional and runs in the fixed
+ * 1/60 s step (simulation time only; keep any Math.random draw inside it in a stable order). Missions 1-15 declare
+ * none: their convoy, boss, general, artillery and escort stay wired as before.
+ *  - start:   once in Mission.start, after the groups, captive, allies, assets and the other systems spawn and
+ *             before the optionals and the first primary activate (so objectives see the units it spawns);
+ *  - step:    every step in Mission.unitStep (before movement is integrated: set velocities here), until the end;
+ *  - onEvent: every MissionEvent, after the objectives heard it, until the end;
+ *  - draw:    ground level, after the objectives' drawings and the wrecks (Mission.draw).
+ */
+export interface MissionMechanic {
+  readonly id: string;
+  start?(m: Mission, g: Game): void;
+  step?(m: Mission, g: Game, dt: number): void;
+  onEvent?(m: Mission, g: Game, ev: MissionEvent): void;
+  draw?(ctx: CanvasRenderingContext2D, m: Mission, g: Game): void;
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -194,6 +216,8 @@ export class Mission {
   failReason = '';
   /** v0.8C.1 story cues already played in this attempt (a new Mission = a new attempt, so Retry replays them). */
   storyCues = new Set<StoryCue>();
+  /** Phase 3: this attempt's mechanics (MissionScript.mechanics; empty for Missions 1-15). */
+  mechanics: MissionMechanic[];
   private ended = false;
   /**
    * v0.6 EXTRACTION ATTEMPT (abandonment warning). An attempt starts when extraction is ready
@@ -256,6 +280,7 @@ export class Mission {
     this.name = this.def.name;
     this.primaries = script.primaries();
     this.optionals = script.optionals();
+    this.mechanics = script.mechanics?.() ?? [];
     this.extraction = new HelicopterExtraction(script.extraction.zone);
     if (script.convoy) this.convoy = new Convoy(script.convoy.route, script.convoy.escorts, script.convoy.gap, script.convoy.delay);
   }
@@ -286,6 +311,7 @@ export class Mission {
       const guns = () => this.primaries.flatMap((o) => ('targets' in o && (o as unknown as { kind: string }).kind === 'artillery' ? (o as unknown as { targets: Unit[] }).targets : []));
       this.artillery = new Artillery(this.script.artillery.lights, guns);
     }
+    for (const x of this.mechanics) x.start?.(this, game);
     for (const o of this.optionals) o.activate(this, game);
     this.activateCurrent(game);
   }
@@ -314,6 +340,12 @@ export class Mission {
     this.general?.update(game, dt);
     this.artillery?.update(game, dt);
     this.escort?.update(game, dt);
+    for (const x of this.mechanics) x.step?.(this, game, dt);
+  }
+
+  /** Phase 3: this attempt's mechanic with this id (objectives use it to reach their mine field / depot), or null. */
+  mechanic<T extends MissionMechanic = MissionMechanic>(id: string): T | null {
+    return (this.mechanics.find((x) => x.id === id) as T | undefined) ?? null;
   }
 
   /** v0.8B Mission 13: the gates close (collision / nav switch to the gated map; nobody is left inside a gate). */
@@ -421,6 +453,7 @@ export class Mission {
     if (this.ended) return;
     if (ev.type === 'vehicleDestroyed') this.convoy?.onDestroyed(game, ev.unit);
     for (const o of [...this.primaries, ...this.optionals]) if (o.state === 'active') o.onEvent(this, game, ev);
+    for (const x of this.mechanics) x.onEvent?.(this, game, ev);
     if (ev.type === 'npcKia') { this.failReason = 'The captive was lost.'; game.fail(); }
     if (ev.type === 'assetDestroyed') {
       if (ev.unit === this.protected) { this.failReason = this.script.protect?.failReason ?? 'The command center was destroyed.'; game.fail(); }
@@ -619,6 +652,7 @@ export class Mission {
     for (const o of this.primaries) o.draw(ctx, this, game);
     for (const w of this.wrecks) drawWreck(ctx, w.pos, w.kind);
     this.artillery?.drawGround(ctx, game);
+    for (const x of this.mechanics) x.draw?.(ctx, this, game);
   }
 }
 

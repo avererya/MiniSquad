@@ -22,6 +22,8 @@ import * as elite from './elite';
 import * as support from './support';
 import * as targeting from './targeting';
 import * as story from './story';
+import { MISSION_SCRIPTS } from './missions';
+import { blastDamage, explode } from './combat';
 
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -217,5 +219,7 @@ Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStat
   __casualties: casualties, __support: support, __targeting: targeting, __supportItems: support.SUPPORT_ITEMS, __clock: clock, __SimClock: SimClock, __hud: hud, __elite: elite, __debugPromotionReady: debugPromotionReady, __story: story,
   // v0.6.3 perf tools (tools/perf.cjs, tools/fps-parity.cjs): one render + HUD pass, and the loop stats
   __render: () => { ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0); if (game.phase !== 'start') render(ctx, game); hud.update(); },
-  __perf: { stats: pstats, settings: perfSettings } });
+  __perf: { stats: pstats, settings: perfSettings },
+  // Phase 3 (tools/arch.cjs): mission scripts (MissionScript.mechanics) and the shared blast-damage helper
+  __missions: MISSION_SCRIPTS, __combat: { blastDamage, explode } });
 game.resetRosterSave = resetRosterSave;
