@@ -29,6 +29,11 @@ const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
 
 /** v0.8C: a boss-controlled unit (Iron Warden, General Voss): moved and fired by its controller, never pushed, boss floors and bars. */
 export const isBoss = (u: Pick<Unit, 'kind'>) => u.kind === 'boss' || u.kind === 'general';
+/**
+ * v0.9A a revealed land mine (mines.ts): a 'mine' structure in Game.enemies so rounds, grenades, rockets and flames can
+ * set it off, but never an automatic target (Game.update leaves it out of the squad's candidates) and never an obstacle.
+ */
+export const isMine = (u: Pick<Unit, 'structure'>) => u.structure === 'mine';
 
 /** v0.8B friendly assets: the turret fires (CFG.turret); the command center and the truck only need hp / radius. */
 const cmdStats = { ...CFG.enemy, range: 0, fireRate: 0, damage: 0 };
@@ -53,6 +58,11 @@ export class Unit {
   state: UnitState = 'active';
   aim = 0; // facing / aim angle, independent of movement
   target: Unit | null = null;
+  /**
+   * v0.9A an explicit player order (a tapped mine, mines.ts): while it is valid (in range, in sight) it is this unit's
+   * target, ahead of any enemy; otherwise the unit fights as usual. Never chosen automatically; cleared by its owner.
+   */
+  order: Unit | null = null;
   fireCooldown = 0;
   reactionLeft = 0; // delay before first shot on a new target
   moveFrac = 0; // smoothed speed / max speed, drives the movement accuracy penalty

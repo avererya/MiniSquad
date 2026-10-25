@@ -36,6 +36,8 @@ const THEMES = {
   desert: { base: '#d6b278', patchA: 'rgba(200,160,100,0.4)', patchB: 'rgba(230,200,140,0.35)', dirt: 'rgba(170,125,80,0.35)', road: 'rgba(160,125,85,0.55)', blade: 'rgba(150,110,60,0.2)', tint: '' },
   night: { base: '#4f6b57', patchA: 'rgba(60,85,70,0.45)', patchB: 'rgba(90,110,90,0.3)', dirt: 'rgba(90,85,70,0.4)', road: 'rgba(110,110,95,0.55)', blade: 'rgba(25,40,30,0.3)', tint: 'rgba(20,30,70,0.22)' },
   fortress: { base: '#8f8a72', patchA: 'rgba(110,105,85,0.4)', patchB: 'rgba(150,145,115,0.3)', dirt: 'rgba(110,95,75,0.4)', road: 'rgba(150,145,130,0.6)', blade: 'rgba(70,70,55,0.22)', tint: '' },
+  // v0.9A Chapter 4: jungle floor (the canopy is 'tree' obstacles)
+  jungle: { base: '#4f7a3a', patchA: 'rgba(40,85,35,0.45)', patchB: 'rgba(95,125,55,0.32)', dirt: 'rgba(110,85,50,0.35)', road: 'rgba(140,110,70,0.6)', blade: 'rgba(25,55,20,0.32)', tint: '' },
 } as const;
 
 /** v0.8B.1: the ground is kept as vertical strips at most GROUND_TILE px wide. One very wide bitmap (Mission 14's
@@ -163,6 +165,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   type Item = { y: number; draw: () => void };
   const items: Item[] = [];
   const inView = (r: Rect) => r.x + r.w > vx - 80 && r.x < vx + VIEW_W + 80 && r.y + r.h > vy - 80 && r.y - 80 < vy + VIEW_H + 80;
+  canopyView = { x0: vx - 80, x1: vx + VIEW_W + 80, y0: vy - 80, y1: vy + VIEW_H + 80 };
   for (const o of OBSTACLES) if (inView(o) && !isLowObstacle(o)) items.push({ y: o.y + o.h, draw: () => drawObstacle(ctx, o, game.clock) });
   for (const p of game.map.props ?? []) if (p.kind !== 'flood') items.push({ y: p.y, draw: () => drawProp(ctx, p, game.clock) });
   for (const u of game.assets) {
@@ -173,6 +176,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   }
   for (const u of [...game.soldiers, ...game.allies, ...game.npcs, ...game.enemies]) {
     if (u.mount) continue; // v0.8B the truck's gunner is drawn on the truck (drawEscortTruck)
+    if (u.structure === 'mine') continue; // v0.9A revealed mines are drawn by their MineField (ground level)
     if (u.structure) items.push({ y: u.pos.y, draw: () => drawStructure(ctx, u, game) });
     else if (u.npc) items.push({ y: u.pos.y, draw: () => drawCaptive(ctx, u, game) });
     else if (u.vehicle) items.push({ y: u.pos.y, draw: () => drawTruck(ctx, u, game) });
@@ -267,6 +271,7 @@ function drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle, clock: number)
   else if (o.kind === 'hut') { roof = '#7f8c6a'; face = '#5d6a4c'; edge = '#38412c'; }
   else if (o.kind === 'concrete') { roof = '#a9a9a2'; face = '#7b7b74'; edge = '#4e4e49'; }
   else if (o.kind === 'fence') { drawFence(ctx, o); return; }
+  else if (o.kind === 'tree') { drawCanopy(ctx, o); return; }
   // front face: from roof bottom down to footprint bottom
   ctx.fillStyle = face;
   ctx.fillRect(o.x, o.y + o.h - H, o.w, H);
@@ -317,6 +322,49 @@ function drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle, clock: number)
     ctx.fillStyle = Math.sin(clock * 6) > 0 ? '#ff3b3b' : '#661111';
     ctx.beginPath(); ctx.arc(ax, ay - 72, 4, 0, Math.PI * 2); ctx.fill();
   }
+}
+
+/**
+ * v0.9A jungle canopy ('tree' obstacles, one rectangle per merged block): a dark trunk band on the front face, the
+ * crown lifted by the height with a scalloped edge of leaf clumps, and a few lighter clumps on top. Deterministic
+ * from the rectangle (no randomness); one fill per layer.
+ */
+/** v0.9A the visible world rect (set each frame): canopy strips can be thousands of px long, so drawCanopy only builds
+ * the crown arcs that can show (positions depend on the strip, not the view, so nothing shifts while scrolling). */
+let canopyView = { x0: -Infinity, x1: Infinity, y0: -Infinity, y1: Infinity };
+function drawCanopy(ctx: CanvasRenderingContext2D, o: Obstacle) {
+  const H = o.height, top = o.y - H, S = 46, V = canopyView;
+  const nx = Math.max(1, Math.round(o.w / S)), ny = Math.max(1, Math.round(o.h / S)), dx = o.w / nx, dy = o.h / ny, r = Math.min(dx, dy) * 0.62;
+  const i0 = Math.max(0, Math.floor((V.x0 - r - o.x) / dx)), i1 = Math.min(nx, Math.ceil((V.x1 + r - o.x) / dx));
+  const j0 = Math.max(0, Math.floor((V.y0 - r - top) / dy)), j1 = Math.min(ny, Math.ceil((V.y1 + r - top) / dy));
+  const lx = Math.max(o.x, V.x0), rx = Math.min(o.x + o.w, V.x1);
+  ctx.fillStyle = '#2c3f22';
+  ctx.fillRect(lx, o.y + o.h - H, Math.max(0, rx - lx), H);
+  ctx.fillStyle = '#3b2c1c';
+  for (let x = o.x + 14 + Math.max(0, Math.ceil((lx - o.x - 20) / 38)) * 38; x < Math.min(o.x + o.w - 6, rx); x += 38) ctx.fillRect(x, o.y + o.h - H * 0.55, 6, H * 0.55);
+  ctx.fillStyle = '#2f5a26';
+  ctx.beginPath();
+  const bl = Math.max(o.x + r * 0.5, V.x0), br = Math.min(o.x + o.w - r * 0.5, V.x1);
+  ctx.rect(bl, top + r * 0.5, Math.max(0, br - bl), Math.max(0, o.h - r));
+  for (let i = i0; i < i1; i++) {
+    const cx = o.x + (i + 0.5) * dx;
+    ctx.moveTo(cx + r, top + r * 0.55); ctx.arc(cx, top + r * 0.55, r, 0, Math.PI * 2);
+    ctx.moveTo(cx + r, top + o.h - r * 0.55); ctx.arc(cx, top + o.h - r * 0.55, r, 0, Math.PI * 2);
+  }
+  for (let j = j0; j < j1; j++) {
+    const cy = top + (j + 0.5) * dy;
+    ctx.moveTo(o.x + r * 0.55 + r, cy); ctx.arc(o.x + r * 0.55, cy, r, 0, Math.PI * 2);
+    ctx.moveTo(o.x + o.w - r * 0.55 + r, cy); ctx.arc(o.x + o.w - r * 0.55, cy, r, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.fillStyle = 'rgba(120,170,80,0.35)';
+  ctx.beginPath();
+  for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) {
+    if ((i * 7 + j * 3 + Math.round(o.x / 80)) % 3) continue;
+    const cx = o.x + (i + 0.4) * dx, cy = top + (j + 0.4) * dy;
+    ctx.moveTo(cx + r * 0.5, cy); ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+  }
+  ctx.fill();
 }
 
 function drawPickups(ctx: CanvasRenderingContext2D, game: Game) {
@@ -1028,7 +1076,7 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
     ctx.fillStyle = '#9fd8ff'; ctx.fillText(tag, a.pos.x, byy - 9);
   }
   for (const e of game.enemies) {
-    if (!e.active || isBoss(e)) continue; // the boss has the big HUD bar
+    if (!e.active || isBoss(e) || e.structure === 'mine') continue; // the boss has the big HUD bar; a mine has no HP bar
     const big = e.structure || e.vehicle;
     const w = big ? 64 : e.kind === 'armored' ? 30 : 24, f = clamp(e.hp / e.maxHp, 0, 1);
     const bx = e.pos.x - w / 2, byy = e.pos.y - (e.vehicle ? 58 : e.structure ? 62 : e.kind === 'tower' ? 118 : 60);

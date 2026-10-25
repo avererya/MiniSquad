@@ -402,6 +402,17 @@ function makeDefaults() {
       finalWaveSize: 8,
       heliArriveTime: 3.5, // helicopter starts its approach this long before the countdown ends
     },
+    // v0.9A land mines (mines.ts MineField, Mission 16+). Hidden until a standing soldier comes within detectRadius;
+    // anyone (soldier, ally, enemy) whose centre comes within triggerRadius sets it off, hidden or revealed. The blast
+    // (shared blastDamage, both teams, solid cover shelters) deals `damage` at the centre falling off to edgeFrac x
+    // that at blastRadius: 60 is 60% of a baseline Infantry soldier's 100 HP and below the smallest class HP (Sniper
+    // 75), so one mine never kills a healthy soldier outright; two can. A revealed mine is shot only on an order
+    // (tap it): `hp` rounds' worth, orderTime s per order. A blast sets off armed mines within chainRadius (in sight)
+    // after chainDelay s, each mine once.
+    mine: {
+      detectRadius: 130, triggerRadius: 20, blastRadius: 65, damage: 60, edgeFrac: 0.35,
+      hp: 15, chainRadius: 90, chainDelay: 0.2, tapRadius: 48, orderTime: 8, shake: 12,
+    },
     feel: {
       cameraSmoothing: 6, // higher = snappier
       hitFlash: 0.1,

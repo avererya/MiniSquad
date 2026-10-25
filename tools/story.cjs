@@ -161,7 +161,7 @@ runSuite(async () => {
     'OVERWATCH: We’ve recovered his communications. Turns out the General was taking orders from someone else.',
     'OVERWATCH: Get to extraction. We’re going behind enemy lines.']), data.victory.join(' | '));
   check('A4 modes: intro / victory are blocking cinematics, the phase lines non-blocking radio; Command vs enemy tones', data.modes === 'cinematic,radio,radio,cinematic' && data.tones === 'command,enemy', `${data.modes} · ${data.tones}`);
-  check('A5 Mission 15 cues: bossIntro, bossPhase2, bossPhase3, victory; no other mission has story cues (Missions 1-14 untouched)', data.cues === '{"bossIntro":"m15-intro","bossPhase2":"m15-phase2","bossPhase3":"m15-phase3","victory":"m15-victory"}' && data.others.length === 0, `${data.cues} · others: ${data.others.join() || 'none'}`);
+  check('A5 Mission 15 cues: bossIntro, bossPhase2, bossPhase3, victory; no other Mission 1-14 has story cues (v0.9A: Mission 16 has its own radio lines)', data.cues === '{"bossIntro":"m15-intro","bossPhase2":"m15-phase2","bossPhase3":"m15-phase3","victory":"m15-victory"}' && data.others.join() === 'jungle-sweep', `${data.cues} · others: ${data.others.join() || 'none'}`);
   check('A6 no scripted line names a recruit (named recruits, the roster)', data.named.length === 0, data.named.join(' | ') || 'none');
   check('A7 text-only: no portrait is set anywhere (no artwork shipped)', data.art === 0, String(data.art));
   check('A8 reading time: intro and victory 8-12 s when left to auto-advance', data.read.every((t) => t >= 8 && t <= 12), data.read.join(' s, ') + ' s');
@@ -440,9 +440,11 @@ runSuite(async () => {
     await fresh();
     const a = await ev(snapshot), b = await bp.evaluate(snapshot);
     const cfgDiff = [...new Set([...Object.keys(a.cfg), ...Object.keys(b.cfg)])].filter((k) => a.cfg[k] !== b.cfg[k]);
-    const misDiff = [...new Set([...Object.keys(a.missions), ...Object.keys(b.missions)])].filter((k) => a.missions[k] !== b.missions[k]);
-    check('F1 every CFG group identical to v0.8C (Voss, enemies, classes, training, Elite, support)', cfgDiff.length === 0 && Object.keys(b.cfg).length > 20, cfgDiff.length ? `changed: ${cfgDiff.join()}` : `${Object.keys(b.cfg).length} groups`);
-    check('F2 Missions 1-15 identical to v0.8C (maps, enemy groups, objectives, optionals, gates, Voss, extraction, campaign rows)', misDiff.length === 0 && Object.keys(a.missions).length === 15, misDiff.length ? `changed: ${misDiff.join()}` : `${Object.keys(a.missions).length} missions`);
+    // v0.9A (on purpose): a `mine` CFG group, Mission 16, and Mission 15's first clear also unlocks Mission 16 (its row's unlock list is set aside)
+    const m15 = (x) => { if (!x) return x; const o = JSON.parse(x), d = JSON.parse(o.def); d.unlocks.missions = []; o.def = JSON.stringify(d); return JSON.stringify(o); };
+    const misDiff = Object.keys(b.missions).filter((k) => (k === 'last-stand' ? m15(a.missions[k]) !== m15(b.missions[k]) : a.missions[k] !== b.missions[k]));
+    check('F1 every CFG group identical to v0.8C (Voss, enemies, classes, training, Elite, support; v0.9A adds only `mine`)', cfgDiff.join() === 'mine' && Object.keys(b.cfg).length > 20, cfgDiff.length ? `changed: ${cfgDiff.join()}` : `${Object.keys(b.cfg).length} groups`);
+    check('F2 Missions 1-15 identical to v0.8C (maps, enemy groups, objectives, optionals, gates, Voss, extraction, campaign rows; v0.9A: Mission 15 also unlocks Mission 16)', misDiff.length === 0 && Object.keys(b.missions).length === 15 && Object.keys(a.missions).length === 16, misDiff.length ? `changed: ${misDiff.join()}` : `${Object.keys(a.missions).length} missions`);
     await fresh(bp, BASE);
     const wBase = await bp.evaluate(scriptedWin, null);
     check('F3 the scripted Mission 15 win pays the same as v0.8C (XP, Credits, stars, Demolitions unlock, optional)', wBase.phase === 'won' && wBase.reward === wAuto.reward && wBase.stars === wAuto.stars && wBase.demo && wBase.opt === wAuto.opt && wBase.credits === wAuto.credits, JSON.stringify({ base: [wBase.reward, wBase.stars, wBase.credits], now: [wAuto.reward, wAuto.stars, wAuto.credits] }));

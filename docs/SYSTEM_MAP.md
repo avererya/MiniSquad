@@ -95,12 +95,21 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 
 | | |
 |---|---|
-| Main | `src/mission.ts` (`MissionMechanic`: `start` / `step` / `onEvent` / `draw`; `MissionScript.mechanics`; `Mission.mechanics`, `Mission.mechanic(id)`), `src/combat.ts` (`blastDamage`, `BlastSpec`) |
+| Main | `src/mission.ts` (`MissionMechanic`: `start` / `step` / `onEvent` / `draw` / `tap` (v0.9A); `MissionScript.mechanics`; `Mission.mechanics`, `Mission.mechanic(id)`), `src/combat.ts` (`blastDamage`, `BlastSpec`) |
 | Supporting | `src/main.ts` (`window.__missions`, `window.__combat` for tests), `tools/lib.cjs` (`openPage`, `seedRandom`, `installPageHelpers` → `window.T`, `missionSnapshot`), recipes in [ARCHITECTURE.md](ARCHITECTURE.md#recipes) (mission mechanic, area damage, enemy kind, mission suite) |
 | Tests | `arch` (hooks, blast, helpers; Missions 1–15 data and a seeded grenade / rocket firefight identical to v0.8C.1), `fps-parity` (`MISSIONS=` every mission with `--base 924dc13` = bit-identical to v0.8C.1) |
 | Watch | Missions 1–15 declare no mechanics; their convoy / boss / general / artillery / escort stay hard-wired. Mechanic hooks run in the fixed step only and stop when the mission ends. `blastDamage` draws nothing (callers own their effects) and keeps the grenade / rocket arithmetic order. |
 
-Chapter 4–5 feature → where it plugs in: **land mines** a `MissionMechanic` (proximity in `step`, `blastDamage` with both teams' victims and `cover: true`, markers in `draw`; to be shot, give each detected mine a `structure` unit so squad targeting and `structureDestroyed` already work; soldiers shoot structures only when no enemy is in sight, so decide whether mines need a priority rule); **Scouts / Engineers / armored vehicles** a new `EnemyKind` (recipe), Engineer repairs and vehicle patrols steered by a mechanic; **urban streets (Mission 18)** map data only (`building` obstacles already block movement, sight and rounds; ambushes are dormant `guard` groups and `TriggerSpec`s); **fuel depots (17), prisoner rescue (19)** structures / `FreeCaptiveObjective` patterns plus a mechanic for chain explosions; **chapter boss (20)** follow `src/general.ts` (a boss bar branch in `src/hud.ts`).
+Chapter 4–5 feature → where it plugs in: **land mines** done in v0.9A (`src/mines.ts`, table below; reuse with `mechanics: () => [new MineField({ mines })]`); **Scouts / Engineers / armored vehicles** a new `EnemyKind` (recipe), Engineer repairs and vehicle patrols steered by a mechanic; **urban streets (Mission 18)** map data only (`building` obstacles already block movement, sight and rounds; ambushes are dormant `guard` groups and `TriggerSpec`s); **fuel depots (17), prisoner rescue (19)** structures / `FreeCaptiveObjective` patterns plus a mechanic for chain explosions; **chapter boss (20)** follow `src/general.ts` (a boss bar branch in `src/hud.ts`).
+
+## Land mines and Mission 16 (v0.9A)
+
+| | |
+|---|---|
+| Main | `src/mines.ts` (`MineField` mechanic, id `mines`: `Mine` states hidden / revealed / detonated, `step` order fuses → reveal → triggers → order expiry → warn cue, `reveal` (a `'mine'` structure unit in `Game.enemies`), `detonate` (`blastDamage` both teams, cover, chains), `onEvent` (`structureDestroyed` → fuse 0), `tap` / `orderMine` / `clearOrder` (`Unit.order`), `draw`, `MineLog`), `src/chapter4.ts` (`MineKillsOptional`) |
+| Supporting | `CFG.mine` (`src/config.ts`), `src/unit.ts` (`Unit.order`, `isMine`), `src/combat.ts` (`updateWeapon`: a valid `order` wins, a mine is dropped as an automatic target; `updateProjectiles`: rounds pass over a mine unless it is the shooter's target), `src/game.ts` (mines left out of every squad / ally / turret candidate list and the push-out loop; `onTap`), `src/input.ts` (`onTap`: plain tap / click, `TAP_SLOP` 18, `TAP_TIME` 0.35 s, a quick tap on the joystick half), `src/mission.ts` (`MissionMechanic.tap`, `Mission.tap`, `GroupSpec.hold`, cue `start:<objective id>`), `src/render.ts` (mines skip the depth pass and HP bars; `drawCanopy` for 'tree' obstacles, the jungle theme), `src/map.ts` (`Tr`, `jungleCanopy`, `inOpen`, `JUNGLE_*`), `src/missions.ts` (`JUNGLE_SWEEP`), `src/campaign.ts` (`jungle-sweep` row, Chapter 4, `minefield` type), `src/story.ts` (`m16-mines`, `m16-checkpoint`, `m16-extract`), `src/save.ts` (`expected` id) |
+| Tests | `v09a` (A–K: campaign / unlock, map safety, states, triggers, blast, tap orders by `Game.onTap` / mouse / touch, chains, flow, rewards, Retry / reload, fixtures, Missions 1–15 vs v0.8C.1, phones), `fps-parity` (`jungle-sweep`, `jungle-sweep@field`: the pilot taps revealed mines), `v09a-sim` (report: SCEN, RUNS, POLICY aware / naive, LEVEL) |
+| Watch | A revealed mine is an enemy-team structure but must never be an automatic target: any new candidate list (a new turret, ally, ability) has to filter `isMine`. Mines trigger on centres within `triggerRadius`; nothing paths around them (by design). Chains light a fuse once per mine; a fuse lit in a step starts counting next step. `fx.text` draws `Math.random`, so mine labels push `fx.texts` directly. Airstrikes leave a mine at 1 HP (objective floor). |
 
 ## Fortress assault and General Voss (Mission 15)
 
@@ -190,17 +199,17 @@ Chapter 4–5 feature → where it plugs in: **land mines** a `MissionMechanic` 
 | Group | Suites | Use for |
 |---|---|---|
 | `smoke` (bare `npm test`) | `logic`, `maps`, `campaign-rules`, `barracks` | quick check while working |
-| `combat` | `logic`, `accuracy`, `elite`, `support`, `v082`, `v08c`, `arch` | weapons, damage, classes, Tactical Support, Demolitions |
+| `combat` | `logic`, `accuracy`, `elite`, `support`, `v082`, `v08c`, `arch`, `v09a` | weapons, damage, classes, Tactical Support, Demolitions |
 | `movement` | `logic`, `v081-collision`, `mobile` | squad movement, collisions, joystick |
 | `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks`, `v08c` | Recruitment Office, roster |
 | `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
 | `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
-| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story`, `arch` | missions, campaign, escort, defense, mechanic hooks |
-| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c` | saves, fixtures, economy |
+| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story`, `arch`, `v09a` | missions, campaign, escort, defense, mechanic hooks, mines |
+| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c`, `v09a` | saves, fixtures, economy |
 | `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile`, `story` | HUD, menus, phone layouts |
 | `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
-| `all` | every rule suite (31) | full regression before a release |
-| `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
+| `all` | every rule suite (32) | full regression before a release |
+| `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, `v09a-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
 | `screens` | `shot`, `visual`, `fight`, `classes`, `lineup`, `touch`, `play` | screenshots judged by eye |
 
 | Change | Run at least |
@@ -212,7 +221,7 @@ Chapter 4–5 feature → where it plugs in: **land mines** a `MissionMechanic` 
 | HUD / menus / layout | `ui` |
 | Release | `all` |
 
-**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical); `story` against v0.8C (`V08C`, `1acc610`: every CFG group, Missions 1–15 and the Mission 15 rewards identical); `arch` against v0.8C.1 (`V08C1`, `924dc13`). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
+**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical); `story` against v0.8C (`V08C`, `1acc610`: every CFG group, Missions 1–15 and the Mission 15 rewards identical); `arch` and `v09a` against v0.8C.1 (`V08C1`, `924dc13`; `v09a` J: every CFG group but `mine` and Missions 1–15 identical, only Mission 15's unlock list names Mission 16). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
 
 Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#test-status). `maps` only covers the Mission 1–10 maps; `chapter3b-e2e` is superseded (run by name only).
 
@@ -226,4 +235,5 @@ Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#t
 - **Ability Capacity tests**: `v081`, `v081-e2e`, `training-rebalance` F, `mobile`, `progression`.
 - **Save migrations**: `parseSave` in `src/save.ts` (version flags `v5`…`v8`, `clean*`, backups).
 - **A story scene for a new finale** (or comic artwork): add lines to `SCENES` in `src/story.ts` (speaker from `SPEAKERS`, collective address only), map cues in the mission's `MissionScript.story`; a new kind of moment needs a `StoryCue` and one `mission.cue(game, …)` call where it happens. Artwork: put the file in `public/story/` and set `portrait` on the line or the speaker; nothing else changes. Test in `story`.
+- **Mines in another mission**: `mechanics: () => [new MineField({ mines: MY_MINES, warnCue?, warnRadius?, tuning? })]` in its `MissionScript` (positions on open ground, none near the start); `tuning` overrides any `CFG.mine` number for that field only. Map checks like `v09a` B (open ground, reachability, a mine-free route with blast rings closed).
 - **Adding Mission 15**: campaign row (`mission-15` in `src/campaign.ts`), map, script, objectives (likely `src/defense.ts` patterns for a last stand), `expected` ids in `parseSave`, chapter suite, `campaign-rules` (chapter star totals), `maps`, `fps-parity`.

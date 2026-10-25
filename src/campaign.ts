@@ -15,19 +15,22 @@
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
-export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort';
+export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort' | 'minefield';
 export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
   elimination: 'Elimination', sabotage: 'Sabotage', capture: 'Capture & Hold', survival: 'Survival / Extraction', rescue: 'Rescue / Escort',
   interception: 'Convoy Interception', night: 'Night Sabotage', assault: 'Assault / Boss',
   liberation: 'Liberation & Defense', artillery: 'Search & Destroy',
   defense: 'Defense / Waves', escort: 'Sabotage & Vehicle Escort',
+  minefield: 'Minefield Sweep',
 };
 
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
 export const CHAPTERS: { number: number; name: string; from: number; to: number }[] = [
   { number: 1, name: '', from: 1, to: 5 }, // (Chapter 1 was never given a name)
   { number: 2, name: 'Behind Enemy Lines', from: 6, to: 10 },
-  { number: 3, name: 'The Resistance', from: 11, to: Infinity },
+  { number: 3, name: 'The Resistance', from: 11, to: 15 },
+  // v0.9A Chapter 4 (Missions 16-20 planned; only Mission 16 exists so far)
+  { number: 4, name: 'Behind Enemy Lines', from: 16, to: Infinity },
 ];
 export const chapterOf = (missionNumber: number) => CHAPTERS.find((c) => missionNumber >= c.from && missionNumber <= c.to) ?? CHAPTERS[0];
 
@@ -305,7 +308,22 @@ export const CAMPAIGN: CampaignMission[] = [
       objectives: ['Break through the outer defenses', 'Destroy the gate generator (opens the main gate)', 'Destroy the 2 relays (opens the inner gate)', 'Defeat General Voss', 'Clear the defenders, extract'],
       tip: 'Voss rallies nearby troops (+20% damage for 8 s). Pull his guards away from him, use cover, and keep a revive ready.',
     },
-    unlocks: { missions: [], recruits: [], classes: ['demolitions'], capacityNote: 'Chapter 3 complete' },
+    unlocks: { missions: ['jungle-sweep'], recruits: [], classes: ['demolitions'], capacityNote: 'Chapter 3 complete' },
+  },
+  // ---- v0.9A Chapter 4: Behind Enemy Lines ----
+  {
+    id: 'jungle-sweep', number: 16, name: 'Jungle Sweep', type: 'minefield', playable: true,
+    briefing: 'Sweep the mined jungle trails behind enemy lines and take the fortified checkpoint on the road north.',
+    primary: ['Advance through the jungle', 'Clear the enemy patrols and minefield approaches', 'Eliminate the defenders at the fortified checkpoint', 'Reach helicopter extraction'],
+    optional: [{ id: 'mine-ambush', label: 'Take out 3 enemies with mine blasts' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Land mines: spot them, steer around them, or shoot them',
+    brief: {
+      story: 'Voss was taking orders from someone deeper behind enemy lines. Command is sending you after them. Sweep the jungle trails and take the checkpoint that guards the road north. The enemy has mined the approaches.',
+      objective: 'Advance through the jungle, clear the patrols and minefield approaches, take the checkpoint, extract.',
+      objectives: ['Advance through the jungle', 'Clear the enemy patrols and minefield approaches', 'Eliminate the defenders at the fortified checkpoint', 'Reach helicopter extraction'],
+      tip: 'Mines stay hidden until a soldier gets close. Steer around a marked mine, or tap it and your squad shoots it from range. Stay out of its blast ring, and let the enemy walk into it.',
+    },
+    unlocks: { missions: [], recruits: [], capacityNote: 'Chapter 4 continues in a future update' },
   },
 ];
 

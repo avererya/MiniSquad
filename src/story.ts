@@ -53,7 +53,9 @@ export interface StoryScene {
 }
 
 /** Mission hooks that can play a scene (MissionScript.story maps them to scene ids). */
-export type StoryCue = 'bossIntro' | 'bossPhase2' | 'bossPhase3' | 'victory';
+export type StoryCue = 'bossIntro' | 'bossPhase2' | 'bossPhase3' | 'victory'
+  /** v0.9A: a mine field's first warning (MineFieldSpec.warnCue) / a primary objective with this id starts (Mission.activateCurrent). */
+  | 'minesAhead' | `start:${string}`;
 
 /** Comfortable reading time for a cinematic panel: 1.5 s + 0.17 s per word, 2.8-5 s. */
 export function readTime(text: string) {
@@ -91,6 +93,20 @@ export const SCENES: Record<string, StoryScene> = {
       { speaker: O, text: 'Get to extraction. We’re going behind enemy lines.' },
     ],
   },
+  // v0.9A Mission 16 Jungle Sweep (Chapter 4 opener): radio only, nothing blocks the fight
+  'm16-mines': {
+    id: 'm16-mines', mode: 'radio', lines: [
+      { speaker: O, text: 'Squad, recon reports mines on these trails. Watch your step.' },
+      { speaker: O, text: 'Spotted mines can be shot from range. Stay clear of the blast.' },
+    ],
+  },
+  'm16-checkpoint': {
+    id: 'm16-checkpoint', mode: 'radio', lines: [
+      { speaker: O, text: 'That checkpoint guards the road north. Expect mines on the west road.' },
+      { speaker: O, text: 'The south path looks clean. Your call, Squad.' },
+    ],
+  },
+  'm16-extract': { id: 'm16-extract', mode: 'radio', lines: [{ speaker: O, text: 'Checkpoint is ours. Helicopter inbound, north-east clearing.' }] },
 };
 
 export function speakerOf(line: StoryLine): StorySpeaker { return SPEAKERS[line.speaker]; }

@@ -11,6 +11,7 @@ import {
   SUPPLY_DEPOTS, SUPPLY_EXTRACTION, SUPPLY_MAP, SUPPLY_ROUTE,
   FORTRESS_ALLY_ENTRY, FORTRESS_ARENA, FORTRESS_CALL_POINTS, FORTRESS_EXTRACTION, FORTRESS_GENERATOR,
   FORTRESS_INNER_GATE, FORTRESS_INNER_LOCKED, FORTRESS_LOCKED, FORTRESS_MAIN_GATE, FORTRESS_MAP, FORTRESS_RELAYS, FORTRESS_VOSS,
+  JUNGLE_EXTRACTION, JUNGLE_MAP, JUNGLE_MINES, JUNGLE_PRESSURE,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -26,6 +27,8 @@ import { ALLY_NAMES, AlliesAliveOptional, ArtilleryObjective, LiberateZonesObjec
 import { AssetHpOptional, PrepareDefenseObjective, WaveDefenseObjective, type DefenseWaveDef, type TurretCache } from './defense';
 import { CaptureVehicleObjective, CountDestroyObjective, EscortObjective, type AmbushDef } from './escort';
 import { ClearGroupsObjective, ClearRemainingObjective, FortressRelaysObjective, GeneralObjective, GeneratorObjective, ResistanceSurvivesOptional } from './fortress';
+import { MineField } from './mines';
+import { MineKillsOptional } from './chapter4';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -531,7 +534,46 @@ const LAST_STAND: MissionScript = {
   story: { bossIntro: 'm15-intro', bossPhase2: 'm15-phase2', bossPhase3: 'm15-phase3', victory: 'm15-victory' },
 };
 
+// =====================================================================================
+// v0.9A CHAPTER 4: Behind Enemy Lines
+// =====================================================================================
+
+// ---- Mission 16: Jungle Sweep (Minefield Sweep, 6 soldiers) ----
+// 51 placed enemies, 13 of them Armored Troopers (no respawns, no scripted waves) + moderate extraction pressure (5);
+// 15 mines (MineField).
+//  Opening: patrol A (clearing A), patrol B (clearing B: the first mine beside the trail, Overwatch's warning on the way
+//  in). Middle: the ravine (two mines in the trail), clearing C (a mine belt in front of patrol C), the trail to
+//  clearing D (one mine), clearing D (three mines between the trail and patrol D). The northern detour (clearing N:
+//  a small patrol, one mine) is optional. Finale: the checkpoint (front 6; inner 7 holding their posts behind the
+//  sandbags; two watchtowers; a reserve of 6 that wakes as the assault starts); mines on its west road and north path,
+//  the south path is clean. Then the helicopter clearing north-east.
+const JUNGLE_SWEEP: MissionScript = {
+  id: 'jungle-sweep', map: JUNGLE_MAP,
+  groups: () => [
+    { tag: 'patrol-a', points: [{ x: 1050, y: 2040 }, { x: 1150, y: 2120 }, { x: 1080, y: 2160 }, { x: 980, y: 2100 }, k(1110, 2080, 'armored')], aggro: 430 },
+    { tag: 'patrol-b', points: [{ x: 1260, y: 1080 }, { x: 1330, y: 1120 }, { x: 1200, y: 1040 }, { x: 1190, y: 1200 }, k(1300, 1180, 'armored'), k(1380, 1010, 'sniper')], aggro: 450 },
+    { tag: 'patrol-n', points: [{ x: 1800, y: 480 }, { x: 1700, y: 580 }, { x: 1760, y: 640 }, k(1850, 430, 'sniper')], aggro: 400 },
+    { tag: 'patrol-c', points: [{ x: 2420, y: 980 }, { x: 2480, y: 1150 }, { x: 2400, y: 1200 }, { x: 2500, y: 1040 }, k(2400, 1130, 'armored'), k(2460, 1080, 'armored'), k(2540, 1230, 'sniper')], aggro: 320 },
+    { tag: 'patrol-d', points: [{ x: 3140, y: 2020 }, { x: 3250, y: 1960 }, { x: 3060, y: 2150 }, { x: 3220, y: 2080 }, k(3190, 1960, 'armored'), k(3090, 1960, 'armored'), k(3260, 1840, 'sniper'), k(3230, 1710, 'sniper')], aggro: 380 },
+    { tag: 'cp-front', points: [{ x: 3800, y: 1040 }, { x: 3790, y: 1300 }, { x: 3720, y: 950 }, k(3830, 1150, 'armored'), k(3760, 1060, 'armored'), k(3700, 1400, 'sniper')], aggro: 420 },
+    { tag: 'cp-inner', points: [{ x: 3950, y: 1150 }, { x: 4000, y: 1010 }, { x: 4120, y: 1260 }, k(4020, 1180, 'armored'), k(4110, 1040, 'armored'), k(3960, 1290, 'armored'), k(4170, 1220, 'sniper')], aggro: 360, hold: true }, // dug in behind the sandbags
+    { tag: 'cp-tower', points: [k(3850, 915, 'tower'), k(3850, 1385, 'tower')] },
+    { tag: 'cp-reserve', points: [{ x: 4350, y: 1000 }, { x: 4400, y: 1150 }, { x: 4350, y: 1300 }, k(4450, 1050, 'armored'), k(4430, 1250, 'armored'), k(4500, 1150, 'sniper')], aggro: 650 },
+  ],
+  triggers: [],
+  primaries: () => [
+    new ReachObjective('advance', 'Advance through the jungle', { x: 1480, y: 1000, w: 200, h: 260 }, 'TRAIL'),
+    new ClearGroupsObjective('approaches', 'Clear the patrols and minefield approaches', ['patrol-a', 'patrol-b', 'patrol-c', 'patrol-d'], 'PATROL'),
+    new ClearGroupsObjective('checkpoint', 'Eliminate the checkpoint defenders', ['cp-front', 'cp-inner', 'cp-tower', 'cp-reserve'], 'CHECKPOINT'),
+  ],
+  optionals: () => [new MineKillsOptional('mine-ambush', 'Take out 3 enemies with mine blasts', 3)],
+  hint: 'The trails are mined: a soldier who gets close reveals a mine. Steer around it, or tap it to shoot it.',
+  mechanics: () => [new MineField({ mines: JUNGLE_MINES, warnCue: 'minesAhead', warnRadius: 520 })],
+  extraction: { zone: JUNGLE_EXTRACTION, countdown: () => 12, pressure: { tier: 'moderate', points: JUNGLE_PRESSURE } },
+  story: { minesAhead: 'm16-mines', 'start:checkpoint': 'm16-checkpoint', victory: 'm16-extract' },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

@@ -1,6 +1,6 @@
 # MiniSquad development handoff (current state)
 
-> **Snapshot as of Phase 3 Architecture Optimization (internal, on v0.8C.1 `924dc13`), written 2026-10-24.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
+> **Snapshot as of v0.9A Chapter 4: Jungle Sweep (on Phase 3 `a05a70e`), written 2026-10-25.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
 
 Replace this file's sections in place when a milestone ships; do not append release logs. Release history goes in [CHANGELOG.md](CHANGELOG.md), the previous append-only handoff is in [archive/DEVELOPMENT_HANDOFF_HISTORY.md](archive/DEVELOPMENT_HANDOFF_HISTORY.md).
 
@@ -10,9 +10,9 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 
 | | |
 |---|---|
-| Release | v0.8C.1, Story & Cinematic Presentation (Mission 15 story, reusable dialogue system; on v0.8C General's Last Stand) |
-| `package.json` | `version` 0.8.5, `versionLabel` "0.8C.1" |
-| Commit | the v0.8C.1 commit on `main` (see `git log`; v0.8C was `1acc610`) |
+| Release | v0.9A, Chapter 4: Jungle Sweep (Mission 16, reusable land mines; on Phase 3 / v0.8C.1) |
+| `package.json` | `version` 0.9.0, `versionLabel` "0.9A" |
+| Commit | the v0.9A commit on `main` (see `git log`; Phase 3 was `a05a70e`, v0.8C.1 `924dc13`) |
 | Save | v9 (`SAVE_VERSION` in `src/save.ts`), key `minisquad.save` |
 | Deploy | push to `main` → Cloudflare Workers serves `./dist` (`wrangler.jsonc`); production https://minisquad.ryanaverett1996.workers.dev (check Settings for the label and commit) |
 
@@ -25,12 +25,13 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 | 1 | 1 First Contact · 2 Heavy Support · 3 Field Medicine · 4 Red Canyon Ambush · 5 Bring Them Home |
 | 2 Behind Enemy Lines | 6 Bridgehead · 7 Prison Break · 8 Convoy Crusher · 9 Blackout (night) · 10 Operation Iron Fist (Iron Warden boss) |
 | 3 The Resistance | 11 Resistance Rising · 12 Artillery Hunt (night) · 13 Hold the Line (defense) · 14 Supply Line Sabotage (escort) · 15 General's Last Stand (fortress assault, General Voss) |
+| 4 Behind Enemy Lines | 16 Jungle Sweep (jungle, land mines, fortified checkpoint); 17-20 not built |
 
 Squad caps: M1–2 → 2, M3–5 → 3, M6 → 4, M7–12 → 5, M13+ → 6. Roster cap 12.
 
 **Classes** (`src/classes.ts`): Infantry (Grenade), Heavy Gunner (Suppressive Fire), Medic (Field Treatment), Sniper (Focus; unlocked by the first clear of M9), Commando (dual pistols, Bullet Storm; unlocked by the first clear of M12), Demolitions Expert (rocket launcher with splash, Inferno; unlocked by the first clear of M15, 1,500 CR). Each class has two Elite specializations.
 
-**Campaign progression**: a new campaign owns Ace and Ranger. First clears unlock the next mission, named recruit offers (Tank M1, Doc M2, Havoc M5, Patch M7; 1,000 CR each, never free) and classes (Sniper M9, Commando M12, Demolitions Expert M15). Mission 15 is the last mission; no Chapter 4 rows exist. Stars are kept per mission and never go down; replays pay 75% XP.
+**Campaign progression**: a new campaign owns Ace and Ranger. First clears unlock the next mission, named recruit offers (Tank M1, Doc M2, Havoc M5, Patch M7; 1,000 CR each, never free) and classes (Sniper M9, Commando M12, Demolitions Expert M15). Mission 15's first clear also opens Mission 16, the last playable mission (Chapter 4 row `from: 16`, open-ended; Mission 16 unlocks nothing yet). Note: Chapters 2 and 4 are both named "Behind Enemy Lines" (as specified; flagged for Ryan). Stars are kept per mission and never go down; replays pay 75% XP.
 
 **Systems shipped**:
 - Real-time squad combat: auto-targeting, physical projectiles, spread cones, cover, downed / revive / bleed-out (20 s), helicopter extraction with the left-behind warning and extraction pressure.
@@ -46,6 +47,7 @@ Squad caps: M1–2 → 2, M3–5 → 3, M6 → 4, M7–12 → 5, M13+ → 6. Ros
 - Settings (⚙) for players: frame cap, performance overlay, version. Developer tuning (CFG sliders, debug actions, config JSON) only with `?dev=1`, memory only, never saved (v0.8B.2).
 - Mission 14 hides route progress, distance and the ambush count during the escort (v0.8B.2).
 - Story (v0.8C.1, `src/story.ts`, `src/storyview.ts`): data-driven scenes at mission cues (`MissionScript.story`, `Mission.cue`, once per attempt). Mission 15: a blocking pre-boss cinematic when Voss enters (simulation suspended via `Game.modal = 'story'`), non-blocking radio lines at his 70% / 35% phases, a blocking victory cinematic once the defenders are cleared, then the normal extraction. Tap / Enter / Space next, SKIP / Esc skip, auto-advance in simulation time (~10 s each). OVERWATCH is Command's callsign; lines never name a recruit. Text-only comic panels; `portrait` fields take artwork later (`public/story/`).
+- Land mines (v0.9A, `src/mines.ts`, `MineField` mechanic, `CFG.mine`): hidden → revealed at 130 px by a standing soldier → detonated (20 px trigger, anyone on foot, either state); 65 px blast, 60 damage centre / 35% edge, both teams, cover, chains (90 px, 0.2 s, once each); tap / click a revealed mine to order the squad to shoot it (8 s order, range + sight, never an automatic target). Per attempt, nothing saved.
 - Mobile: landscape layout on a scaled 1280×720 stage, safe areas, rotation re-layout, ≥ 44 CSS px touch areas, 30 FPS default on phones with identical simulation at 60.
 
 ## Save compatibility requirements
@@ -66,10 +68,15 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 - Enemy budgets are finite (M13 ≤ 79, M14 ≤ 81, M15 = 48 + Voss); waves, ambushes and Voss's phases fire once.
 - Mission 15: Voss's range ≤ every soldier's; no medkit past the inner gate; no checkpoint (a reload restarts the mission); the gates cannot be bypassed.
 - The truck never moves through a friendly and nobody is teleported.
+- Mines (v0.9A): a revealed mine is never an automatic target (every candidate list filters `isMine`; rounds pass over it unless it is the shooter's target); no pathing around mines; a mine detonates once; centre damage stays below the lowest class HP (75); no mine near a start zone and a mine-free route to every objective (`v09a` B).
 - Story cinematics never change gameplay: anything added to `Game.update` before the `modal` return must be presentation only; auto-advance runs on the fixed step; no save fields for cues.
 - Settlement happens once per run id; a failed mission makes downed soldiers KIA; quitting mid-mission brings downed soldiers home (known, accepted).
 
 ## Test status
+
+**v0.9A run (2026-10-25):** `npm test -- all` (32 rule suites incl. the new `v09a`, 43 min): 30 passed on the first pass. `mobile` (9 checks) counted 3 campaign chapter tabs; there are 4 now (layout otherwise inside, aligned, no scroll), so the count was updated and it passes. `support` C7 (airstrike on a cluster: Armored Trooper at the centre survived) is the known pre-existing airstrike timing flake (see Phase 3 below); 4 of 4 reruns passed, `src/support.ts` untouched. `v09a` 71 checks green with BASE v0.8C.1; `fps-parity` 33 checks incl. `jungle-sweep` and `jungle-sweep@field` (the pilot taps revealed mines: reveals, orders, shots, soldier and enemy triggers in 60 s). tsc and build clean. Performance (headless Chromium, 844×390, not a phone): one `__render()` takes 3.9-7.5 ms on the Mission 16 map vs 2.8-4.2 ms on Mission 15 (canopy strips are culled to the view since this release); the throttled `perf` profile (THROTTLE 4) shows update 3.0 ms vs 2.9 ms mean per step, render 73 vs 46 ms. Watch frame time on older phones (119 obstacles, 91 of them canopy strips).
+
+**v0.9A test changes (behaviour changed on purpose, assertions kept):** Mission 16 exists, Mission 15 now unlocks it and there is a `mine` CFG group, so: `arch` A1 (only Mission 16 declares a mechanic, Missions 1-15 none) and D1 (every CFG group but `mine` and Missions 1-15 identical; Mission 15's row compared with its unlock list set aside, which must read `jungle-sweep`); `story` A5 (Mission 16 has story cues too) and F1 / F2 (same rule as `arch` D1); `v08c` A2 / A3 (Mission 16 follows Mission 15; Mission 15 unlocks it); `campaign-rules` (a CH 4 tab, 3 stars); `barracks` (unlock-all opens 16 missions); `chapter3a` C1 (16 briefings) and C2 (only missions numbered below 15 must not name Voss; Mission 16's briefing does); `support` A2 (four six-soldier missions); `training-rebalance` E5 (skips the new `mine` group like the v0.8C groups); `mobile` (4 chapter tabs). New `v09a` suite (BASE v0.8C.1) and `v09a-sim` report.
 
 **Phase 3 run (2026-10-24, on v0.8C.1 + Phase 3):** `npm test -- all` (31 rule suites incl. the new `arch`, 28 min): 29 passed on the first pass. `support` C5 / C7 (airstrike falloff "exact values": an enemy drifted 15.5-22 px off the strike centre before impact, so the `dist[0] < 15` precondition fails; values themselves match) failed 1 of 7 reruns here and **3 of 8 on the untouched v0.8C.1 build** (`--url`), so pre-existing timing flakiness, not Phase 3 (`src/support.ts` untouched). `chapter2` "captive-centred formation" (inside-ring 0.72 vs 0.75 with 2 soldiers) failed once and passed 7 reruns here and 8 of 8 on v0.8C.1; the captive code is untouched and `fps-parity` shows Missions 5 / 7 bit-identical, so it is unseeded randomness (flaky, watch). Equivalence proof: `fps-parity --base 924dc13` with `MISSIONS` = all 15 missions plus `last-stand@voss` / `@story`: 90 / 90 (30 / 60 / 90 / 120 Hz and every mission's 60 s simulation identical to v0.8C.1); `arch` D1 / D2 (CFG, Missions 1-15 data, a seeded grenade + rocket firefight) identical; a deliberate 1% blast change makes `arch` fail (B1, B3, B4, D2), so the suite has teeth.
 
@@ -95,6 +102,11 @@ Run with `npm test -- all` (30 rule suites, ~29 min headless; `BASE` = v0.8B bui
 
 ## Known issues
 
+- **Mission 16 balance is autopilot-only.** `v09a-sim` (RUNS=3 per scenario, aware = steps back from revealed mines and taps them; naive = ignores mines): level-12 + Demolitions, level-18 trained and Elite squads win 9/9 aware (91-126 s) and 9/9 naive (90-152 s); a fresh untrained level-8 squad (the Mission 16 recruit level, no training) wins 1/3 aware, 1/3 naive, losing in the approaches / checkpoint firefights, not to mines. Aware play takes 0 mine damage; naive play takes 267-518 squad mine damage and 3-5 soldier-triggered blasts per run (0-4 mine downs). Mines are revealed at 125-130 px (about 0.8 s of walking before the 20 px trigger). The checkpoint is the peak (most downs). Headless runs are 90-170 s; Mission 15's ×3 headless-to-human ratio suggests about 5-8 minutes for a person. Levers: `CFG.mine` (detectRadius 130, damage 60), group aggro / composition in `JUNGLE_SWEEP`, mine positions in `JUNGLE_MINES`.
+- `CFG.mine.detectRadius` is 130 px, above the brief's "about 110": at 110 a walking soldier had about 0.6 s before stepping on a mine directly ahead, which read as unfair in the sims. One number to change if playtests disagree.
+- A Tactical Support airstrike leaves a revealed mine at 1 HP (the objective floor applies to structures); the squad finishes it. Nuclear Strike likewise.
+- Chapters 2 and 4 are both named "Behind Enemy Lines" (as specified); a rename is one string in `CHAPTERS`.
+
 - **Mission 15 balance is autopilot-only (open decision).** Headless `v08c-sim` (RUNS=4): Elite squad with a Siege Breaker 4/4 wins, level-18 trained squad 3/4, the same without a Demolitions Expert 2/4 (winnable without the class), level-12 untrained squads 0/4 (all lost at Voss, mostly to his rifle and Rally-boosted guards). The autopilot uses no cover and dodges crudely; it also loses Mission 10 at level 12. Headless runs last 150-230 s against the 7-10 minute human target. Levers if playtests find it too hard: `CFG.general` (accuracy 10, projectileSpeed 430, fireRate), `CALL_STAGGER` (6 s) in `src/general.ts`, `arena-guard` aggro and composition, generator / relay HP (1,200 / 1,000), the courtyard medkit.
 - Off-screen "ENEMIES" / objective arrows at the top edge can sit over the objective panel (and the boss bar) on phones; pre-existing in every mission, more visible with the Voss bar. Not changed (render-only, all missions).
 - v0.8B.2 enemy Sniper buff vs Mission 13 (autopilot, which never or only crudely dodges lasers): level-12 "mod" squad with both caches won 4/10 vs 8/10 on v0.8B.1, with sniper-caused downs up 2-5×; trained ("well") squads unchanged (4/4). Mission 14 win rates unchanged within noise. Waves were left as approved; see the v0.8B.2 report for the open decision.
@@ -107,9 +119,10 @@ Run with `npm test -- all` (30 rule suites, ~29 min headless; `BASE` = v0.8B bui
 ## Outstanding work and approved priorities
 
 **Next gameplay milestones (not started):**
-0. Comic artwork for the Mission 15 cinematics (v0.8C.1 left `portrait` slots; files go in `public/story/`). Human check of the cinematic pacing on phones.
-1. **Human playtest of Mission 15 on phones** (length, Voss difficulty for level 12-18 squads, Rally readability, Inferno use). See the known issue above for the levers.
-2. Chapter 4 (Missions 16+): not started; needs new `CHAPTERS` / `CAMPAIGN` rows. Done in v0.8C: Mission 15 General's Last Stand and the Demolitions Expert.
+0. **Human playtest of Mission 16 on phones** (length, mine readability and the tap order, checkpoint difficulty; questions in the v0.9A report). Then Mission 17 (fuel infrastructure; reuse `MineField` / `blastDamage`), the Scout enemy kind.
+1. Comic artwork for the Mission 15 cinematics (v0.8C.1 left `portrait` slots; files go in `public/story/`). Human check of the cinematic pacing on phones.
+2. **Human playtest of Mission 15 on phones** (length, Voss difficulty for level 12-18 squads, Rally readability, Inferno use). See the known issue above for the levers.
+3. Chapter 4: Mission 16 done in v0.9A; Missions 17-20 not started (add rows after `jungle-sweep`, set its `unlocks.missions`).
 
 **Approved playtest feedback:**
 - Mission 13's harder difficulty: approved, keep.
@@ -126,7 +139,7 @@ Run with `npm test -- all` (30 rule suites, ~29 min headless; `BASE` = v0.8B bui
 - Phase 3, architecture optimization for Chapters 4–5: done (2026-10-24, on v0.8C.1; no gameplay change, package 0.8.5, label still v0.8C.1, save v9). See [Phase 3](#phase-3-architecture-optimization) below.
 - Follow-ups (not scheduled): move older suites onto `tools/lib.cjs` and its page helpers when they are next edited; widen `maps` to Missions 11–15 (and 16+ as they land); optional parallel jobs.
 
-**Roadmap:** Missions 16–25 (Chapters 4–5); land mines provisionally planned for Chapter 4, enemy vehicles for Chapter 5. Missions 16+ would raise recruit starting levels (`RECRUIT_LEVELS`) and mission XP automatically.
+**Roadmap:** Missions 17–25 (Chapters 4–5); land mines shipped in v0.9A (Mission 16), enemy vehicles planned for Chapter 5. Missions 16+ would raise recruit starting levels (`RECRUIT_LEVELS`) and mission XP automatically.
 
 ## Phase 3 architecture optimization
 

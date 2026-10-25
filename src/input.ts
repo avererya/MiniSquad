@@ -11,18 +11,26 @@ export interface InputHandler {
   isSupportAiming(): boolean;
   onSupportAim(screen: Vec): void;
   onKey(code: string, e: KeyboardEvent): void;
+  /** v0.9A a plain tap / left click on the battlefield while not aiming (screen coords, logical px): e.g. a mine order. */
+  onTap(screen: Vec): void;
   onAnyInput(): void;
 }
 
 const JOY_RADIUS = 64;
 const JOY_DEADZONE = 0.15;
+/** v0.9A a touch that moved less than this (logical px) and ended within TAP_TIME s is a tap, not a drag. */
+const TAP_SLOP = 18;
+const TAP_TIME = 0.35;
+const nowS = () => performance.now() / 1000;
 
 export class Input {
   keys = new Set<string>();
   pointer: Vec = { x: VIEW_W / 2, y: VIEW_H / 2 }; // last known pointer pos (logical screen px)
   pointerSeen = false;
   joy: { id: number; origin: Vec; cur: Vec } | null = null;
-  private pendingTap: { id: number; start: Vec; left: boolean } | null = null;
+  private pendingTap: { id: number; start: Vec; left: boolean; plain?: boolean; at?: number } | null = null;
+  /** v0.9A the joystick touch, while it could still be a tap on the left half (it never moved past TAP_SLOP). */
+  private joyTap: { id: number; start: Vec; at: number } | null = null;
   /** v0.7C: the touch currently placing / dragging the airstrike target. */
   private aimTouch: number | null = null;
 
@@ -46,6 +54,7 @@ export class Input {
         if (e.button === 2) h.onTargetCancel();
         else if (e.button === 0 && h.isSupportAiming()) h.onSupportAim(p);
         else if (e.button === 0 && h.isTargeting()) h.onTargetConfirm(p);
+        else if (e.button === 0) h.onTap(p);
         return;
       }
       e.preventDefault();
@@ -54,18 +63,29 @@ export class Input {
       if (h.isSupportAiming()) {
         // an already-held joystick keeps working; any other touch aims (never moves the squad)
         if (!this.joy || this.joy.id !== e.pointerId) { this.aimTouch = e.pointerId; h.onSupportAim(p); }
-      } else if (h.isTargeting() && !this.pendingTap) {
+      } else if (h.isTargeting() && (!this.pendingTap || this.pendingTap.plain)) {
         this.pendingTap = { id: e.pointerId, start: p, left };
       } else if (left && !this.joy) {
         this.joy = { id: e.pointerId, origin: p, cur: p };
+        this.joyTap = { id: e.pointerId, start: p, at: nowS() };
+      } else if (!left && !this.pendingTap) {
+        this.pendingTap = { id: e.pointerId, start: p, left, plain: true, at: nowS() }; // v0.9A a tap on the battlefield
       }
     });
     canvas.addEventListener('pointermove', (e) => {
       const p = this.toLogical(e);
       if (e.pointerType === 'mouse') { this.pointer = p; this.pointerSeen = true; return; }
-      if (this.joy && e.pointerId === this.joy.id) { this.joy.cur = p; return; }
+      if (this.joy && e.pointerId === this.joy.id) {
+        this.joy.cur = p;
+        if (this.joyTap && Math.hypot(p.x - this.joyTap.start.x, p.y - this.joyTap.start.y) > TAP_SLOP) this.joyTap = null;
+        return;
+      }
       if (this.aimTouch === e.pointerId) { if (h.isSupportAiming()) h.onSupportAim(p); return; }
       const t = this.pendingTap;
+      if (t && e.pointerId === t.id && t.plain) {
+        if (Math.hypot(p.x - t.start.x, p.y - t.start.y) > TAP_SLOP) this.pendingTap = null; // a drag, not a tap
+        return;
+      }
       if (t && e.pointerId === t.id) {
         if (t.left && !this.joy && Math.hypot(p.x - t.start.x, p.y - t.start.y) > 18) {
           // dragging on the left half while targeting: it's the joystick after all
@@ -77,12 +97,19 @@ export class Input {
       }
     });
     const end = (e: PointerEvent) => {
-      if (this.joy && e.pointerId === this.joy.id) this.joy = null;
+      if (this.joy && e.pointerId === this.joy.id) {
+        this.joy = null;
+        const jt = this.joyTap;
+        this.joyTap = null;
+        // v0.9A a quick touch on the left half that never moved the stick is a tap too (a mine can be anywhere)
+        if (jt && jt.id === e.pointerId && e.type === 'pointerup' && nowS() - jt.at <= TAP_TIME && !h.isTargeting() && !h.isSupportAiming()) h.onTap(jt.start);
+      }
       if (this.aimTouch === e.pointerId) { this.aimTouch = null; if (e.type === 'pointerup' && h.isSupportAiming()) h.onSupportAim(this.toLogical(e)); return; }
       const t = this.pendingTap;
       if (t && e.pointerId === t.id) {
         this.pendingTap = null;
-        if (e.type === 'pointerup' && h.isTargeting()) h.onTargetConfirm(this.toLogical(e));
+        if (t.plain) { if (e.type === 'pointerup' && nowS() - (t.at ?? 0) <= TAP_TIME * 2 && !h.isTargeting() && !h.isSupportAiming()) h.onTap(this.toLogical(e)); }
+        else if (e.type === 'pointerup' && h.isTargeting()) h.onTargetConfirm(this.toLogical(e));
       }
     };
     canvas.addEventListener('pointerup', end);

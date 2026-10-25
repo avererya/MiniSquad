@@ -8,6 +8,10 @@ function setupMission({ missionId, level }) {
   // arena's guard left standing), so a short run covers the boss fight, Rally, the radioed calls and the allies
   // v0.8C.1 'last-stand@story': the same, but the pre-boss cinematic plays out on its own (auto-advance) first;
   // '@voss' skips it, so its run still covers the fight as in v0.8C.
+  // v0.9A 'jungle-sweep@field': Mission 16 from the ravine (the trail reached, the first three patrols gone), so a short
+  // run walks the squad through the minefield middle: reveals, the pilot's mine orders, blasts, chains
+  const field = missionId === 'jungle-sweep@field';
+  if (field) missionId = 'jungle-sweep';
   const story = missionId === 'last-stand@story';
   const voss = missionId === 'last-stand@voss' || story;
   if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
@@ -29,6 +33,15 @@ function setupMission({ missionId, level }) {
     m.primaries[4].activate(m, g); m.phase = m.primaries[4].phase;
     if (!story && g.story) g.story.skip(g);
     g.invuln = true; // the squad stands for the whole run, so it reaches phases 2 / 3, the calls and the allies
+  }
+  if (field && r.ok) {
+    const m = g.mission;
+    for (const e of g.enemies) if (/^patrol-(a|b|n)$/.test(e.tag)) e.state = 'dead';
+    g.enemies = g.enemies.filter((e) => e.active);
+    g.soldiers.forEach((s, i) => { s.pos = { x: 1540 + (i % 3) * 30, y: 1110 + Math.floor(i / 3) * 30 }; s.vel = { x: 0, y: 0 }; });
+    g.anchor = { x: 1570, y: 1125 }; g.cam = { x: 1570, y: 1125 };
+    if (g.story) g.story.skip(g);
+    void m;
   }
   void a;
   return r.ok ? { ok: true, squad: g.soldiers.map((s) => s.name) } : { ok: false, reason: r.reason };
@@ -61,6 +74,13 @@ function installPilot() {
       if (b && b.unit.active && goal && Math.hypot(b.unit.pos.x - g.anchor.x, b.unit.pos.y - g.anchor.y) < 360) goal = null;
     }
     if (npc && npc.escorting && npc.active && Math.hypot(npc.pos.x - g.anchor.x, npc.pos.y - g.anchor.y) > 200) goal = npc.pos;
+    // v0.9A mines (Mission 16): every 2 s, order the nearest revealed mine within 320 px shot (a tap, like a player)
+    const mf = m.mechanic ? m.mechanic('mines') : null;
+    if (mf && n % 120 === 0) {
+      let best = null, bd = 320 * 320;
+      for (const x of mf.mines) { if (x.state !== 'revealed') continue; const d = (x.pos.x - g.anchor.x) ** 2 + (x.pos.y - g.anchor.y) ** 2; if (d < bd) { bd = d; best = x; } }
+      if (best && !(mf.order && mf.order.mine === best)) g.onTap({ x: best.pos.x - g.cam.x + 640, y: best.pos.y - g.cam.y + 360 });
+    }
     const fighting = g.soldiers.some((s) => s.active && s.target && !s.target.structure && !s.target.vehicle);
     P.pathT -= 1 / 60;
     if (goal && (P.pathT <= 0 || !P.pathGoal || Math.hypot(goal.x - P.pathGoal.x, goal.y - P.pathGoal.y) > 80)) { P.path = g.world.findPath(g.anchor, goal, 12); P.pathT = 0.5; P.pathGoal = { ...goal }; }

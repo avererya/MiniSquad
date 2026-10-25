@@ -74,6 +74,7 @@ The simulation **always** steps 1/60 s. The frame cap only changes how many step
 2. `mission.start` spawns groups, the captive / allies / protected asset / escort truck / artillery from `MissionScript` fields and activates the first primary objective.
 3. Each step `Mission.update` runs triggers, the current primary, optionals and extraction. `Game` and objectives report through `Mission.emit(game, MissionEvent)` (`enemyKilled`, `soldierDowned`, `assetDestroyed`…).
    v0.8C.1: a mission can play story scenes at cues (`MissionScript.story`, `Mission.cue`, `src/story.ts`). A cinematic sets `Game.modal = 'story'`, which suspends the step exactly like the Mission 14 gunner prompt; radio lines run alongside combat.
+   v0.9A: each objective's activation also cues `start:<objective id>` (a story line when a stage begins); a plain tap / click on the battlefield goes `Game.onTap` → `Mission.tap` → each mechanic's `tap` (Mission 16's mine orders).
 4. When the primaries are done, the helicopter extraction (with the left-behind warning and extraction pressure) ends the mission. `Game.end` → stars (`computeStars`) → `Game.settle` → `economy.settleMission` (XP, Credits, unlocks, KIA, casualty batch, saved once per run id) → Results.
 
 Objectives are small state machines (`pending → active → complete | failed`) with hooks `onStart`, `update`, `afterComplete`, `onEvent`, `finalize`, `hud`, `status`, `point` and `draw`. They never pay rewards.
@@ -84,7 +85,7 @@ Objectives are small state machines (`pending → active → complete | failed`)
 
 ## Recipes
 
-**Add a mission** (Mission 15 `last-stand` is the most recent full example; Missions 16+ need new `CHAPTERS` rows):
+**Add a mission** (Mission 16 `jungle-sweep`, v0.9A, is the most recent full example and the first on a `MissionMechanic`; Chapter 4 is `CHAPTERS` row 4, from 16, open-ended):
 1. `src/campaign.ts`: a playable row (number, type, objectives, optionals, star rule, unlocks, brief), unlocked by the previous mission's `unlocks.missions`; check `CAPACITY_TABLE` and `CHAPTERS`.
 2. `src/map.ts`: `MapDef` plus zones and points; run `tools/maps.cjs` for reachability.
 3. `src/missions.ts`: a `MissionScript` (groups, triggers, primaries, optionals, extraction) added to `MISSION_SCRIPTS`.
@@ -99,22 +100,8 @@ Objectives are small state machines (`pending → active → complete | failed`)
 
 **Add a mission mechanic** (Phase 3; the extension point for Chapter 4–5 systems such as mine fields, fuel depots, prisoner holding cells, engineer repairs or vehicle patrols): write a class implementing `MissionMechanic` (`src/mission.ts`) in its own module and declare it in the script, `mechanics: () => [new MineField(MINES_M16)]`. Mission calls `start` (after spawns, before the first objective), `step` every fixed step from `unitStep` (set velocities here), `onEvent` for every `MissionEvent` after the objectives, and `draw` at ground level; none run after the mission ends, and every attempt (Retry) builds a fresh instance. Objectives reach it with `m.mechanic<MineField>('mines')`. Before Phase 3 the same system needed a `Mission` field plus edits to `Mission.start`, `unitStep`, `emit` and `draw` (compare `convoy`, `artillery`, `escort`, which stay as they are). Keep player-visible HUD text in objectives (`hud()` lines, chips, meters) or `game.banner` / `game.say`; a third boss bar still needs a branch in `src/hud.ts` (see the boss / general bar). Test with the shared page helpers (below) and `fps-parity` (add the mission to `MISSIONS`).
 
-```ts
-// Chapter 4 sketch (not implemented): a mine field, damage through the shared blast helper
-export class MineField implements MissionMechanic {
-  readonly id = 'mines';
-  constructor(private mines: { pos: Vec; armed: boolean }[]) {}
-  step(m: Mission, g: Game) {
-    for (const mine of this.mines) if (mine.armed && g.soldiers.some((s) => s.active && dist(s.pos, mine.pos) < CFG.mine.trigger)) this.detonate(g, mine);
-  }
-  detonate(g: Game, mine: { pos: Vec; armed: boolean }) {
-    mine.armed = false;
-    blastDamage(g, mine.pos, { radius: CFG.mine.radius, damage: CFG.mine.damage, edgeFrac: CFG.mine.edgeFrac,
-      victims: [...g.enemies, ...g.enemyVictims()], cover: true, opts: { grenade: true, at: mine.pos } });
-  }
-  draw(ctx: CanvasRenderingContext2D) { /* markers, proximity ring */ }
-}
-```
+**Reuse land mines** (v0.9A `MineField`, `src/mines.ts`; rules in its header comment, numbers in `CFG.mine`): one script line, `mechanics: () => [new MineField({ mines: MY_MINES, warnCue: 'myCue', warnRadius: 520, tuning: { damage: 50 } })]`. Positions are open ground (`world.isOpen`), none near the start zone, ideally with at least one route whose cells stay outside every blast ring (`v09a` B4 checks this with a flood fill). `warnCue` is a `StoryCue` mapped in the script's `story` (played once when a soldier first nears any armed mine); `tuning` overrides any `CFG.mine` number for that field only. Objectives / optionals read it with `m.mechanic<MineField>('mines')` (`.mines`, `.log`: reveals, detonations, enemy kills, squad hits and damage, orders, per-cause counts); `MineKillsOptional` (`src/chapter4.ts`) is the example. How it plugs in: a revealed mine is a `'mine'` structure unit in `Game.enemies` (rounds aimed at it, grenades, rockets and flames hurt it; `structureDestroyed` sets it off next step), `Game.update` filters `isMine` out of every automatic candidate list and the push-out loop, `updateProjectiles` lets rounds pass over a mine unless it is the shooter's target, and a player tap reaches it through `Input` → `Game.onTap` → `Mission.tap` → `MissionMechanic.tap` → `Unit.order` (honoured first in `updateWeapon` while valid). Any new auto-targeting shooter (turret, ally, ability) must also skip `isMine`.
+
 
 **Add area damage** (mines, fuel tanks, a wrecked vehicle): call `blastDamage(game, at, spec)` in `src/combat.ts` and draw your own effect. It applies linear falloff (`damage` at the centre to `edgeFrac` × at the edge), optional wall cover (`cover: true`), a direct-hit `skip`, a per-victim `mul` (the rocket's anti-armor bonus) and sends every hit through `Game.damage`, so Elite caps, armor rules, awareness alerts, kills and mission events need nothing new. `victims` decides who is hurt: `game.enemies` (grenades, rockets), `game.enemyVictims()` (soldiers, allies, escorted captives, assets) or both for a hazard. "Dangerous but never an instant kill" is a number choice: keep the centre damage below the lowest soldier max HP (`CFG.sniper.hp`, 75, is the smallest class HP; no trait lowers HP), and remember `DamageOpts.grenade` skips the Armored Trooper's frontal plate. Grenades (`explode`) and rockets (`rocketImpact`) use it with their v0.8C.1 arithmetic unchanged (`arch` D2 compares a seeded firefight with v0.8C.1).
 

@@ -83,7 +83,11 @@ export class HelicopterExtraction implements Extraction {
 // ---------------- mission scripts (data, see missions.ts) ----------------
 /** A group point may carry an enemy kind (v0.6.2: sniper, armored, tower...; default rifleman). */
 export type SpawnPoint = Vec & { kind?: EnemyKind };
-export interface GroupSpec { tag: string; points: SpawnPoint[]; guard?: boolean; aggro?: number; defender?: boolean }
+export interface GroupSpec {
+  tag: string; points: SpawnPoint[]; guard?: boolean; aggro?: number; defender?: boolean;
+  /** v0.9A the group holds its posts (Unit.holdPos, like the Mission 14 roadblocks): it turns and fires, never advances. */
+  hold?: boolean;
+}
 export interface TriggerSpec {
   id: string;
   when: (m: Mission, g: Game) => boolean;
@@ -175,6 +179,8 @@ export interface MissionScript {
  *  - step:    every step in Mission.unitStep (before movement is integrated: set velocities here), until the end;
  *  - onEvent: every MissionEvent, after the objectives heard it, until the end;
  *  - draw:    ground level, after the objectives' drawings and the wrecks (Mission.draw).
+ *  - tap:     (v0.9A) the player tapped / clicked the battlefield while not aiming (Mission.tap; input time, so keep it
+ *             to setting orders that the next steps act on: MineField's "shoot this mine").
  */
 export interface MissionMechanic {
   readonly id: string;
@@ -182,6 +188,8 @@ export interface MissionMechanic {
   step?(m: Mission, g: Game, dt: number): void;
   onEvent?(m: Mission, g: Game, ev: MissionEvent): void;
   draw?(ctx: CanvasRenderingContext2D, m: Mission, g: Game): void;
+  /** v0.9A a plain tap / left click on the battlefield at world point `at` (not while aiming); true = taken (stop asking). */
+  tap?(m: Mission, g: Game, at: Vec): boolean;
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -321,6 +329,7 @@ export class Mission {
     for (const p of grp.points) {
       const e = game.spawnEnemy(p.kind === 'tower' || game.world.isOpen(p.x, p.y) ? { x: p.x, y: p.y } : game.findOpenNear(p, 24), p.kind);
       e.tag = grp.tag; e.guard = grp.guard ?? true; e.defender = !!grp.defender; e.aggro = grp.aggro ?? null;
+      if (grp.hold) e.holdPos = { ...e.pos };
       out.push(e);
     }
     this.spawned.set(grp.tag, (this.spawned.get(grp.tag) ?? 0) + out.length);
@@ -341,6 +350,13 @@ export class Mission {
     this.artillery?.update(game, dt);
     this.escort?.update(game, dt);
     for (const x of this.mechanics) x.step?.(this, game, dt);
+  }
+
+  /** v0.9A a plain battlefield tap (Game.onTap, world point): the first mechanic that takes it wins (a mine order). */
+  tap(game: Game, at: Vec): boolean {
+    if (this.ended) return false;
+    for (const x of this.mechanics) if (x.tap?.(this, game, at)) return true;
+    return false;
   }
 
   /** Phase 3: this attempt's mechanic with this id (objectives use it to reach their mine field / depot), or null. */
@@ -426,7 +442,7 @@ export class Mission {
 
   private activateCurrent(game: Game) {
     const o = this.currentObjective;
-    if (o) { o.activate(this, game); this.phase = o.phase; }
+    if (o) { o.activate(this, game); this.phase = o.phase; this.cue(game, `start:${o.id}`); } // v0.9A: an objective's opening line, if the script has one
     else { this.phase = 'toExtraction'; }
   }
 

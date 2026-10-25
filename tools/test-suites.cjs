@@ -55,8 +55,9 @@ const SUITES = [
   { name: 'v08c', kind: 'rules', base: V082, about: 'v0.8C Mission 15 (gates, relays, General Voss, allies), Demolitions Expert, Inferno, unlock, saves' },
   { name: 'story', kind: 'rules', base: V08C, out: true, about: 'v0.8C.1 story cinematics: Mission 15 pre-boss / phase / victory dialogue, blocking, skip, auto-advance, extraction, rewards, phones' },
   { name: 'arch', kind: 'rules', base: V08C1, about: 'Phase 3 extension points: MissionScript.mechanics hooks, blastDamage, shared page helpers; Missions 1-15 and a seeded grenade / rocket firefight identical to v0.8C.1' },
+  { name: 'v09a', kind: 'rules', base: V08C1, about: 'v0.9A Chapter 4 / Mission 16 Jungle Sweep: MineField (reveal, triggers, blast, tap orders, chains), map safety, flow, rewards, saves, phones; Missions 1-15 identical to v0.8C.1' },
   { name: 'fps-default', kind: 'rules', about: 'default frame cap (30 phone / 60 desktop) and Settings' },
-  { name: 'fps-parity', kind: 'rules', about: '30 / 60 FPS play identically (seeded autopilot, Missions 7, 9, 10 and the Mission 15 Voss fight)' },
+  { name: 'fps-parity', kind: 'rules', about: '30 / 60 FPS play identically (seeded autopilot, Missions 7, 9, 10, the Mission 15 Voss fight, Mission 16 and its minefield)' },
 
   // ---- reports (no PASS / FAIL contract) ----
   { name: 'campaign', kind: 'report', about: 'campaign autopilot balance report (MODE, MISSIONS, RUNS, CAMPAIGNS)' },
@@ -66,6 +67,7 @@ const SUITES = [
   { name: 'chapter2-sim', kind: 'report', about: 'Chapter 2 autopilot simulations (SCEN, RUNS)' },
   { name: 'chapter3b-sim', kind: 'report', about: 'Missions 13-14 autopilot simulations (SCEN, RUNS, LEVEL)' },
   { name: 'v081-sim', kind: 'report', about: 'v0.8B.1 Missions 13-14 balance simulations (SCEN, RUNS)' },
+  { name: 'v09a-sim', kind: 'report', about: 'Mission 16 autopilot simulations: duration, mine reveals / blasts, naive vs aware play (SCEN, RUNS, POLICY)' },
   { name: 'v08c-sim', kind: 'report', about: 'Mission 15 autopilot simulations (SCEN, RUNS, LEVEL)' },
   { name: 'perf', kind: 'report', out: false, needs: 'headless profile only, not a phone measurement; compare builds with URL= / LABEL= runs', about: 'headless performance profile (MODES, MISSIONS, HZ, THROTTLE)' },
 
@@ -89,13 +91,13 @@ const RULES = SUITES.filter((s) => s.kind === 'rules').map((s) => s.name);
 
 const GROUPS = {
   smoke: { about: 'fast routine check (default for a bare `npm test`)', suites: ['logic', 'maps', 'campaign-rules', 'barracks'] },
-  combat: { about: 'weapons, damage, accuracy, Elite passives, Tactical Support, Demolitions', suites: ['logic', 'accuracy', 'elite', 'support', 'v082', 'v08c', 'arch'] },
+  combat: { about: 'weapons, damage, accuracy, Elite passives, Tactical Support, Demolitions', suites: ['logic', 'accuracy', 'elite', 'support', 'v082', 'v08c', 'arch', 'v09a'] },
   movement: { about: 'squad movement, collisions, joystick', suites: ['logic', 'v081-collision', 'mobile'] },
   recruitment: { about: 'Recruitment Office, named recruits, roster', suites: ['recruitment', 'recruit-mobile', 'failure-recruit', 'failure-recruit-mobile', 'barracks', 'v08c'] },
   progression: { about: 'XP, training, Squad Training, Elite', suites: ['progression', 'training-rebalance', 'squad-training', 'accuracy', 'elite', 'elite-progression'] },
   permadeath: { about: 'KIA, resurrection, Memorial, failed missions', suites: ['permadeath', 'permadeath-mobile', 'failure-recruit'] },
-  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-15', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch'] },
-  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c'] },
+  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-15', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch', 'v09a'] },
+  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c', 'v09a'] },
   ui: { about: 'phone layouts and touch (HUD / menus)', suites: ['mobile', 'chapter2-mobile', 'permadeath-mobile', 'failure-recruit-mobile', 'recruit-mobile', 'story'] },
   fps: { about: '30 / 60 FPS parity and default frame cap', suites: ['fps-default', 'fps-parity'] },
   all: { about: 'full regression: every rule suite', suites: RULES },

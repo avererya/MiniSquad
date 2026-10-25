@@ -2,7 +2,7 @@
 import { CFG } from './config';
 import { World } from './world';
 import type { MapDef } from './map';
-import { Unit, isBoss, nextStatEpoch } from './unit';
+import { Unit, isBoss, isMine, nextStatEpoch } from './unit';
 import { EscortTargeting, ExposedTargeting, NearestVisible, SniperTargeting } from './targeting';
 import type { EnemyKind } from './unit';
 import { Effects, modifyDamage, updateEnemySniper, updateOffhand, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
@@ -727,6 +727,11 @@ export class Game implements InputHandler {
     activateAbility(this, s, s.ability, this.screenToWorld(screen)); // v0.8B.1: one charge per throw
     this.targeting = null;
   }
+  /** v0.9A a plain tap / click on the battlefield (not while aiming): the mission's mechanics may take it (a mine order). */
+  onTap(screen: Vec) {
+    if (this.phase !== 'playing' || this.paused || this.modal || this.targeting || this.support.aiming) return false;
+    return this.mission.tap(this, this.screenToWorld(screen));
+  }
   onAnyInput() { /* audio unlock handled in main */ }
 
   onKey(code: string, e: KeyboardEvent) {
@@ -823,7 +828,7 @@ export class Game implements InputHandler {
       }
     }
     for (const st of this.enemies) {
-      if (!st.active || !(st.structure || st.fixed || st.vehicle || isBoss(st))) continue;
+      if (!st.active || isMine(st) || !(st.structure || st.fixed || st.vehicle || isBoss(st))) continue; // v0.9A a mine is no obstacle (walking onto it sets it off)
       for (const u of soft) {
         const dx = u.pos.x - st.pos.x, dy = u.pos.y - st.pos.y, min = u.radius + st.radius, d2 = dx * dx + dy * dy;
         if (d2 < min * min && d2 > 1e-6) { const d = Math.sqrt(d2); u.pos.x = st.pos.x + (dx / d) * min; u.pos.y = st.pos.y + (dy / d) * min; }
@@ -847,9 +852,11 @@ export class Game implements InputHandler {
     // v0.8B: during the wrecked-truck aftermath both sides hold fire (Mission.aftermath)
     const ceasefire = this.mission.aftermath !== null;
     if (!ceasefire) {
-      for (const s of this.soldiers) if (s.active && !s.mount) { updateWeapon(s, this, dt, this.enemies); if (s.offhand) updateOffhand(s, this, dt, this.enemies); }
-      for (const a of this.allies) if (a.active) updateWeapon(a, this, dt, this.enemies);
-      for (const t of this.assets) if (t.active && t.asset === 'turret') updateWeapon(t, this, dt, this.enemies);
+      // v0.9A revealed mines are never picked automatically (only a player order aims at one: Unit.order)
+      const hostiles = this.enemies.some(isMine) ? this.enemies.filter((e) => !isMine(e)) : this.enemies;
+      for (const s of this.soldiers) if (s.active && !s.mount) { updateWeapon(s, this, dt, hostiles); if (s.offhand) updateOffhand(s, this, dt, hostiles); }
+      for (const a of this.allies) if (a.active) updateWeapon(a, this, dt, hostiles);
+      for (const t of this.assets) if (t.active && t.asset === 'turret') updateWeapon(t, this, dt, hostiles);
       this.mission.escort?.gun.update(this, dt);
     }
     eliteTick(this, dt); // v0.7A Overdrive / Perfect Aim (no-op without Elites)

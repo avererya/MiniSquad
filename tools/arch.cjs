@@ -70,8 +70,9 @@ runSuite(async () => {
     T.start('field-medicine'); out.cleared = g.mission.mechanics.length === 0 && made.length === 2;
     return out;
   });
-  check('A1 no mission script declares mechanics (Missions 1-15 unchanged)', a.declared.length === 0, a.declared.join(','));
-  check('A1 every playable mission starts with an empty mechanic list', a.started.length === 15 && a.started.every((x) => x.endsWith(':0')), a.started.join(' '));
+  // v0.9A: Mission 16 (jungle-sweep) is the first script with a mechanic (its mine field); Missions 1-15 still declare none
+  check('A1 no Mission 1-15 script declares mechanics (v0.9A: only Mission 16, its mine field)', a.declared.join() === 'jungle-sweep', a.declared.join(','));
+  check('A1 every Mission 1-15 attempt starts with an empty mechanic list (Mission 16: one)', a.started.length === 16 && a.started.slice(0, 15).every((x) => x.endsWith(':0')) && a.started[15] === 'jungle-sweep:1', a.started.join(' '));
   const s0 = a.startLog[0] || {};
   check('A2 start runs once, after the groups spawned and before the first objective / optionals activate', a.startLog.length === 1 && s0.enemies > 0 && s0.primary === 'pending' && s0.optionals.every((x) => x === 'pending'), JSON.stringify(a.startLog));
   check('A2 a unit spawned in start is in game.enemies', a.spawnedListed);
@@ -144,9 +145,13 @@ runSuite(async () => {
     const pb = await openPage(browser, BASE, { seed: 4242 }), pc = await openPage(browser, URL, { seed: 4242 });
     const [sb, sc] = [await pb.evaluate(missionSnapshot), await pc.evaluate(missionSnapshot)];
     const cfgDiff = Object.keys({ ...sb.cfg, ...sc.cfg }).filter((k) => sb.cfg[k] !== sc.cfg[k]);
-    const misDiff = Object.keys({ ...sb.missions, ...sc.missions }).filter((k) => sb.missions[k] !== sc.missions[k]);
-    check('D1 every CFG group identical to v0.8C.1', cfgDiff.length === 0, cfgDiff.join(',') || `${Object.keys(sc.cfg).length} groups`);
-    check('D1 Missions 1-15 identical to v0.8C.1 (map, enemies, objectives, extraction, story, campaign row)', misDiff.length === 0 && Object.keys(sc.missions).length === 15, misDiff.join(',') || `${Object.keys(sc.missions).length} missions`);
+    // v0.9A (on purpose): a new `mine` CFG group, Mission 16, and Mission 15's first clear also unlocks Mission 16. Every
+    // other group and every Mission 1-15 field (Mission 15's row with its unlock list set aside) must still match.
+    const m15 = (x) => { if (!x) return x; const o = JSON.parse(x), d = JSON.parse(o.def); d.unlocks.missions = []; o.def = JSON.stringify(d); return JSON.stringify(o); };
+    const misDiff = Object.keys(sb.missions).filter((k) => (k === 'last-stand' ? m15(sb.missions[k]) !== m15(sc.missions[k]) : sb.missions[k] !== sc.missions[k]));
+    const m15unl = JSON.parse(JSON.parse(sc.missions['last-stand']).def).unlocks.missions.join();
+    check('D1 every CFG group identical to v0.8C.1 (v0.9A adds only `mine`)', cfgDiff.join() === 'mine', cfgDiff.join(',') || `${Object.keys(sc.cfg).length} groups`);
+    check('D1 Missions 1-15 identical to v0.8C.1 (map, enemies, objectives, extraction, story, campaign row; Mission 15 now also unlocks Mission 16)', misDiff.length === 0 && Object.keys(sb.missions).length === 15 && Object.keys(sc.missions).length === 16 && m15unl === 'jungle-sweep', misDiff.join(',') || `${Object.keys(sb.missions).length} + jungle-sweep, M15 unlocks ${m15unl}`);
     const pb2 = await openPage(browser, BASE, { seed: 4242 }), pc2 = await openPage(browser, URL, { seed: 4242 });
     const [fb, fc] = await Promise.all([pb2.evaluate(firefight), pc2.evaluate(firefight)]);
     const first = fb.hashes.findIndex((h, i) => h !== fc.hashes[i]);

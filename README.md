@@ -2,7 +2,7 @@
 
 MiniSquad is a real-time squad action game for mobile (landscape), inspired by Tiny Troopers, with original art. You move a small squad of auto-firing cartoon soldiers through real-time combat, use abilities like grenades, revive downed squadmates, and complete objectives.
 
-MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype built to answer one question: is moving a small squad of auto-firing soldiers through real-time combat fun? It has since grown into a 15-mission campaign with recruitment, permanent death, progression and Elite promotions. The original plan for a native mobile final game, with the design and the tuned numbers in `src/config.ts` carrying forward, is recorded in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype built to answer one question: is moving a small squad of auto-firing soldiers through real-time combat fun? It has since grown into a 16-mission campaign with recruitment, permanent death, progression and Elite promotions. The original plan for a native mobile final game, with the design and the tuned numbers in `src/config.ts` carrying forward, is recorded in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 | Document | Read it for |
 |---|---|
@@ -10,12 +10,12 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 | [docs/DEVELOPMENT_HANDOFF.md](docs/DEVELOPMENT_HANDOFF.md) | Current state, known issues and next priorities |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code fits together, recipes for missions and classes |
 | [docs/SYSTEM_MAP.md](docs/SYSTEM_MAP.md) | Feature → files → tests lookup |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history, v0.1 → v0.8C |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history, v0.1 → v0.9A |
 | [docs/archive/](docs/archive/) | Past test notes, tuning notes, judgment calls, old code map and handoff history |
 
 ## Status
 
-Current release: **v0.8C.1, Story & Cinematic Presentation** (package `0.8.5`, save v9), on v0.8C General's Last Stand & Demolitions Expert. Missions 1-15 are playable across three chapters; Mission 15 closes Chapter 3 with a short OVERWATCH / General Voss story and unlocks the Demolitions Expert class. Chapter 4 (Missions 16+) is not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.9A, Chapter 4: Jungle Sweep** (package `0.9.0`, save v9), on v0.8C.1 Story & Cinematic Presentation. Missions 1-16 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines. Missions 17-20 are not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -44,6 +44,7 @@ npm run build:single   # one self-contained file: dist-single/index.html
 | Settings (frame cap, performance overlay, version) | ` (backtick) or ⚙ | ⚙ |
 | Developer tuning (live CFG sliders, debug actions, config JSON) | open the game with `?dev=1`, then Settings | same |
 | Mute / Pause | M / P | 🔊 / ⏸ |
+| Shoot a revealed mine (v0.9A, Mission 16) | click the mine | tap the mine (either half of the screen) |
 | Story cinematic (v0.8C.1) | click, Enter or Space next panel · Esc or SKIP skips the rest | tap next panel · SKIP |
 
 Reset all progress: Campaign screen → **NEW CAMPAIGN…** (confirmation screen; the old save is backed up to `minisquad.save.pre-reset`), or (with `?dev=1`) Settings → Debug → "Reset save…" (tap twice). "Unlock all missions + soldiers (modifies save)…" (tap twice) unlocks everything in your save for testing. The dev Mission picker starts any mission; a mission started while still locked pays no rewards and unlocks nothing.
@@ -54,11 +55,12 @@ Debug keys: F spawn friendly · G spawn enemy group · K down a soldier · I inv
 
 The sections below are the player-facing rules and numbers, grouped by system. Headings keep the release that introduced each system; later sections note what they changed.
 
-- [Campaign](#campaign) (missions 1-14, stars, squad caps)
+- [Campaign](#campaign) (missions 1-16, stars, squad caps)
 - [Recruitment](#recruitment-v05) · [Named campaign recruits](#named-campaign-recruits-v061) · [Permanent death](#permanent-death-v06)
 - [Training rebalance](#progression--training-rebalance-v07b1) · [Squad Training](#squad-training-expansion--mobile-polish-v07d) · [Accuracy soft floor](#accuracy-soft-floor--hud-touch-areas-v07d1)
 - [Elite Promotions](#elite-promotions-v07a) · [Elite Progression](#elite-progression-v07b) · [Tactical Support](#tactical-support-v07c)
 - [Chapter 2](#chapter-2-behind-enemy-lines-v062) · [Chapter 3A](#chapter-3a-the-resistance-begins-v08a) · [Chapter 3B](#chapter-3b-hold-the-line--supply-line-sabotage-v08b) · [Difficulty, Extended Escort & Ability Capacity](#difficulty-extended-escort--ability-capacity-v08b1)
+- [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a)
 - [Performance](#performance-v063)
 
 ## Campaign
@@ -81,7 +83,8 @@ Mission data (names, types, objectives, caps, star rules, unlocks) lives in `src
 | 12 | Artillery Hunt | Search & Destroy (night) | 5 | Destroy the 3 artillery guns (any order), extract | No artillery alert | all optionals / no KIA | **Commando class**, Mission 13 (squad size 6) |
 | 13 | Hold the Line | Defense | 6 | Prepare the defenses, protect the command center, survive four waves, extract | Command center finishes with at least 50% HP | all optionals / no KIA | Mission 14 |
 | 14 | Supply Line Sabotage | Sabotage / Escort | 6 | Destroy three depots, capture the truck, escort it to extraction | Truck finishes with at least 50% HP | all optionals / no KIA | Mission 15 |
-| 15 | General's Last Stand | Assault / Boss | 6 | Break the outer defenses, destroy the gate generator and 2 relays, storm the command area, defeat General Voss, clear the defenders, extract | Mara, Elias and Tessa survive | all optionals / no KIA | **Demolitions Expert class** (Chapter 3 complete) |
+| 15 | General's Last Stand | Assault / Boss | 6 | Break the outer defenses, destroy the gate generator and 2 relays, storm the command area, defeat General Voss, clear the defenders, extract | Mara, Elias and Tessa survive | all optionals / no KIA | **Demolitions Expert class** (Chapter 3 complete), Mission 16 |
+| 16 | Jungle Sweep | Minefield Sweep | 6 | Advance through the jungle, clear the patrols and minefield approaches, eliminate the checkpoint defenders, extract | Take out 3 enemies with mine blasts | all optionals / no KIA | nothing yet (Chapter 4 continues in a future update) |
 
 - Stars: 0 on defeat, ★ = primary objectives complete. Best stars are saved per mission and never go down. Missions can be replayed forever (replay rewards as in v0.3).
 - Squad caps by mission number: 1-2 → 2, 3-5 → 3, 6 → 4, 7-12 → 5, 13+ → 6. You may deploy fewer. If the saved squad is larger than the selected mission allows (for example a v0.3 squad of 3 on Mission 1), the extra slots are marked OVER LIMIT and Deploy is disabled until you remove someone or tap **Keep first N**. The saved squad is never trimmed automatically.
@@ -444,6 +447,26 @@ Chapter 3 continues with Missions 13 and 14. Mission 15 shows as "coming soon" (
 **Briefings**: the Mission 13 / 14 briefings use the exact story text from the v0.8B brief and list their objectives.
 
 **Saves**: still **v9**, no migration. A save that cleared Mission 12 opens Mission 13 on load without a repair note; Missions 13 / 14 are never unlocked without the clear before them. Every fixture in `tools/fixtures` loads with no notes.
+
+## Chapter 4: Jungle Sweep (v0.9A)
+
+Chapter 4 **Behind Enemy Lines** opens with Mission 16; Missions 17-20 are not playable yet. Save v9 unchanged; Missions 1-15 and every class, enemy, price and number are exactly v0.8C.1's (only Mission 15's first clear now also opens Mission 16).
+
+**Mission 16: Jungle Sweep** (`jungle-sweep`, squad cap 6, map `JUNGLE_MAP` 4,800 × 2,600, dense canopy with trails and clearings; script in `src/missions.ts`, mines in `src/mines.ts`). Unlocked by the first clear of Mission 15. Riflemen, Armored Troopers, enemy Snipers and two watchtowers only (49 soldiers + 2 towers, nothing respawns). Target length 6-8 minutes on a phone.
+1. **Advance through the jungle**: from the landing zone (south-west) along the trail to the ravine north of clearing B. Two patrols on the way; OVERWATCH warns about mines on the trails as you near the first one, which sits at the edge of clearing B.
+2. **Clear the enemy patrols and minefield approaches** (live count): the patrols of clearings A and B, the ravine / clearing C patrol behind a mine belt and the clearing D patrol behind three more mines; a northern detour and a ravine trail lead into C.
+3. **Eliminate the defenders at the fortified checkpoint** (live count): the front guard, two watchtowers, the inner garrison (holds its sandbagged compound) and a reserve behind the back wall with a long reaction range (650 px). OVERWATCH: the west road is mined, the south path is clean. The south (and the north) approach reach the compound without crossing a mine.
+4. **Reach helicopter extraction** in the north-east clearing (12 s countdown, moderate extraction pressure).
+
+Optional (+25 XP / +150 CR): **Take out 3 enemies with mine blasts** (shoot a mine as a patrol walks past it, or let them walk into one). ★★ all optionals, ★★★ no KIA. Rewards follow the usual rules (Mission 16 XP by mission number, flat Credits, 75% XP on replays, no second first-clear bonus); a mine kill gives no soldier kill credit or Credits of its own.
+
+**Land mines** (`CFG.mine`; a reusable mission mechanic, `MineField`):
+- **Hidden** until a standing soldier comes within **130 px**: then a mine plate, a pulsing red trigger ring, a dashed **65 px blast ring** and a warning triangle mark it ("MINE!"). It stays marked until it goes off. Mines are never all shown at the start, and there is none near the landing zone.
+- **Trigger**: anyone on foot whose centre comes within **20 px** sets it off, hidden or marked: your soldiers, captives / allies and enemies (structures and towers never). Nobody walks around mines on their own; steering is yours.
+- **Blast**: up to **60 damage** at the centre falling to 35% (21) at the edge of the 65 px ring, on **both teams**. Solid cover blocks it, Armored Troopers take it in full (no frontal plate), Elite reductions apply. 60 is 60% of an Infantry soldier's HP: a mine never kills a soldier from full HP (the lowest class HP is 75), but it hurts, and it can down a wounded one. A blast sets off other mines within 90 px in sight 0.2 s later (each mine once, so chains always end).
+- **Shoot it**: tap (touch) or click a marked mine and the whole squad is ordered to shoot it (yellow reticle) for up to 8 s. Soldiers in range and line of sight fire at it first (15 HP, so one or two rounds); out of range or sight they keep fighting normally until you move closer. The order ends when the mine goes off or after 8 s. Grenades, rockets and Inferno flames set a marked mine off too. A mine is **never** an automatic target, and rounds aimed at enemies pass over it. A Tactical Support airstrike leaves a marked mine at 1 HP like any objective structure (the squad finishes it).
+- Taps: a quick touch (moved less than 18 stage px, under 0.35 s) on either half of the screen is a tap; the joystick only moves the squad when you drag. The tap area is a 48 px radius around the mine (about 50 CSS px across on an iPhone SE).
+- Every attempt is fresh: Retry or a reload hides every mine again; nothing about mines is saved.
 
 ## Story & Cinematic Presentation (v0.8C.1)
 

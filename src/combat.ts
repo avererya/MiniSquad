@@ -1,7 +1,7 @@
 // Aiming, firing, physical projectiles, damage and hit effects.
 import { CFG } from './config';
 import type { Game } from './game';
-import { isBoss, type Team, type Unit } from './unit';
+import { isBoss, isMine, type Team, type Unit } from './unit';
 import { DEG, dist, rand, segCircle, turnToward, angleDiff, type Vec } from './util';
 import { sfx } from './audio';
 import { sniperShouldSwitch } from './targeting';
@@ -89,15 +89,23 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   u.muzzle -= dt;
   const prevTarget = u.target;
   if (u.target && !u.targeting.isValid(u, u.target, game)) u.target = null;
-  // v0.6.2 squad Sniper: may trade up to a higher-priority target before committing to a shot
-  if (u.target && u.classDef?.id === 'sniper' && !u.target.structure) {
-    const t = u.targeting.select(u, hostiles, game);
-    if (t && t !== u.target && sniperShouldSwitch(u, u.target, t)) { u.target = t; u.reactionLeft = squadReaction(u); }
-  }
-  // an objective structure is only shot when no enemy soldier is in sight: re-check each step
-  if (u.target?.structure) {
-    const t = u.targeting.select(u, hostiles, game);
-    if (t && t !== u.target && !t.structure) { u.target = t; u.reactionLeft = squadReaction(u); }
+  // v0.9A an explicit order (a tapped mine) is the target while it can be shot (in range, in sight), ahead of any enemy;
+  // out of range or sight the soldier fights as usual. A mine is never kept as a target without an order.
+  const ordered = u.order && u.targeting.isValid(u, u.order, game) ? u.order : null;
+  if (ordered) {
+    if (u.target !== ordered) { u.target = ordered; u.reactionLeft = squadReaction(u); }
+  } else {
+    if (u.target && isMine(u.target)) u.target = null;
+    // v0.6.2 squad Sniper: may trade up to a higher-priority target before committing to a shot
+    if (u.target && u.classDef?.id === 'sniper' && !u.target.structure) {
+      const t = u.targeting.select(u, hostiles, game);
+      if (t && t !== u.target && sniperShouldSwitch(u, u.target, t)) { u.target = t; u.reactionLeft = squadReaction(u); }
+    }
+    // an objective structure is only shot when no enemy soldier is in sight: re-check each step
+    if (u.target?.structure) {
+      const t = u.targeting.select(u, hostiles, game);
+      if (t && t !== u.target && !t.structure) { u.target = t; u.reactionLeft = squadReaction(u); }
+    }
   }
   if (!u.target) {
     const t = u.targeting.select(u, hostiles, game);
@@ -290,6 +298,7 @@ export function updateProjectiles(game: Game, dt: number) {
     const victims = p.team === 'squad' ? game.enemies : game.enemyVictims();
     for (const u of victims) {
       if (!u.targetable) continue;
+      if (isMine(u) && p.owner?.target !== u) continue; // v0.9A rounds pass over a mine unless it is the one aimed at
       // v0.6.2 hostage protection: an escorted captive inside the ring ducks rounds meant for the
       // soldiers around them (smaller profile); a round aimed at the captive uses the full body.
       const hitR = u.npc && u.escorting && p.owner?.target !== u ? CFG.escort.strayHitRadius : u.radius + 2;

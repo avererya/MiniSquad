@@ -4,9 +4,9 @@
 // objectives and triggers live in missions.ts, so a map can be reused by another mission.
 import type { Rect, Vec } from './util';
 
-export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag' | 'water' | 'fence' | 'concrete' | 'wire' | 'gate';
+export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag' | 'water' | 'fence' | 'concrete' | 'wire' | 'gate' | 'tree';
 export interface Obstacle extends Rect { kind: ObstacleKind; height: number }
-export type MapTheme = 'grass' | 'farm' | 'canyon' | 'dusk' | 'river' | 'prison' | 'desert' | 'night' | 'fortress';
+export type MapTheme = 'grass' | 'farm' | 'canyon' | 'dusk' | 'river' | 'prison' | 'desert' | 'night' | 'fortress' | 'jungle';
 /**
  * v0.6.2: water blocks movement and navigation but not bullets or line of sight (you can shoot across a river).
  * v0.8B: so do barbed-wire perimeters and defensive gates (you can shoot through them, not walk through them).
@@ -43,6 +43,8 @@ const F = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, 
 const K = (x: number, y: number, w: number, h: number, height = 30): Obstacle => ({ x, y, w, h, kind: 'concrete', height });
 const Wr = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'wire', height: 0 });
 const G = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'gate', height: 0 });
+/** v0.9A jungle canopy: solid like a building (blocks movement, rounds and line of sight). */
+const Tr = (x: number, y: number, w: number, h: number, height = 44): Obstacle => ({ x, y, w, h, kind: 'tree', height });
 
 // =====================================================================================
 // "Comms Outpost" map (v0.1-v0.3 "Secure the Communications Outpost"; now Mission 3).
@@ -630,3 +632,119 @@ export const FORTRESS_MAP: MapDef = {
 /** Lockdown worlds (collision / nav only): both gates shut, then only the inner gate. Fully open = FORTRESS_MAP. */
 export const FORTRESS_LOCKED: MapDef = { ...FORTRESS_MAP, id: 'fortress-locked', obstacles: [...FORTRESS_OBSTACLES, FORTRESS_MAIN_GATE, FORTRESS_INNER_GATE] };
 export const FORTRESS_INNER_LOCKED: MapDef = { ...FORTRESS_MAP, id: 'fortress-inner', obstacles: [...FORTRESS_OBSTACLES, FORTRESS_INNER_GATE] };
+
+// =====================================================================================
+// v0.9A CHAPTER 4: Behind Enemy Lines
+// =====================================================================================
+
+/**
+ * v0.9A dense jungle: the canopy is everything that is not a trail or a clearing. `open` lists the walkable shapes
+ * (circles = clearings, capsules = trails); every JUNGLE_CELL px cell whose centre lies outside all of them is canopy,
+ * merged into as few rectangles as possible (runs per row, then equal runs down the rows) so line of sight stays cheap.
+ * Pure geometry, deterministic.
+ */
+export type OpenShape = { c: Vec; r: number } | { a: Vec; b: Vec; r: number };
+const JUNGLE_CELL = 80;
+function segDist(p: Vec, a: Vec, b: Vec) {
+  const dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy;
+  const t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0;
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+}
+export const inOpen = (open: OpenShape[], p: Vec) => open.some((o) => ('c' in o ? Math.hypot(p.x - o.c.x, p.y - o.c.y) : segDist(p, o.a, o.b)) <= o.r);
+export function jungleCanopy(w: number, h: number, open: OpenShape[]): Obstacle[] {
+  const S = JUNGLE_CELL, cols = Math.ceil(w / S), rows = Math.ceil(h / S), out: Obstacle[] = [];
+  let active = new Map<string, { c0: number; c1: number; r0: number; n: number }>();
+  for (let r = 0; r <= rows; r++) {
+    const next = new Map<string, { c0: number; c1: number; r0: number; n: number }>();
+    if (r < rows) {
+      let c = 0;
+      while (c < cols) {
+        if (inOpen(open, { x: c * S + S / 2, y: r * S + S / 2 })) { c++; continue; }
+        const c0 = c;
+        while (c < cols && !inOpen(open, { x: c * S + S / 2, y: r * S + S / 2 })) c++;
+        const k = `${c0},${c}`, run = active.get(k);
+        if (run) { run.n++; active.delete(k); next.set(k, run); } else next.set(k, { c0, c1: c, r0: r, n: 1 });
+      }
+    }
+    for (const q of active.values()) out.push(Tr(q.c0 * S, q.r0 * S, Math.min(w, q.c1 * S) - q.c0 * S, Math.min(h, (q.r0 + q.n) * S) - q.r0 * S));
+    active = next;
+  }
+  return out;
+}
+
+// Mission 16 "Jungle Sweep": the squad lands in the south-west and pushes north-east along winding trails. Clearing A
+// (first patrol) -> the trail north to clearing B (second patrol, the first mine, Overwatch's warning) -> the ravine
+// east (mines in the trail) -> clearing C (a mine belt in front of the third patrol) -> south-east to clearing D (mines
+// between the trail and the fourth patrol) -> the fortified checkpoint (sandbag compound, two watchtowers; mines on its
+// west road and north path, the south path is clean) -> the helicopter clearing north-east. A northern detour (clearing
+// N, one mine, a small patrol) bypasses the ravine; a northern track joins clearing C to the checkpoint's north path.
+// Trail stubs reach the map edges (where extraction pressure walks in).
+const JUNGLE_OPEN: OpenShape[] = [
+  // clearings: start, A, B, N, C, D, the checkpoint (two circles), the helicopter
+  { c: { x: 230, y: 2290 }, r: 270 }, { c: { x: 1000, y: 2120 }, r: 300 }, { c: { x: 1250, y: 1230 }, r: 300 },
+  { c: { x: 1750, y: 520 }, r: 250 }, { c: { x: 2300, y: 1120 }, r: 300 }, { c: { x: 3000, y: 1900 }, r: 300 },
+  { c: { x: 3950, y: 1150 }, r: 430 }, { c: { x: 4280, y: 1150 }, r: 380 }, { c: { x: 4450, y: 430 }, r: 260 },
+  // trails: start -> A -> B; the ravine B -> C; the northern detour B -> N -> C
+  { a: { x: 230, y: 2290 }, b: { x: 1000, y: 2120 }, r: 140 }, { a: { x: 1050, y: 1950 }, b: { x: 1200, y: 1400 }, r: 140 },
+  { a: { x: 1450, y: 1150 }, b: { x: 1850, y: 1010 }, r: 125 }, { a: { x: 1850, y: 1010 }, b: { x: 2100, y: 1080 }, r: 125 },
+  { a: { x: 1250, y: 1000 }, b: { x: 1450, y: 650 }, r: 110 }, { a: { x: 1450, y: 650 }, b: { x: 1600, y: 560 }, r: 110 },
+  { a: { x: 1900, y: 560 }, b: { x: 2350, y: 700 }, r: 110 }, { a: { x: 2350, y: 700 }, b: { x: 2330, y: 900 }, r: 110 },
+  // C -> D, D -> the checkpoint's west road, the northern track C -> the checkpoint's north path, D -> its south path
+  { a: { x: 2450, y: 1300 }, b: { x: 2700, y: 1550 }, r: 125 }, { a: { x: 2700, y: 1550 }, b: { x: 2850, y: 1750 }, r: 125 },
+  { a: { x: 3200, y: 1800 }, b: { x: 3450, y: 1500 }, r: 125 }, { a: { x: 3450, y: 1500 }, b: { x: 3600, y: 1250 }, r: 130 },
+  { a: { x: 2550, y: 1000 }, b: { x: 3100, y: 850 }, r: 110 }, { a: { x: 3100, y: 850 }, b: { x: 3620, y: 860 }, r: 110 },
+  { a: { x: 3250, y: 2000 }, b: { x: 3800, y: 1680 }, r: 115 },
+  // the checkpoint -> the helicopter; trail stubs to the edges (east, north, south-east, south)
+  { a: { x: 4250, y: 800 }, b: { x: 4400, y: 560 }, r: 140 },
+  { a: { x: 4450, y: 430 }, b: { x: 4800, y: 300 }, r: 100 }, { a: { x: 3950, y: 780 }, b: { x: 3950, y: 0 }, r: 100 },
+  { a: { x: 4300, y: 1450 }, b: { x: 4800, y: 1800 }, r: 100 }, { a: { x: 3000, y: 1900 }, b: { x: 3000, y: 2600 }, r: 100 },
+];
+/** Mine positions (mines.ts; Mission 16). None within 900 px of the landing zone; every one sits on open ground. */
+export const JUNGLE_MINES: Vec[] = [
+  // the first mine: west side of clearing B, beside (not on) the trail's line into the clearing
+  { x: 1080, y: 1330 },
+  // the ravine: one in the middle of the trail, one by its south edge before clearing C
+  { x: 1700, y: 1062 }, { x: 1960, y: 1100 },
+  // clearing C: a belt across the ravine mouth, in front of the third patrol (lanes between them)
+  { x: 2190, y: 990 }, { x: 2215, y: 1135 }, { x: 2185, y: 1275 },
+  // the trail C -> D
+  { x: 2600, y: 1450 },
+  // clearing D: between the trail and the fourth patrol
+  { x: 2960, y: 1860 }, { x: 3070, y: 1815 }, { x: 3030, y: 1965 },
+  // the checkpoint: two on the west road, one on the north path (the south path is clean)
+  { x: 3700, y: 1120 }, { x: 3770, y: 1215 }, { x: 3800, y: 860 },
+  // the northern detour and the northern track
+  { x: 2050, y: 640 }, { x: 3300, y: 820 },
+];
+export const JUNGLE_CHECKPOINT: Rect = { x: 3860, y: 940, w: 380, h: 420 };
+export const JUNGLE_EXTRACTION: Rect = { x: 4330, y: 300, w: 260, h: 240 };
+/** Extraction pressure walks in along the edge trails. */
+export const JUNGLE_PRESSURE: Vec[] = [{ x: 3950, y: 40 }, { x: 4760, y: 1780 }, { x: 4760, y: 300 }, { x: 3000, y: 2560 }];
+const JUNGLE_COVER: Obstacle[] = [
+  // natural cover in the clearings: tree clumps, rocks, fallen logs (crates)
+  Tr(900, 2000, 70, 60, 40), R(1120, 2200, 90, 50, 30), C(860, 2230), Tr(1300, 1300, 70, 70, 40), R(1140, 1120, 80, 50, 30),
+  Tr(1680, 440, 80, 70, 40), R(1820, 600, 90, 50, 30), Tr(2380, 1030, 70, 60, 40), R(2420, 1250, 90, 50, 30), C(2260, 1210),
+  Tr(2920, 2000, 70, 60, 40), R(3150, 1880, 80, 50, 30), C(3080, 2080), C(3116, 2080),
+  // the checkpoint compound (x 3880-4220, y 960-1340): sandbags with gaps west (the road), north and south, a concrete
+  // back wall, a bunker and crates inside; concrete blocks and rocks across the clearing in front of it
+  S(3880, 960, 120, 16), S(4100, 960, 120, 16), S(3880, 1324, 120, 16), S(4100, 1324, 120, 16),
+  S(3880, 976, 16, 110), S(3880, 1214, 16, 110), K(4204, 976, 16, 348, 34), B(4060, 1110, 100, 80), C(3960, 1060), C(3996, 1060), C(3980, 1250),
+  K(3620, 1010, 90, 50, 32), K(3640, 1310, 90, 50, 32), R(3640, 820, 110, 60, 32), R(3700, 1520, 110, 60, 32), S(3760, 1600, 120, 16),
+  // the helicopter clearing: a fuel drum stack and rocks at its edge
+  C(4560, 560), C(4596, 560), R(4300, 330, 70, 50, 30),
+];
+export const JUNGLE_MAP: MapDef = {
+  id: 'jungle', w: 4800, h: 2600, theme: 'jungle',
+  obstacles: [...jungleCanopy(4800, 2600, JUNGLE_OPEN), ...JUNGLE_COVER],
+  start: { x: 230, y: 2300 }, startZone: { x: 100, y: 2170, w: 260, h: 260 },
+  medkits: [{ x: 1180, y: 2100 }, { x: 1300, y: 1420 }, { x: 2380, y: 1380 }, { x: 3180, y: 1720 }, { x: 3560, y: 1420 }],
+  rapidFire: [{ x: 2330, y: 860 }],
+  roads: [
+    [{ x: 0, y: 2300 }, { x: 600, y: 2230 }, { x: 1000, y: 2120 }, { x: 1120, y: 1700 }, { x: 1250, y: 1300 }, { x: 1500, y: 1140 }, { x: 1850, y: 1010 }, { x: 2300, y: 1120 }, { x: 2650, y: 1500 }, { x: 3000, y: 1880 }, { x: 3400, y: 1560 }, { x: 3600, y: 1220 }, { x: 4050, y: 1150 }, { x: 4330, y: 800 }, { x: 4450, y: 430 }],
+    [{ x: 1250, y: 1230 }, { x: 1450, y: 650 }, { x: 1750, y: 520 }, { x: 2350, y: 700 }, { x: 2300, y: 1120 }],
+    [{ x: 2300, y: 1120 }, { x: 2800, y: 930 }, { x: 3600, y: 860 }, { x: 4000, y: 1050 }],
+  ],
+  props: [{ kind: 'flag', x: 4140, y: 1080 }, { kind: 'tent', x: 4120, y: 1280 }, { kind: 'radar', x: 4170, y: 1010 }],
+};
+/** Mission 16 rule checks: the open ground (inOpen) and the landing zone. */
+export const JUNGLE_OPEN_SHAPES = JUNGLE_OPEN;
