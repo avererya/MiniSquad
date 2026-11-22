@@ -169,7 +169,7 @@ export class Menus {
     const acc = getAccount();
     const total = CAMPAIGN.filter((m) => m.playable).length * 3;
     const got = CAMPAIGN.reduce((a, m) => a + (acc.missions[m.id]?.bestStars ?? 0), 0);
-    // v0.6.2: one chapter at a time (Chapter 1: Missions 1-5, Chapter 2: Behind Enemy Lines, 6-10,
+    // v0.6.2: one chapter at a time (Chapter 1: Missions 1-5, Chapter 2: Hostile Territory, 6-10,
     // Chapter 3: coming soon), switched with the chapter tabs; the shown chapter is the selected mission's
     const sel0 = campaignMission(this.campaignSel) ?? CAMPAIGN[0];
     const chap = chapterOf(sel0.number).number;

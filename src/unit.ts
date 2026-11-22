@@ -34,6 +34,11 @@ export const isBoss = (u: Pick<Unit, 'kind'>) => u.kind === 'boss' || u.kind ===
  * set it off, but never an automatic target (Game.update leaves it out of the squad's candidates) and never an obstacle.
  */
 export const isMine = (u: Pick<Unit, 'structure'>) => u.structure === 'mine';
+/**
+ * v0.9B an explosive hazard: a revealed mine or a fuel tank (fuel.ts). Never an automatic target unless its mechanic
+ * says it is safe (fuelSafe), rounds aimed elsewhere pass over it, and Tactical Support sets it off (no objective floor).
+ */
+export const isHazard = (u: Pick<Unit, 'structure'>) => u.structure === 'mine' || u.structure === 'fuel';
 
 /** v0.8B friendly assets: the turret fires (CFG.turret); the command center and the truck only need hp / radius. */
 const cmdStats = { ...CFG.enemy, range: 0, fireRate: 0, damage: 0 };
@@ -178,6 +183,10 @@ export class Unit {
   label = '';
   /** Max HP override (structures, NPCs). */
   hpOverride: number | null = null;
+  /** v0.9B body radius override (a fuel tank is wider than a soldier). */
+  radiusOverride: number | null = null;
+  /** v0.9B the last unit whose hit landed on this structure (Game.damage; a fuel tank credits its blast to them). */
+  lastHitBy: Unit | null = null;
   stuckT = 0;
   prevPos: Vec | null = null;
 
@@ -214,7 +223,7 @@ export class Unit {
   private statCacheEpoch = -1;
   private statCacheId: SoldierIdentity | null = null;
   get maxHp() { return this.hpOverride ?? this.stats.hp; }
-  get radius() { return this.stats.radius; }
+  get radius() { return this.radiusOverride ?? this.stats.radius; }
   get maxSpeed() {
     if (this.npc) return CFG.escort.moveSpeed * this.catchUp;
     if (this.ally) return CFG.resistance.moveSpeed * this.catchUp;

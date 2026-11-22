@@ -27,9 +27,9 @@ export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
 export const CHAPTERS: { number: number; name: string; from: number; to: number }[] = [
   { number: 1, name: '', from: 1, to: 5 }, // (Chapter 1 was never given a name)
-  { number: 2, name: 'Behind Enemy Lines', from: 6, to: 10 },
+  { number: 2, name: 'Hostile Territory', from: 6, to: 10 }, // v0.9B renamed (was 'Behind Enemy Lines', now Chapter 4's name only)
   { number: 3, name: 'The Resistance', from: 11, to: 15 },
-  // v0.9A Chapter 4 (Missions 16-20 planned; only Mission 16 exists so far)
+  // v0.9A Chapter 4 (Missions 16-20 planned; v0.9B: Missions 16-18 exist)
   { number: 4, name: 'Behind Enemy Lines', from: 16, to: Infinity },
 ];
 export const chapterOf = (missionNumber: number) => CHAPTERS.find((c) => missionNumber >= c.from && missionNumber <= c.to) ?? CHAPTERS[0];
@@ -173,7 +173,7 @@ export const CAMPAIGN: CampaignMission[] = [
     },
     unlocks: { missions: ['bridgehead'], recruits: ['havoc'], capacityNote: 'Squad size 4 for Mission 6' },
   },
-  // ---- v0.6.2 Chapter 2: Behind Enemy Lines ----
+  // ---- v0.6.2 Chapter 2: Hostile Territory (named 'Behind Enemy Lines' until v0.9B) ----
   {
     id: 'bridgehead', number: 6, name: 'Bridgehead', type: 'capture', playable: true,
     briefing: 'Seize the only bridge over the river and hold it against the counterattack.',
@@ -322,6 +322,21 @@ export const CAMPAIGN: CampaignMission[] = [
       objective: 'Advance through the jungle, clear the patrols and minefield approaches, take the checkpoint, extract.',
       objectives: ['Advance through the jungle', 'Clear the enemy patrols and minefield approaches', 'Eliminate the defenders at the fortified checkpoint', 'Reach helicopter extraction'],
       tip: 'Mines stay hidden until a soldier gets close. Steer around a marked mine, or tap it and your squad shoots it from range. Stay out of its blast ring, and let the enemy walk into it.',
+    },
+    unlocks: { missions: ['fuel-for-the-fire'], recruits: [] },
+  },
+  // ---- v0.9B Chapter 4 continues ----
+  {
+    id: 'fuel-for-the-fire', number: 17, name: 'Fuel for the Fire', type: 'sabotage', playable: true,
+    briefing: 'Destroy three fuel installations in an enemy jungle supply depot, survive the response and extract.',
+    primary: ['Infiltrate the supply network', 'Destroy the 3 fuel installations', 'Survive the enemy response', 'Reach helicopter extraction'],
+    optional: [{ id: 'fuel-kills', label: 'Take out 5 enemies with fuel explosions' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Fuel tanks: shoot them to blow up the enemies beside them',
+    brief: {
+      story: 'The checkpoint fed a supply network hidden under the canopy: fuel for every enemy column in the region. Command wants it gone. Burn the storage, the depot and the main reserve, then get out before they hit back.',
+      objective: 'Destroy the fuel tanks at all three installations, survive the enemy response, extract.',
+      objectives: ['Infiltrate the supply network', 'Destroy the 3 fuel installations (any order)', 'Survive the enemy response', 'Reach helicopter extraction'],
+      tip: 'Red tanks explode and hurt everyone close by, your squad too. Tap a tank to shoot it while enemies stand beside it, keep your soldiers out of the blast ring, and remember that tanks packed together set each other off.',
     },
     unlocks: { missions: [], recruits: [], capacityNote: 'Chapter 4 continues in a future update' },
   },

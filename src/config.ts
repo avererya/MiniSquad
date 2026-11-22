@@ -413,6 +413,17 @@ function makeDefaults() {
       detectRadius: 130, triggerRadius: 20, blastRadius: 65, damage: 60, edgeFrac: 0.35,
       hp: 15, chainRadius: 90, chainDelay: 0.2, tapRadius: 48, orderTime: 8, shake: 12,
     },
+    // v0.9B fuel tanks (fuel.ts FuelDepot, Mission 17+). Visible from the start, `hp` (a few rounds; one grenade, a
+    // mine or an airstrike destroys one). A destroyed tank explodes once: the shared blastDamage on both teams with
+    // cover, `damage` at the centre (70: stronger and wider than a mine's 60 / 65 px, still below the smallest class
+    // HP, 75, so one tank never kills a healthy soldier; standing between two that chain can), falling off to
+    // edgeFrac at blastRadius. It sets off every other intact tank within chainRadius in sight after chainDelay s
+    // (each tank once, so a chain always ends). Never an automatic target while anyone on the squad's side is within
+    // safeDist of it (then only a tap order aims at it); tap a tank to order the squad to shoot it (orderTime s).
+    fuel: {
+      hp: 50, radius: 20, blastRadius: 115, damage: 70, edgeFrac: 0.3,
+      chainRadius: 170, chainDelay: 0.35, safeDist: 175, tapRadius: 56, orderTime: 8, shake: 18,
+    },
     feel: {
       cameraSmoothing: 6, // higher = snappier
       hitFlash: 0.1,

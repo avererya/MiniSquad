@@ -190,6 +190,11 @@ export interface MissionMechanic {
   draw?(ctx: CanvasRenderingContext2D, m: Mission, g: Game): void;
   /** v0.9A a plain tap / left click on the battlefield at world point `at` (not while aiming); true = taken (stop asking). */
   tap?(m: Mission, g: Game, at: Vec): boolean;
+  /**
+   * v0.9B Tactical Support landed: an airstrike circle (`at`, `radius`) or the nuke (`at` null, the whole map). Called
+   * once, before the strike's damage pass; explosives inside it (mines, fuel tanks) arm to go off on the next step.
+   */
+  supportStrike?(m: Mission, g: Game, at: Vec | null, radius: number): void;
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'

@@ -12,6 +12,7 @@ import {
   FORTRESS_ALLY_ENTRY, FORTRESS_ARENA, FORTRESS_CALL_POINTS, FORTRESS_EXTRACTION, FORTRESS_GENERATOR,
   FORTRESS_INNER_GATE, FORTRESS_INNER_LOCKED, FORTRESS_LOCKED, FORTRESS_MAIN_GATE, FORTRESS_MAP, FORTRESS_RELAYS, FORTRESS_VOSS,
   JUNGLE_EXTRACTION, JUNGLE_MAP, JUNGLE_MINES, JUNGLE_PRESSURE,
+  FUEL_APPROACH, FUEL_EXTRACTION, FUEL_INSTALLATIONS, FUEL_MAP, FUEL_RESPONSE, FUEL_TANKS,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -28,7 +29,8 @@ import { AssetHpOptional, PrepareDefenseObjective, WaveDefenseObjective, type De
 import { CaptureVehicleObjective, CountDestroyObjective, EscortObjective, type AmbushDef } from './escort';
 import { ClearGroupsObjective, ClearRemainingObjective, FortressRelaysObjective, GeneralObjective, GeneratorObjective, ResistanceSurvivesOptional } from './fortress';
 import { MineField } from './mines';
-import { MineKillsOptional } from './chapter4';
+import { FuelInstallationsObjective, FuelKillsOptional, MineKillsOptional, ResponseObjective, type ResponseWave } from './chapter4';
+import { FuelDepot } from './fuel';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -573,7 +575,49 @@ const JUNGLE_SWEEP: MissionScript = {
   story: { minesAhead: 'm16-mines', 'start:checkpoint': 'm16-checkpoint', victory: 'm16-extract' },
 };
 
+// ---- Mission 17: Fuel for the Fire (Sabotage, 6 soldiers) ----
+// 34 placed enemies (7 Armored Troopers, 4 Snipers) + a finite 12-strong response (3 waves) once the last installation
+// burns = 46, no other waves, no extraction pressure; 16 fuel tanks (FuelDepot) in three installations.
+//  Opening: patrol 1 (3) on the trail; Installation A, exposed storage (6: guards beside two chainable tank pairs;
+//  Overwatch's fuel warning on the way in). Then any order: Installation B, the fortified depot north (9: four hold
+//  their posts behind the sandbags, a five-tank cluster that chains end to end; west, south and north gaps), and,
+//  past patrol 2 (4) on the eastern trail, Installation C, the central reserve (12: four guards hold inside the
+//  five-tank ring, two lone outer tanks, sandbag arcs at a safe distance). Then the response from the jungle edges
+//  (safeSpawnPoint: off screen, 520+ px from every soldier) and the helicopter clearing north-east.
+const R4: EnemyKind[] = ['rifleman', 'rifleman', 'rifleman', 'rifleman'];
+export const FUEL_RESPONSE_WAVES: ResponseWave[] = [
+  { at: 2, points: FUEL_RESPONSE, kinds: R4 },
+  { at: 14, points: FUEL_RESPONSE, kinds: ['rifleman', 'rifleman', 'rifleman', 'armored'], banner: 'MORE ENEMIES INBOUND' },
+  { at: 28, points: FUEL_RESPONSE, kinds: ['rifleman', 'rifleman', 'armored', 'sniper'], banner: 'LAST ENEMY GROUP INBOUND' },
+];
+const FUEL_FOR_THE_FIRE: MissionScript = {
+  id: 'fuel-for-the-fire', map: FUEL_MAP,
+  groups: () => [
+    { tag: 'patrol-1', points: [{ x: 900, y: 1850 }, { x: 960, y: 1930 }, { x: 840, y: 1960 }], aggro: 420 },
+    // A: two guards beside each tank pair, a trooper and a sniper behind them
+    { tag: 'site-a', points: [{ x: 1470, y: 1420 }, { x: 1480, y: 1340 }, { x: 1590, y: 1620 }, { x: 1560, y: 1700 }, k(1720, 1510, 'armored'), k(1790, 1330, 'sniper')], aggro: 430 },
+    { tag: 'patrol-2', points: [{ x: 2480, y: 1680 }, { x: 2560, y: 1760 }, { x: 2420, y: 1780 }, k(2540, 1660, 'armored')], aggro: 400 },
+    // B: four hold the sandbag line, two troopers by the cluster, a sniper at the north wall, two outside the west gap
+    { tag: 'site-b-posts', points: [{ x: 2170, y: 450 }, { x: 2440, y: 450 }, { x: 2150, y: 840 }, { x: 2450, y: 840 }], aggro: 380, hold: true },
+    { tag: 'site-b', points: [k(2300, 520, 'armored'), k(2330, 770, 'armored'), k(2300, 440, 'sniper'), { x: 1990, y: 860 }, { x: 2000, y: 640 }], aggro: 420 },
+    // C: four guards inside the ring (they hold), troopers and snipers around it, three riflemen on the flanks
+    { tag: 'site-c-ring', points: [{ x: 3470, y: 1450 }, { x: 3540, y: 1440 }, { x: 3500, y: 1380 }, { x: 3460, y: 1520 }], aggro: 380, hold: true },
+    { tag: 'site-c', points: [k(3720, 1410, 'armored'), k(3300, 1560, 'armored'), k(3620, 1240, 'armored'), k(3820, 1200, 'sniper'), k(3260, 1760, 'sniper'), { x: 3660, y: 1640 }, { x: 3340, y: 1260 }, { x: 3760, y: 1520 }], aggro: 450 },
+  ],
+  triggers: [],
+  primaries: () => [
+    new ReachObjective('approach', 'Infiltrate the supply network', FUEL_APPROACH, 'DEPOT'),
+    new FuelInstallationsObjective('installations', 'Destroy the 3 fuel installations', FUEL_INSTALLATIONS),
+    new ResponseObjective('response', 'Survive the enemy response', FUEL_RESPONSE_WAVES),
+  ],
+  optionals: () => [new FuelKillsOptional('fuel-kills', 'Take out 5 enemies with fuel explosions', 5)],
+  hint: 'Fuel tanks explode and hurt everyone nearby: tap one to have the squad shoot it while enemies stand beside it.',
+  mechanics: () => [new FuelDepot({ tanks: FUEL_TANKS, warnCue: 'cue:fuel', warnRadius: 560 })],
+  extraction: { zone: FUEL_EXTRACTION, countdown: () => 12 },
+  story: { 'cue:fuel': 'm17-fuel', 'start:installations': 'm17-depot', 'start:response': 'm17-response', victory: 'm17-extract' },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP, FUEL_FOR_THE_FIRE].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

@@ -23,6 +23,7 @@ import * as support from './support';
 import * as targeting from './targeting';
 import * as story from './story';
 import { MISSION_SCRIPTS } from './missions';
+import { FuelDepot } from './fuel';
 import { blastDamage, explode } from './combat';
 
 const stage = document.getElementById('stage')!;
@@ -153,7 +154,7 @@ else {
     : loaded.status === 'migrated' ? (loaded.fromVersion === 7
       ? 'Save updated for v0.7A: everything was kept. New: Elite Promotions — soldiers who reach Recruit Level 25 can be promoted to an Elite specialization in their Barracks profile.'
       : loaded.fromVersion === 6
-      ? 'Save updated for v0.6.2: everything was kept. New: Chapter 2 — Behind Enemy Lines (Missions 6-10) and, after Mission 9, the Sniper class.'
+      ? 'Save updated for v0.6.2: everything was kept. New: Chapter 2 — Hostile Territory (Missions 6-10) and, after Mission 9, the Sniper class.'
       : loaded.fromVersion === 5
       ? 'Save updated for v0.6.1: every soldier you have was kept (nothing charged). New: campaign milestones now unlock named recruits you choose to buy in the Recruitment Office.'
       : loaded.fromVersion === 4
@@ -221,5 +222,7 @@ Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStat
   __render: () => { ctx.setTransform(canvas.width / VIEW_W, 0, 0, canvas.height / VIEW_H, 0, 0); if (game.phase !== 'start') render(ctx, game); hud.update(); },
   __perf: { stats: pstats, settings: perfSettings },
   // Phase 3 (tools/arch.cjs): mission scripts (MissionScript.mechanics) and the shared blast-damage helper
-  __missions: MISSION_SCRIPTS, __combat: { blastDamage, explode } });
+  __missions: MISSION_SCRIPTS, __combat: { blastDamage, explode },
+  // v0.9B (tools/v09b.cjs): the fuel depot mechanic, to lay test tanks in any mission
+  __fuelDepot: FuelDepot });
 game.resetRosterSave = resetRosterSave;

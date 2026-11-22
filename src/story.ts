@@ -55,7 +55,9 @@ export interface StoryScene {
 /** Mission hooks that can play a scene (MissionScript.story maps them to scene ids). */
 export type StoryCue = 'bossIntro' | 'bossPhase2' | 'bossPhase3' | 'victory'
   /** v0.9A: a mine field's first warning (MineFieldSpec.warnCue) / a primary objective with this id starts (Mission.activateCurrent). */
-  | 'minesAhead' | `start:${string}`;
+  | 'minesAhead' | `start:${string}`
+  /** v0.9B: a named mission moment (a fuel depot's first warning, an ambush springing, a rooftop sighting). */
+  | `cue:${string}`;
 
 /** Comfortable reading time for a cinematic panel: 1.5 s + 0.17 s per word, 2.8-5 s. */
 export function readTime(text: string) {
@@ -107,6 +109,26 @@ export const SCENES: Record<string, StoryScene> = {
     ],
   },
   'm16-extract': { id: 'm16-extract', mode: 'radio', lines: [{ speaker: O, text: 'Checkpoint is ours. Helicopter inbound, north-east clearing.' }] },
+  // v0.9B Mission 17: Fuel for the Fire
+  'm17-fuel': {
+    id: 'm17-fuel', mode: 'radio', lines: [
+      { speaker: O, text: 'Squad, those red tanks are full of fuel. One good burst and they go up.' },
+      { speaker: O, text: 'Tap one and your squad will shoot it. Catch the guards beside it, and keep your own people clear.' },
+    ],
+  },
+  'm17-depot': {
+    id: 'm17-depot', mode: 'radio', lines: [
+      { speaker: O, text: 'Three installations: open storage here, a fortified depot to the north, the main reserve to the east.' },
+      { speaker: O, text: 'Burn them all. Tanks packed close together will set each other off.' },
+    ],
+  },
+  'm17-response': {
+    id: 'm17-response', mode: 'radio', lines: [
+      { speaker: O, text: 'That got their attention. Enemy response inbound from the jungle edges.' },
+      { speaker: O, text: 'They are sending everything they have left. Hold together and finish them.' },
+    ],
+  },
+  'm17-extract': { id: 'm17-extract', mode: 'radio', lines: [{ speaker: O, text: 'The depot is burning. Helicopter inbound, north-east clearing.' }] },
 };
 
 export function speakerOf(line: StoryLine): StorySpeaker { return SPEAKERS[line.speaker]; }

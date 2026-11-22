@@ -9,6 +9,7 @@ import { grenadePos } from './abilities';
 import { VIEW_W, VIEW_H } from './view';
 import { DEG, clamp, dist, type Rect } from './util';
 import { aimTimeOf } from './combat';
+import { drawFuelTank } from './fuel';
 import { CLASSES, type ClassVisual, type SoldierClassId } from './classes';
 import { adrenalineActive, eliteSpec, type EliteSpecId } from './elite';
 
@@ -1170,6 +1171,7 @@ function drawStructure(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   if (u.structure === 'bunker') { drawBunker(ctx, u, game); return; }
   if (u.structure === 'artillery') { drawArtilleryGun(ctx, u, game); return; }
   if (u.structure === 'generator') { drawGenerator(ctx, u, game); return; }
+  if (u.structure === 'fuel') { drawFuelTank(ctx, u, game); return; } // v0.9B fuel.ts
   const { x, y } = u.pos;
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath(); ctx.ellipse(x, y + 4, 34, 14, 0, 0, Math.PI * 2); ctx.fill();

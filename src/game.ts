@@ -2,7 +2,8 @@
 import { CFG } from './config';
 import { World } from './world';
 import type { MapDef } from './map';
-import { Unit, isBoss, isMine, nextStatEpoch } from './unit';
+import { Unit, isBoss, isHazard, isMine, nextStatEpoch } from './unit';
+import { fuelSafe } from './fuel';
 import { EscortTargeting, ExposedTargeting, NearestVisible, SniperTargeting } from './targeting';
 import type { EnemyKind } from './unit';
 import { Effects, modifyDamage, updateEnemySniper, updateOffhand, updateProjectiles, updateWeapon, type DamageOpts, type Projectile } from './combat';
@@ -518,6 +519,7 @@ export class Game implements InputHandler {
     if (opts.support) amount = Math.min(Math.max(0, amount), supportRoom(u));
     const removed = Math.min(Math.max(0, amount), Math.max(0, u.hp));
     u.hp -= amount;
+    if (source && u.structure) u.lastHitBy = source; // v0.9B a fuel tank's blast is credited to whoever set it off
     if (source) {
       source.dealt += removed;
       // structures and vehicles aren't enemy soldiers (objective damage is not combat damage)
@@ -852,8 +854,9 @@ export class Game implements InputHandler {
     // v0.8B: during the wrecked-truck aftermath both sides hold fire (Mission.aftermath)
     const ceasefire = this.mission.aftermath !== null;
     if (!ceasefire) {
-      // v0.9A revealed mines are never picked automatically (only a player order aims at one: Unit.order)
-      const hostiles = this.enemies.some(isMine) ? this.enemies.filter((e) => !isMine(e)) : this.enemies;
+      // v0.9A revealed mines are never picked automatically (only a player order aims at one: Unit.order);
+      // v0.9B nor is a fuel tank, unless nobody on the squad's side is inside its blast (fuelSafe)
+      const hostiles = this.enemies.some(isHazard) ? this.enemies.filter((e) => !isHazard(e) || (e.structure === 'fuel' && fuelSafe(this, e))) : this.enemies;
       for (const s of this.soldiers) if (s.active && !s.mount) { updateWeapon(s, this, dt, hostiles); if (s.offhand) updateOffhand(s, this, dt, hostiles); }
       for (const a of this.allies) if (a.active) updateWeapon(a, this, dt, hostiles);
       for (const t of this.assets) if (t.active && t.asset === 'turret') updateWeapon(t, this, dt, hostiles);

@@ -18,6 +18,8 @@
 //    cover shelters, linear falloff, DamageOpts.grenade (no Armored Trooper frontal plate; Elite reductions apply).
 //    No source: no kill credit, no stats. A blast arms a short fuse (chainDelay) on every other armed mine within
 //    chainRadius in sight; each mine goes off once, so a chain always ends.
+//  - Tactical Support (v0.9B): an airstrike sets off every armed mine inside its circle, the nuke every armed mine on
+//    the map (supportStrike), each once with its normal blast; mines never keep the objective 1 HP floor.
 //  - Fixed step only (simulation time); no Math.random. Per attempt: Retry / a reload builds a fresh field (nothing
 //    is saved).
 import { CFG } from './config';
@@ -32,7 +34,7 @@ import { dist2, type Vec } from './util';
 import { sfx } from './audio';
 
 export type MineState = 'hidden' | 'revealed' | 'detonated';
-export type MineCause = 'soldier' | 'ally' | 'enemy' | 'shot' | 'chain';
+export type MineCause = 'soldier' | 'ally' | 'enemy' | 'shot' | 'chain' | 'support';
 export interface Mine {
   readonly id: number;
   readonly pos: Vec;
@@ -81,7 +83,7 @@ export class MineField implements MissionMechanic {
   /** The current "shoot this mine" order (one at a time; a new tap replaces it). */
   order: { mine: Mine; until: number } | null = null;
   warned = false;
-  log: MineLog = { revealed: 0, detonations: 0, enemyKills: 0, soldierHits: 0, soldierBlasts: 0, enemyDamage: 0, squadDamage: 0, orders: 0, byCause: { soldier: 0, ally: 0, enemy: 0, shot: 0, chain: 0 } };
+  log: MineLog = { revealed: 0, detonations: 0, enemyKills: 0, soldierHits: 0, soldierBlasts: 0, enemyDamage: 0, squadDamage: 0, orders: 0, byCause: { soldier: 0, ally: 0, enemy: 0, shot: 0, chain: 0, support: 0 } };
 
   constructor(readonly spec: MineFieldSpec) {
     this.mines = spec.mines.map((p, id) => ({ id, pos: { x: p.x, y: p.y }, state: 'hidden', unit: null, fuse: -1, fuseCause: 'chain', revealedAt: -1, detonatedAt: -1, cause: null }));
@@ -195,6 +197,20 @@ export class MineField implements MissionMechanic {
     if (ev.type !== 'structureDestroyed' || !isMine(ev.unit)) return;
     const x = this.mines.find((k) => k.unit === ev.unit);
     if (x && x.state === 'revealed' && x.fuse < 0) { x.fuse = 0; x.fuseCause = 'shot'; }
+  }
+
+  /**
+   * v0.9B an airstrike (circle) or the nuke (at null: everywhere) sets off every armed mine it covers, hidden or
+   * revealed: a zero fuse, so each goes off once on the next step with its normal blast (both teams, cover, chains).
+   * The strike's own damage pass then also takes a revealed mine's unit to 0 (no 1 HP floor for hazards).
+   */
+  supportStrike(_m: Mission, _g: Game, at: Vec | null, radius: number) {
+    const r2 = radius * radius;
+    for (const x of this.mines) {
+      if (x.state === 'detonated' || x.fuse >= 0) continue;
+      if (at && dist2(at, x.pos) > r2) continue;
+      x.fuse = 0; x.fuseCause = 'support';
+    }
   }
 
   /** Tap / click: the nearest revealed mine within tapRadius becomes the squad's order. */

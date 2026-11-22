@@ -18,7 +18,7 @@
 // No randomness in the rules (effects use the shared effect helpers only when a strike lands).
 import { CFG } from './config';
 import type { Game } from './game';
-import { isBoss, type Unit } from './unit';
+import { isBoss, isHazard, type Unit } from './unit';
 import { clamp, dist, type Vec } from './util';
 import { sfx } from './audio';
 import type { AccountData, SupportInventory } from './progression';
@@ -174,6 +174,7 @@ export function supportDamageFor(kind: Kind, u: Unit, k = 1): number {
   const S = kind === 'airstrike' ? CFG.airstrike : CFG.nuke;
   if (isBoss(u)) return u.maxHp * S.bossFrac * k;
   const base = S.damage * k;
+  if (isHazard(u)) return base; // v0.9B a mine / fuel tank caught in the strike goes off (no objective rules)
   if (u.protectedObjective) return base * S.objectiveMul;
   if (u.vehicle) return base * S.vehicleMul;
   if (u.kind === 'armored') return base * S.armoredMul;
@@ -184,6 +185,7 @@ export function supportDamageFor(kind: Kind, u: Unit, k = 1): number {
 export function supportRoom(u: Unit): number {
   if (u.team !== 'enemy') return 0;
   if (isBoss(u)) return Math.max(0, u.hp - u.maxHp * CFG.support.bossFloor);
+  if (isHazard(u)) return Infinity; // v0.9B mines and fuel tanks are hazards, not objectives: never left at 1 HP
   if (u.protectedObjective) return Math.max(0, u.hp - CFG.support.objectiveFloor);
   return Infinity;
 }
@@ -204,6 +206,8 @@ function hit(g: Game, u: Unit, kind: Kind, k: number): number {
 export function airstrikeImpact(g: Game, pos: Vec, sup: Support): { hit: number; removed: number } {
   const A = CFG.airstrike;
   let n = 0, total = 0;
+  // v0.9B every mine / fuel tank in the circle goes off (hidden mines too): their own blasts follow on the next step
+  for (const x of g.mission.mechanics) x.supportStrike?.(g.mission, g, pos, A.radius);
   for (const u of [...g.enemies]) {
     if (!u.active) continue;
     const d = dist(pos, u.pos);
@@ -231,6 +235,8 @@ export function airstrikeImpact(g: Game, pos: Vec, sup: Support): { hit: number;
 /** Nuclear detonation: every active enemy on the map (on screen or not), one pass. */
 export function nukeDetonate(g: Game, sup: Support): { hit: number; removed: number } {
   let n = 0, total = 0;
+  for (const x of g.mission.mechanics) x.supportStrike?.(g.mission, g, null, Infinity); // v0.9B the whole map: every mine / tank
+
   for (const u of [...g.enemies]) {
     if (!u.active) continue;
     total += hit(g, u, 'nuke', 1);

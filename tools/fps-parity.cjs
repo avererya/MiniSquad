@@ -19,7 +19,7 @@ const { setupMission, installPilot } = require('./perf-lib.cjs');
 
 const URL = process.env.URL || 'http://localhost:4173/';
 const BASE = process.env.BASE || '';
-const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist,last-stand@voss,last-stand@story,jungle-sweep,jungle-sweep@field').split(',');
+const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist,last-stand@voss,last-stand@story,jungle-sweep,jungle-sweep@field,fuel-for-the-fire,fuel-for-the-fire@reserve).split(',');
 const SECS = +(process.env.SECS || 60);
 const SEED = +(process.env.SEED || 12345);
 

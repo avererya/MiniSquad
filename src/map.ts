@@ -748,3 +748,80 @@ export const JUNGLE_MAP: MapDef = {
 };
 /** Mission 16 rule checks: the open ground (inOpen) and the landing zone. */
 export const JUNGLE_OPEN_SHAPES = JUNGLE_OPEN;
+
+// =====================================================================================
+// v0.9B Mission 17 "Fuel for the Fire": a jungle supply network (FuelDepot, fuel.ts)
+// =====================================================================================
+// The squad lands in the south-west, passes a small patrol clearing and reaches Installation A (exposed storage: two
+// chainable pairs of tanks in an open clearing, guards standing beside them). From A two routes lead on: north-east
+// to Installation B (a sandbagged depot with west / south gaps and a five-tank cluster that chains end to end), and
+// east past a patrol clearing to Installation C (the central reserve: a five-tank ring with guards inside it, two
+// lone outer tanks, sandbag arcs to fight from at a safe distance). A south track joins the eastern trail to B's
+// south gap, a northern track joins B to C, and the helicopter clearing is north-east of C. Edge stubs are where
+// the enemy response walks in.
+const FUEL_OPEN: OpenShape[] = [
+  // clearings: start, patrol 1, A, patrol 2, B, C (two circles), the helicopter
+  { c: { x: 240, y: 2250 }, r: 270 }, { c: { x: 900, y: 1900 }, r: 230 }, { c: { x: 1500, y: 1500 }, r: 340 },
+  { c: { x: 2500, y: 1720 }, r: 230 }, { c: { x: 2300, y: 650 }, r: 380 }, { c: { x: 3500, y: 1450 }, r: 470 },
+  { c: { x: 3820, y: 1250 }, r: 260 }, { c: { x: 4250, y: 450 }, r: 260 },
+  // trails: start -> patrol 1 -> A; A -> B; A -> patrol 2 -> C; patrol 2 -> B's south gap; B -> C (north); C -> helicopter
+  { a: { x: 240, y: 2250 }, b: { x: 900, y: 1900 }, r: 130 }, { a: { x: 900, y: 1900 }, b: { x: 1500, y: 1500 }, r: 130 },
+  { a: { x: 1600, y: 1200 }, b: { x: 2150, y: 880 }, r: 120 }, { a: { x: 1800, y: 1550 }, b: { x: 2500, y: 1720 }, r: 130 },
+  { a: { x: 2500, y: 1720 }, b: { x: 3100, y: 1520 }, r: 130 }, { a: { x: 2450, y: 1520 }, b: { x: 2330, y: 1000 }, r: 110 },
+  { a: { x: 2650, y: 760 }, b: { x: 3300, y: 1060 }, r: 115 }, { a: { x: 3700, y: 1050 }, b: { x: 4150, y: 600 }, r: 130 },
+  { a: { x: 2650, y: 560 }, b: { x: 4000, y: 430 }, r: 100 },
+  // edge stubs (the enemy response): east, north of C, south of C, north of B
+  { a: { x: 3900, y: 1500 }, b: { x: 4600, y: 1520 }, r: 100 }, { a: { x: 3450, y: 1000 }, b: { x: 3450, y: 0 }, r: 95 },
+  { a: { x: 3500, y: 1900 }, b: { x: 3500, y: 2600 }, r: 100 }, { a: { x: 2300, y: 300 }, b: { x: 2300, y: 0 }, r: 95 },
+];
+/** Mission 17 fuel tanks (FuelDepot) by installation: A exposed storage, B fortified depot, C central reserve. */
+export const FUEL_TANKS: { x: number; y: number; group: string }[] = [
+  // A: two pairs (each pair chains, the pairs are 250 px apart and do not)
+  { x: 1420, y: 1390, group: 'A' }, { x: 1530, y: 1360, group: 'A' }, { x: 1640, y: 1580, group: 'A' }, { x: 1520, y: 1660, group: 'A' },
+  // B: a five-tank cluster in the middle of the compound (one blast takes the whole cluster)
+  { x: 2240, y: 590, group: 'B' }, { x: 2360, y: 570, group: 'B' }, { x: 2300, y: 690, group: 'B' }, { x: 2420, y: 680, group: 'B' }, { x: 2190, y: 710, group: 'B' },
+  // C: a five-tank ring (guards inside it) and two lone outer tanks
+  { x: 3420, y: 1370, group: 'C' }, { x: 3570, y: 1360, group: 'C' }, { x: 3610, y: 1500, group: 'C' }, { x: 3490, y: 1580, group: 'C' }, { x: 3370, y: 1500, group: 'C' },
+  { x: 3230, y: 1230, group: 'C' }, { x: 3790, y: 1690, group: 'C' },
+];
+export const FUEL_INSTALLATIONS = [
+  { group: 'A', name: 'Installation A (exposed storage)', short: 'A' },
+  { group: 'B', name: 'Installation B (fortified depot)', short: 'B' },
+  { group: 'C', name: 'Installation C (central reserve)', short: 'C' },
+];
+/** The first objective: reach the edge of Installation A. */
+export const FUEL_APPROACH: Rect = { x: 1080, y: 1520, w: 200, h: 280 };
+export const FUEL_EXTRACTION: Rect = { x: 4120, y: 330, w: 260, h: 240 };
+/** Where the enemy response walks in (edge stubs): east, north of C, south of C, north of B. */
+export const FUEL_RESPONSE: Vec[] = [{ x: 4560, y: 1520 }, { x: 3450, y: 40 }, { x: 3500, y: 2560 }, { x: 2300, y: 40 }];
+const FUEL_COVER: Obstacle[] = [
+  // patrol clearing 1 and the approach
+  Tr(820, 1780, 70, 60, 40), R(960, 1990, 90, 50, 30), C(1120, 1660),
+  // A (open storage): crates, a rock, a fallen tree (cover a step back from the tanks)
+  C(1300, 1500), C(1336, 1500), R(1250, 1300, 90, 50, 30), C(1700, 1420), Tr(1720, 1700, 70, 60, 40), C(1440, 1760),
+  // the trail A -> B and patrol clearing 2
+  R(1880, 1040, 80, 50, 30), Tr(2430, 1620, 70, 60, 40), R(2600, 1800, 90, 50, 30),
+  // B (fortified depot, x 2060-2550, y 400-900): sandbag walls with gaps west (y 600-680), south (x 2240-2360) and
+  // north (x 2260-2340); a concrete east wall; barricades and crates inside; rocks outside the gaps
+  S(2120, 400, 140, 16), S(2340, 400, 160, 16), S(2100, 890, 140, 16), S(2360, 890, 140, 16),
+  S(2060, 470, 16, 130), S(2060, 680, 16, 130), K(2530, 470, 16, 340, 30), K(2200, 790, 60, 30, 26), K(2380, 790, 60, 30, 26),
+  C(2470, 560), C(2470, 596), R(1960, 760, 80, 50, 30), R(2320, 1020, 90, 40, 28),
+  // C (central reserve): sandbag arcs at a safe distance from the ring, concrete blocks, crates
+  S(3170, 1370, 16, 140), S(3260, 1130, 120, 16), S(3640, 1790, 130, 16), S(3880, 1440, 16, 140), S(3480, 1100, 140, 16),
+  K(3140, 1620, 80, 40, 30), K(3700, 1180, 60, 40, 30), C(3300, 1700), C(3336, 1700), C(3940, 1250), R(3560, 1880, 90, 40, 28),
+  // the helicopter clearing
+  C(4420, 560), C(4456, 560), R(4100, 340, 70, 50, 30),
+];
+export const FUEL_MAP: MapDef = {
+  id: 'fuel-depot', w: 4600, h: 2600, theme: 'jungle',
+  obstacles: [...jungleCanopy(4600, 2600, FUEL_OPEN), ...FUEL_COVER],
+  start: { x: 240, y: 2260 }, startZone: { x: 110, y: 2130, w: 260, h: 260 },
+  medkits: [{ x: 1180, y: 1980 }, { x: 1980, y: 1000 }, { x: 2650, y: 1640 }, { x: 3150, y: 1080 }, { x: 3950, y: 950 }],
+  rapidFire: [{ x: 2520, y: 1800 }],
+  roads: [
+    [{ x: 0, y: 2280 }, { x: 600, y: 2080 }, { x: 900, y: 1900 }, { x: 1500, y: 1500 }, { x: 2100, y: 1620 }, { x: 2500, y: 1720 }, { x: 3100, y: 1520 }, { x: 3500, y: 1450 }, { x: 3900, y: 1100 }, { x: 4250, y: 450 }],
+    [{ x: 1500, y: 1500 }, { x: 1700, y: 1150 }, { x: 2150, y: 880 }, { x: 2300, y: 650 }, { x: 2900, y: 850 }, { x: 3300, y: 1060 }],
+  ],
+  props: [{ kind: 'flag', x: 2480, y: 440 }, { kind: 'tent', x: 2140, y: 470 }, { kind: 'tent', x: 3700, y: 1300 }, { kind: 'radar', x: 3950, y: 1350 }],
+};
+export const FUEL_OPEN_SHAPES = FUEL_OPEN;

@@ -12,6 +12,10 @@ function setupMission({ missionId, level }) {
   // run walks the squad through the minefield middle: reveals, the pilot's mine orders, blasts, chains
   const field = missionId === 'jungle-sweep@field';
   if (field) missionId = 'jungle-sweep';
+  // v0.9B 'fuel-for-the-fire@reserve': Mission 17 at the central reserve (A and B already burnt, their guards and the
+  // patrols gone), so a short run covers the five-tank chain, the guards inside the ring and the enemy response
+  const reserve = missionId === 'fuel-for-the-fire@reserve';
+  if (reserve) missionId = 'fuel-for-the-fire';
   const story = missionId === 'last-stand@story';
   const voss = missionId === 'last-stand@voss' || story;
   if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
@@ -42,6 +46,15 @@ function setupMission({ missionId, level }) {
     g.anchor = { x: 1570, y: 1125 }; g.cam = { x: 1570, y: 1125 };
     if (g.story) g.story.skip(g);
     void m;
+  }
+  if (reserve && r.ok) {
+    const m = g.mission, d = m.mechanic('fuel');
+    for (const t of d.tanks) if (t.group !== 'C') { t.state = 'exploded'; t.unit.state = 'dead'; }
+    for (const e of g.enemies) if (e.tag && !/^site-c/.test(e.tag)) e.state = 'dead';
+    g.enemies = g.enemies.filter((e) => e.state !== 'dead');
+    g.soldiers.forEach((s, i) => { s.pos = { x: 3000 + (i % 3) * 30, y: 1480 + Math.floor(i / 3) * 30 }; s.vel = { x: 0, y: 0 }; });
+    g.anchor = { x: 3030, y: 1495 }; g.cam = { x: 3030, y: 1495 };
+    if (g.story) g.story.skip(g);
   }
   void a;
   return r.ok ? { ok: true, squad: g.soldiers.map((s) => s.name) } : { ok: false, reason: r.reason };
@@ -80,6 +93,21 @@ function installPilot() {
       let best = null, bd = 320 * 320;
       for (const x of mf.mines) { if (x.state !== 'revealed') continue; const d = (x.pos.x - g.anchor.x) ** 2 + (x.pos.y - g.anchor.y) ** 2; if (d < bd) { bd = d; best = x; } }
       if (best && !(mf.order && mf.order.mine === best)) g.onTap({ x: best.pos.x - g.cam.x + 640, y: best.pos.y - g.cam.y + 360 });
+    }
+    // v0.9B fuel tanks (Mission 17): every second, tap an intact tank within 450 px whose blast ring holds no soldier
+    // (one with an enemy beside it first); stop short of the tank the objective points at once a soldier sees it
+    const fd = m.mechanic ? m.mechanic('fuel') : null;
+    if (fd) {
+      const F = window.__CFG.fuel, R2 = (F.blastRadius + 25) ** 2, d2 = (p) => (p.x - g.anchor.x) ** 2 + (p.y - g.anchor.y) ** 2;
+      if (n % 60 === 30) {
+        const ok = fd.tanks.filter((t) => t.state === 'intact' && d2(t.pos) < 450 * 450 && !g.soldiers.some((s) => (s.active || s.state === 'downed') && (s.pos.x - t.pos.x) ** 2 + (s.pos.y - t.pos.y) ** 2 < R2));
+        const bait = (t) => g.enemies.some((e) => e.active && !e.structure && (e.pos.x - t.pos.x) ** 2 + (e.pos.y - t.pos.y) ** 2 < 90 * 90);
+        ok.sort((a, b) => (bait(b) ? 1 : 0) - (bait(a) ? 1 : 0) || d2(a.pos) - d2(b.pos));
+        const best = ok[0];
+        if (best && !(fd.order && fd.order.tank === best)) g.onTap({ x: best.pos.x - g.cam.x + 640, y: best.pos.y - g.cam.y + 360 });
+      }
+      const tk = goal && fd.tanks.find((t) => t.state === 'intact' && t.pos.x === goal.x && t.pos.y === goal.y);
+      if (tk && d2(tk.pos) < 240 * 240 && g.soldiers.some((s) => s.active && g.world.clear(s.pos, tk.pos))) goal = null;
     }
     const fighting = g.soldiers.some((s) => s.active && s.target && !s.target.structure && !s.target.vehicle);
     P.pathT -= 1 / 60;
