@@ -733,15 +733,15 @@ export const CAMP_PRISONERS: PrisonerDef[] = [
 const RN = (n: number): EnemyKind[] => Array.from({ length: n }, () => 'rifleman');
 export const CAMP_RESPONSES: RescueResponse[] = [
   { after: 1, delay: 4, kinds: RN(5), banner: 'GUARDS MOBILIZING' },
-  { after: 2, delay: 5, kinds: [...RN(8), 'armored', 'armored'], reduced: [...RN(4), 'armored'], banner: 'BREAKOUT ALERT — REINFORCEMENTS FROM THE BARRACKS' },
+  { after: 2, delay: 5, kinds: [...RN(8), 'armored', 'armored'], reduced: [...RN(4), 'armored'], banner: 'BARRACKS REINFORCEMENTS INBOUND' },
   { after: 3, delay: 3, kinds: [...RN(6), 'armored'], banner: 'LOCKDOWN SQUAD INBOUND' },
 ];
 /** The last stand: 60 Riflemen (12 + 15 + 18 + 15) at 0.5 / 7 / 14 / 21 s of the 30 s countdown. */
 export const CAMP_ASSAULT_WAVES: AssaultWave[] = [
   { at: 0.5, groups: [{ route: 'north', size: 12 }], banner: 'ENEMY ASSAULT' },
   { at: 7, groups: [{ route: 'west', size: 8 }, { route: 'northEast', size: 7 }], banner: 'MORE OF THEM' },
-  { at: 14, groups: [{ route: 'south', size: 6 }, { route: 'northWest', size: 6 }, { route: 'southEast', size: 6 }], banner: 'THEY ARE SURROUNDING THE CLEARING' },
-  { at: 21, groups: [{ route: 'north', size: 5 }, { route: 'southWest', size: 5 }, { route: 'west', size: 5 }], banner: 'FINAL RUSH — THE HELICOPTER IS ALMOST HERE' },
+  { at: 14, groups: [{ route: 'south', size: 6 }, { route: 'northWest', size: 6 }, { route: 'southEast', size: 6 }], banner: 'SURROUNDED' },
+  { at: 21, groups: [{ route: 'north', size: 5 }, { route: 'southWest', size: 5 }, { route: 'west', size: 5 }], banner: 'FINAL RUSH' },
 ];
 const PRISON_CAMP: MissionScript = {
   id: 'jungle-prison', map: CAMP_MAP,

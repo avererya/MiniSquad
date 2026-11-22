@@ -157,7 +157,7 @@ export class PrisonBreak implements MissionMechanic {
     m.incoming.push({ pos: { ...at }, life: 4 });
     const live = g.soldiers.filter((s) => s.state === 'active' || s.state === 'downed');
     this.log.responses.push({ after: x.r.after, t: g.time, n: us.length, reduced: x.reduced, at: { ...at }, minSoldierDist: Math.round(Math.min(...live.map((s) => dist(s.pos, at)), 1e9)), onScreen: g.isOnScreen(at, 0) });
-    g.banner(x.reduced ? `${x.r.banner} (THE ALARM IS DOWN: FEWER OF THEM)` : x.r.banner, '#ff7a5a', 2.8);
+    g.banner(x.reduced ? `${x.r.banner} (ALARM DOWN: FEWER)` : x.r.banner, '#ff7a5a', 2.8);
     sfx('alarm');
   }
 
