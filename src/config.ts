@@ -346,6 +346,14 @@ function makeDefaults() {
       standardA: 3, standardAAt: 0.15, standardB: 3, standardBAt: 0.45, standardC: 2, standardCAt: 0.75, standardArmored: 1, // the last group led by an armored trooper
       intenseA: 4, intenseAAt: 0.2, intenseB: 4, intenseBAt: 0.45, intenseSnipers: 1, intenseC: 5, intenseCAt: 0.75, intenseArmored: 2, // a sniper in the second group, troopers in the final assault
       restrained: 3, restrainedDelay: 2, // M11: one small group (the defence was the fight)
+      // v0.9B.2 'assault' (Mission 18 only; the other tiers are untouched): 26 from three sides of the plaza (routes in
+      // map.ts ALLEY_ASSAULT; fewer for a squad under six). North + south enter together as the countdown starts (a
+      // trooper with the north group), the west group (and the second trooper) down Main Street 3 s in, both V4 flanks
+      // together at 8 s, the final assault at 12 s, so the last riflemen reach firing range before the helicopter lands.
+      assaultNorth: 5, assaultNorthArmored: 1, assaultSouth: 4, assaultAt: 0,
+      assaultWest: 5, assaultWestArmored: 1, assaultWestAt: 0.15,
+      assaultFlank: 4, assaultFlankAt: 0.4, // each of the two V4 flanks
+      assaultFinal: 4, assaultFinalAt: 0.6,
     },
     // v0.8B Chapter 3B (defense.ts / escort.ts). Friendly mission objects are team 'squad' units that are not
     // soldiers: no XP, no training, no casualty record, never counted toward the deployment cap.

@@ -15,7 +15,7 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 
 ## Status
 
-Current release: **v0.9B.1, Combat Pacing & Extraction Pressure** (package `0.9.2`, save v9), on v0.9B Chapter 4: Missions 17-18 and v0.9A Chapter 4: Jungle Sweep. Missions 1-18 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines, Mission 17 adds exploding fuel tanks and Mission 18 an urban ambush (v0.9B.1: longer Missions 17-18, concealed rooftop snipers, staggered extraction pressure). Missions 19-20 are not built yet. Chapter 2 is now called "Hostile Territory". The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.9B.2, Ambush Alley: Rooftop Threats & Extraction Assault** (package `0.9.3`, save v9), on v0.9B.1 Combat Pacing & Extraction Pressure, v0.9B Chapter 4: Missions 17-18 and v0.9A Chapter 4: Jungle Sweep. Missions 1-18 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines, Mission 17 adds exploding fuel tanks and Mission 18 an urban ambush (v0.9B.1: longer Missions 17-18, concealed rooftop snipers, staggered extraction pressure; v0.9B.2: two more isolated rooftop snipers and a 26-strong extraction assault in Mission 18). Missions 19-20 are not built yet. Chapter 2 is now called "Hostile Territory". The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -60,7 +60,7 @@ The sections below are the player-facing rules and numbers, grouped by system. H
 - [Training rebalance](#progression--training-rebalance-v07b1) · [Squad Training](#squad-training-expansion--mobile-polish-v07d) · [Accuracy soft floor](#accuracy-soft-floor--hud-touch-areas-v07d1)
 - [Elite Promotions](#elite-promotions-v07a) · [Elite Progression](#elite-progression-v07b) · [Tactical Support](#tactical-support-v07c)
 - [Chapter 2](#chapter-2-hostile-territory-v062) · [Chapter 3A](#chapter-3a-the-resistance-begins-v08a) · [Chapter 3B](#chapter-3b-hold-the-line--supply-line-sabotage-v08b) · [Difficulty, Extended Escort & Ability Capacity](#difficulty-extended-escort--ability-capacity-v08b1)
-- [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a) · [Missions 17-18: fuel tanks and urban ambushes](#chapter-4-missions-17-18-v09b) · [v0.9B.1 combat pacing, rooftop snipers, extraction pressure](#combat-pacing--extraction-pressure-v09b1)
+- [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a) · [Missions 17-18: fuel tanks and urban ambushes](#chapter-4-missions-17-18-v09b) · [v0.9B.1 combat pacing, rooftop snipers, extraction pressure](#combat-pacing--extraction-pressure-v09b1) · [v0.9B.2 Mission 18 rooftop threats and extraction assault](#ambush-alley-rooftop-threats--extraction-assault-v09b2)
 - [Performance](#performance-v063)
 
 ## Campaign
@@ -391,7 +391,8 @@ Chapter 3 ("The Resistance") opens with Missions 11 and 12; Mission 13 shows as 
 | light (v0.9B.1) | 3 at 15%, 2 at 55% from another edge (5) | 4 Red Canyon, 5 Bring Them Home, 7 Prison Break (12 s); 17 Fuel for the Fire (15 s) |
 | standard (v0.9B.1) | 3 at 15%, 3 at 45%, 2 led by an Armored Trooper at 75% (8) | 6 Bridgehead, 8 Convoy Crusher, 9 Blackout, 16 Jungle Sweep (15 s) |
 | restrained | 3 after 2 s | 11 Resistance Rising |
-| intense (v0.9B.1) | 4 at 20%, 4 with a Sniper at 45%, 5 with 2 Armored Troopers at 75% (13) | 12 Artillery Hunt, 18 Ambush Alley (20 s) |
+| intense (v0.9B.1) | 4 at 20%, 4 with a Sniper at 45%, 5 with 2 Armored Troopers at 75% (13) | 12 Artillery Hunt (20 s) |
+| assault (v0.9B.2) | north 5 (an Armored Trooper) + south 4 at once, west 5 (an Armored Trooper) at 15%, 4 + 4 round both flanks at 40%, 4 at 60% (26; fewer for a squad under six) | 18 Ambush Alley (20 s) |
 
 v0.9B.1: the light / standard / intense groups are staggered through the countdown and each comes from the unused edge point nearest the squad (so a later group usually arrives from a different direction); the last group of a three-group tier is announced as the **FINAL ASSAULT**. The helicopter still takes off the moment the countdown ends with every standing soldier in the zone: there is no boarding timer and nobody has to kill the reinforcements. The defence (13), the truck escort (14) and the boss finale (15) have none, the scripted-wave missions (3, 10) keep their own wave and never get pressure on top, and the captive-escort missions (5, 7) use the light tier.
 
@@ -500,11 +501,18 @@ Optional (+25 XP / +150 CR): **Take out 5 enemies with fuel explosions** (a tank
 3. **Clear the rooftops and the side streets**: OVERWATCH calls the glint, and 2.5 s later three **rooftop snipers** appear on perches over Main Street (they never move, you cannot climb up, but you can shoot them from the street). Each one's first shot shows the red laser for 1 s longer than a normal sniper's (2.6 s in all) with a "ROOFTOP SNIPER!" marker. A second barricade holds the corner. Once the snipers fall and you push east, a **rear ambush** (five) comes from the streets behind you, off screen and at least 600 px away.
 4. **Storm the courtyard**: eight defenders behind walls with three ways in (west alley, north gate, south gate).
 5. **Break the final intersection**: six dug in behind sandbags, a rooftop sniper over them and, 12 s in, a last group of four from the plaza's side streets. Not a boss.
-6. **Reach helicopter extraction** in the plaza (20 s countdown, intense extraction pressure since v0.9B.1).
+6. **Reach helicopter extraction** in the plaza (20 s countdown; since v0.9B.2 the extraction assault, 26 attackers from three sides, see below).
 
 Optional (+25 XP / +150 CR): **Recover 2 supply caches** of the three hidden off the main route (an outskirts backyard, a courtyard off North Avenue, a dead-end alley off Main Street). Walk up to a cache to open it: it drops existing pickups (medkits, Rapid Fire). No new currency or inventory; nothing is saved. ★★ all optionals, ★★★ no KIA.
 
 Fairness rules for ambushes: every ambush has a radio line or banner before its enemies appear, ground ambushes appear off screen at a minimum distance from every soldier (420-600 px), rooftop snipers give the long first telegraph, and every encounter is finite. Rewards follow the usual rules (XP by mission number, flat Credits, 75% XP on replays, no second first-clear bonus).
+
+## Ambush Alley: Rooftop Threats & Extraction Assault (v0.9B.2)
+
+A Mission 18 balance patch. Save v9 unchanged; no new enemy classes; enemy HP and damage, every other mission and every other extraction tier unchanged.
+
+- **Two more concealed rooftop snipers** (7 in all), each alone on a quiet route and silent until its laser: one on the roof over **South Avenue** between the first ambush and the crossfire (the flanking route the alley opens), one on the roof over **North Avenue** facing the supply-cache courtyard. Each hides until the squad walks into its avenue and it has a shot, then shows itself already aiming (laser and sprite together, first shot about 2.8 s later), can be shot at once and stays visible. Neither can see Main Street or share a firing spot with another rooftop sniper. The three decoy nests stay.
+- **Extraction assault** (Mission 18 only; the 20 s countdown is unchanged): 26 attackers, 24 Riflemen and 2 Armored Troopers, no Snipers. As the countdown starts a group comes down from **North Avenue** (with a trooper) and another up from **South Avenue** at the same time; 3 s in a group with the second trooper comes down **Main Street from the west**; 8 s in two groups come round both corners of the **final intersection** together; 12 s in a last group arrives from the plaza's north or south side. Every group appears off screen and at least 500 px from every soldier, and each wave is close enough to be shooting well before the helicopter lands. The helicopter still leaves the moment the countdown ends with every standing soldier in the zone: there is no boarding timer and nobody has to be killed. The assault is sized for six: a squad of five meets 20, a squad of four 18 (soldiers already KIA when the countdown starts count as missing).
 
 ## Combat Pacing & Extraction Pressure (v0.9B.1)
 

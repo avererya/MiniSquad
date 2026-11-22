@@ -103,12 +103,20 @@ export interface TriggerSpec {
  * Extraction pressure tiers (sizes and timing in CFG.extractionPressure; see pressureGroups). v0.9B.1: 'light' /
  * 'standard' / 'intense' are staggered over the countdown; 'intro' (M2) and 'restrained' (M11) keep their v0.8A shape.
  */
-export type PressureTier = 'intro' | 'light' | 'standard' | 'intense' | 'restrained';
-/** `delay` s after the countdown starts (intro / restrained), or `at` x the countdown length (v0.9B.1 tiers). */
-export interface PressureGroup { size: number; delay: number; at?: number; kinds?: EnemyKind[] }
+export type PressureTier = 'intro' | 'light' | 'standard' | 'intense' | 'restrained' | 'assault';
+/**
+ * `delay` s after the countdown starts (intro / restrained), or `at` x the countdown length (v0.9B.1 tiers).
+ * v0.9B.2 `route`: the group enters from that named route of the mission (ExtractionSpec.pressure.routes) instead
+ * of the shared point list; groups with the same `at` enter together (one banner names every direction).
+ */
+export interface PressureGroup { size: number; delay: number; at?: number; kinds?: EnemyKind[]; route?: string }
 const lead = (n: number, k: EnemyKind, size: number): EnemyKind[] => Array.from({ length: Math.min(n, size) }, () => k);
-/** Reinforcement groups of a tier: sizes / timing read live from CFG.extractionPressure. */
-export function pressureGroups(tier: PressureTier): PressureGroup[] {
+/**
+ * Reinforcement groups of a tier: sizes / timing read live from CFG.extractionPressure. v0.9B.2 `squad` (the soldiers
+ * still on the roster of the run, standing or downed, as the countdown starts) scales only the 'assault' tier, which is
+ * sized for six: a smaller squad faces proportionally fewer attackers (at least one per group, troopers kept).
+ */
+export function pressureGroups(tier: PressureTier, squad = 6): PressureGroup[] {
   const P = CFG.extractionPressure;
   switch (tier) {
     case 'intro': return [{ size: P.intro, delay: 0 }];
@@ -119,6 +127,18 @@ export function pressureGroups(tier: PressureTier): PressureGroup[] {
       { size: P.intenseB, delay: 0, at: P.intenseBAt, kinds: [...Array.from({ length: Math.max(0, P.intenseB - P.intenseSnipers) }, () => 'rifleman' as const), ...lead(P.intenseSnipers, 'sniper', P.intenseB)] },
       { size: P.intenseC, delay: 0, at: P.intenseCAt, kinds: lead(P.intenseArmored, 'armored', P.intenseC) }];
     case 'restrained': return [{ size: P.restrained, delay: P.restrainedDelay }];
+    // v0.9B.2 Mission 18 only: a three-direction assault (sizes / timing in CFG.extractionPressure.assault*)
+    case 'assault': {
+      const f = Math.min(1, Math.max(1, squad) / 6);
+      const grp = (size: number, at: number, route: string, armored = 0): PressureGroup => {
+        const n = size <= 0 ? 0 : Math.max(1, Math.round(size * f));
+        return { size: n, delay: 0, at, route, kinds: [...Array.from({ length: Math.max(0, n - armored) }, () => 'rifleman' as const), ...lead(armored, 'armored', n)] };
+      };
+      return [grp(P.assaultNorth, P.assaultAt, 'north', P.assaultNorthArmored), grp(P.assaultSouth, P.assaultAt, 'south'),
+        grp(P.assaultWest, P.assaultWestAt, 'west', P.assaultWestArmored),
+        grp(P.assaultFlank, P.assaultFlankAt, 'northWest'), grp(P.assaultFlank, P.assaultFlankAt, 'southWest'),
+        grp(P.assaultFinal, P.assaultFinalAt, 'final')];
+    }
   }
 }
 export interface ExtractionSpec {
@@ -130,7 +150,7 @@ export interface ExtractionSpec {
    * v0.8A extraction pressure (instead of a scripted final wave, never both): finite groups from these map-edge
    * points once extraction is called (see Mission.updatePressure).
    */
-  pressure?: { tier: PressureTier; points: Vec[] };
+  pressure?: { tier: PressureTier; points: Vec[]; routes?: Record<string, Vec[]> };
   /** The escorted captive must be in the zone (and standing) too. */
   requireNpc?: boolean;
 }
@@ -277,6 +297,8 @@ export class Mission {
   pressureT = -1;
   pressureSpawned = 0;
   pressureGroupsFired = 0;
+  /** v0.9B.2 soldiers not KIA when the countdown started (scales the 'assault' tier only). */
+  pressureSquad = 6;
   private pressureUsed: Vec[] = [];
   /** Edge markers for incoming groups (render.ts: off-screen arrows). */
   incoming: { pos: Vec; life: number }[] = [];
@@ -535,38 +557,49 @@ export class Mission {
     const P = this.script.extraction.pressure;
     if (!P || this.pressureT < 0) return;
     this.pressureT += dt;
-    const groups = pressureGroups(P.tier), len = this.extraction.total();
+    const groups = pressureGroups(P.tier, this.pressureSquad), len = this.extraction.total();
     const due = (g: PressureGroup) => (g.at !== undefined ? g.at * len : g.delay) <= this.pressureT + 1e-9;
+    // v0.9B.2 every group due this step enters now; one banner names their directions (one group = as before)
+    const dirs: string[] = [];
+    let first = false, last = false;
     while (this.pressureGroupsFired < groups.length && due(groups[this.pressureGroupsFired])) {
       const g = groups[this.pressureGroupsFired++];
-      const last = this.pressureGroupsFired === groups.length && groups.length >= 3;
+      if (this.pressureGroupsFired === groups.length && groups.length >= 3) last = true;
       if (g.size <= 0) continue;
-      const pt = this.pressurePoint(game, P.points);
+      const pt = this.pressurePoint(game, P.points, g.route ? P.routes?.[g.route] : undefined);
       if (!pt) continue;
       for (let i = 0; i < g.size; i++) {
         const e = game.spawnEnemy(game.findOpenNear(pt, 70), g.kinds?.[i] ?? 'rifleman');
         e.reinforcement = true;
         this.pressureSpawned++;
       }
+      if (this.pressureGroupsFired === 1) first = true;
       this.pressureUsed.push(pt);
       this.incoming.push({ pos: { ...pt }, life: 5 });
       const dir = compass(squadCentre(game.soldiers) ?? game.cam, pt);
-      game.banner(this.pressureGroupsFired === 1 ? `ENEMY REINFORCEMENTS INBOUND FROM THE ${dir} — HOLD UNTIL EXTRACTION`
-        : last ? `FINAL ASSAULT FROM THE ${dir} — THE HELICOPTER IS ALMOST HERE` : `MORE ENEMIES INBOUND FROM THE ${dir}`, last ? '#ff7a5a' : '#ffb347', 3);
-      sfx('alarm');
+      if (!dirs.includes(dir)) dirs.push(dir);
     }
+    if (!dirs.length) return;
+    const dir = dirs.length > 1 ? `${dirs.slice(0, -1).join(', ')} AND ${dirs[dirs.length - 1]}` : dirs[0];
+    game.banner(first ? `ENEMY REINFORCEMENTS INBOUND FROM THE ${dir} — HOLD UNTIL EXTRACTION`
+      : last ? `FINAL ASSAULT FROM THE ${dir} — THE HELICOPTER IS ALMOST HERE` : `MORE ENEMIES INBOUND FROM THE ${dir}`, last ? '#ff7a5a' : '#ffb347', 3);
+    sfx('alarm');
   }
 
-  /** A map-edge spawn point for the next pressure group (see pressureT), or null if the list is empty. */
-  private pressurePoint(game: Game, points: Vec[]): Vec | null {
-    if (!points.length) return null;
+  /**
+   * A map-edge spawn point for the next pressure group (see pressureT), or null if the list is empty. v0.9B.2 a group
+   * with a route takes the nearest safe point of that route (same safety rule) and falls back to the shared list.
+   */
+  private pressurePoint(game: Game, points: Vec[], route?: Vec[]): Vec | null {
     const squad = [...game.soldiers, ...game.allies].filter((s) => s.active);
     const c = squadCentre(game.soldiers) ?? game.cam;
     const minD = CFG.extractionPressure.minDist;
     const far = (p: Vec) => squad.every((s) => Math.hypot(s.pos.x - p.x, s.pos.y - p.y) >= minD);
+    const byNear = (a: Vec, b: Vec) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y);
+    if (route?.length) { const r = route.filter((p) => !game.isOnScreen(p, 80) && far(p)).sort(byNear)[0]; if (r) return r; }
+    if (!points.length) return null;
     const ok = points.filter((p) => !game.isOnScreen(p, 80) && far(p));
     const fresh = ok.filter((p) => !this.pressureUsed.some((u) => u.x === p.x && u.y === p.y));
-    const byNear = (a: Vec, b: Vec) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y);
     return [...fresh].sort(byNear)[0] ?? [...ok].sort(byNear)[0] ?? [...points].sort((a, b) => -byNear(a, b))[0];
   }
 
@@ -588,7 +621,7 @@ export class Mission {
             for (const u of units) u.reinforcement = true;
             if (n > 0) { game.banner('ENEMY REINFORCEMENTS INBOUND — HOLD UNTIL EXTRACTION', '#ffb347', 3); sfx('alarm'); }
           }
-          if (X.pressure && this.pressureT < 0) this.pressureT = 0;
+          if (X.pressure && this.pressureT < 0) { this.pressureT = 0; this.pressureSquad = game.soldiers.filter((s) => s.state !== 'kia' && s.state !== 'dead').length; }
         }
         break;
       }

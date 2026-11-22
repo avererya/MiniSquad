@@ -27,6 +27,8 @@ const V08C1 = { ref: '924dc13', label: 'v0.8C.1' };
 const V09A = { ref: '550fcb8', label: 'v0.9A' };
 // v0.9B.1's suite compares against v0.9B (only the extraction pressure, its countdowns and Missions 17-18 change).
 const V09B = { ref: '2d09342', label: 'v0.9B' };
+// v0.9B.2's suite compares against v0.9B.1 (only Mission 18's rooftop snipers and extraction assault change).
+const V09B1 = { ref: 'f4cf5e0', label: 'v0.9B.1' };
 
 const SUITES = [
   // ---- rule suites (PASS / FAIL per check) ----
@@ -62,6 +64,7 @@ const SUITES = [
   { name: 'v09a', kind: 'rules', base: V08C1, about: 'v0.9A Chapter 4 / Mission 16 Jungle Sweep: MineField (reveal, triggers, blast, tap orders, chains), map safety, flow, rewards, saves, phones; Missions 1-15 identical to v0.8C.1' },
   { name: 'v09b', kind: 'rules', base: V09A, about: 'v0.9B chapter rename, airstrike / nuke vs mines, Mission 17 Fuel for the Fire (FuelDepot: blasts, chains, targeting, credit), Mission 18 Ambush Alley (ambushes, rooftop snipers, caches), saves, phones; Missions 1-16 identical to v0.9A' },
   { name: 'v09b1', kind: 'rules', base: V09B, about: 'v0.9B.1 extraction pressure (staggered light / standard / intense tiers per mission, immediate extraction), concealed rooftop snipers (reveal, telegraph, geometry), Mission 17 pickets + counterattack, Mission 18 swarms; everything else identical to v0.9B' },
+  { name: 'v09b2', kind: 'rules', base: V09B1, out: true, about: 'v0.9B.2 Mission 18: two isolated concealed rooftop snipers (springing, reveal, isolation, kill from the street), the 26-strong three-direction extraction assault (timing, safety, engagement vs v0.9B.1); everything else identical to v0.9B.1' },
   { name: 'fps-default', kind: 'rules', about: 'default frame cap (30 phone / 60 desktop) and Settings' },
   { name: 'fps-parity', kind: 'rules', about: '30 / 60 FPS play identically (seeded autopilot, Missions 7, 9, 10, the Mission 15 Voss fight, Mission 16 and its minefield)' },
 
@@ -72,6 +75,7 @@ const SUITES = [
   { name: 'squads', kind: 'report', about: 'roster squads autopilot with a damage ledger (exit 1 if the ledger disagrees)' },
   { name: 'chapter2-sim', kind: 'report', about: 'Chapter 2 autopilot simulations (SCEN, RUNS)' },
   { name: 'chapter3b-sim', kind: 'report', about: 'Missions 13-14 autopilot simulations (SCEN, RUNS, LEVEL)' },
+  { name: 'v09b2-sim', kind: 'report', about: 'v0.9B.2 Mission 18 extraction effectiveness (SCEN=strong,weak,four RUNS): reached range, fired, alive, damage, extracted' },
   { name: 'v081-sim', kind: 'report', about: 'v0.8B.1 Missions 13-14 balance simulations (SCEN, RUNS)' },
   { name: 'v09a-sim', kind: 'report', about: 'Mission 16 autopilot simulations: duration, mine reveals / blasts, naive vs aware play (SCEN, RUNS, POLICY)' },
   { name: 'v08c-sim', kind: 'report', about: 'Mission 15 autopilot simulations (SCEN, RUNS, LEVEL)' },
@@ -102,7 +106,7 @@ const GROUPS = {
   recruitment: { about: 'Recruitment Office, named recruits, roster', suites: ['recruitment', 'recruit-mobile', 'failure-recruit', 'failure-recruit-mobile', 'barracks', 'v08c'] },
   progression: { about: 'XP, training, Squad Training, Elite', suites: ['progression', 'training-rebalance', 'squad-training', 'accuracy', 'elite', 'elite-progression'] },
   permadeath: { about: 'KIA, resurrection, Memorial, failed missions', suites: ['permadeath', 'permadeath-mobile', 'failure-recruit'] },
-  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-15', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch', 'v09a', 'v09b', 'v09b1'] },
+  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-15', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch', 'v09a', 'v09b', 'v09b1', 'v09b2'] },
   persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c', 'v09a', 'v09b'] },
   ui: { about: 'phone layouts and touch (HUD / menus)', suites: ['mobile', 'chapter2-mobile', 'permadeath-mobile', 'failure-recruit-mobile', 'recruit-mobile', 'story'] },
   fps: { about: '30 / 60 FPS parity and default frame cap', suites: ['fps-default', 'fps-parity'] },

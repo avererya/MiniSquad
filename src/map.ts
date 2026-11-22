@@ -871,6 +871,10 @@ const Rf = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w,
 export const ALLEY_ROOFS = {
   north: { x: 2670, y: 1267 }, south: { x: 2670, y: 1523 }, corner: { x: 2905, y: 1267 }, final: { x: 4270, y: 1267 },
   court: { x: 3640, y: 1523 },
+  // v0.9B.2 two isolated snipers off Main Street: over South Avenue between the first ambush and the crossfire (the
+  // flanking route the column-1 alley opens), on the front parapet of the block south of Main Street; and over North
+  // Avenue facing the supply-cache courtyard between V2 and V3, on the back parapet of the block north of Main Street
+  avenue: { x: 1720, y: 1987 }, cache: { x: 2760, y: 813 },
 };
 /** v0.9B.1 empty sandbag nests on other roofs over Main Street (scenery: a nest alone never gives a sniper away). */
 export const ALLEY_ROOF_DECOYS: Vec[] = [{ x: 1720, y: 1267 }, { x: 2300, y: 1523 }, { x: 3240, y: 1523 }];
@@ -894,6 +898,8 @@ const ALLEY_COVER: Obstacle[] = [
   // rooftop perches: both sides of Main Street between V2 and V3 (a crossfire from above), the corner before V3, and
   // the plaza's north-west building
   Rf(2630, 1260, 80, 14), Rf(2630, 1516, 80, 14), Rf(2870, 1260, 70, 14), Rf(4230, 1260, 80, 14), Rf(3600, 1516, 80, 14),
+  // v0.9B.2 South Avenue (between V1 and V2) and North Avenue (facing the cache courtyard)
+  Rf(1680, 1980, 80, 14), Rf(2720, 806, 80, 14),
   // the courtyard's south wall (gate x 3420-3500) and its inner cover
   K(3180, 1262, 240, 30), K(3500, 1262, 440, 30), S(3450, 1000, 120, 16), S(3620, 1110, 16, 100), C(3400, 1150), C(3740, 990), K(3550, 1190, 60, 30, 26),
   // barricades across Main Street (gaps y 1380-1440): the post before V2 and the one before V3
@@ -927,8 +933,19 @@ export const ALLEY_POINTS = {
   /** the final wave: the plaza's north and south streets */
   finalFrom: [{ x: 4600, y: 690 }, { x: 4600, y: 2110 }, { x: 4060, y: 300 }, { x: 4060, y: 2500 }],
 };
-/** v0.9B.1 extraction pressure (intense) on the plaza: its north / south streets and V4's far ends. */
+/** v0.9B.1 extraction pressure on the plaza: its north / south streets and V4's far ends (v0.9B.2: the assault's fallback points). */
 export const ALLEY_PRESSURE: Vec[] = [{ x: 4600, y: 690 }, { x: 4600, y: 2110 }, { x: 4060, y: 690 }, { x: 4060, y: 2110 }, { x: 4060, y: 300 }];
+/**
+ * v0.9B.2 the Mission 18 extraction assault's routes (mission.ts 'assault' tier): North Avenue and South Avenue above /
+ * below the plaza (through the gaps either side of its north / south buildings), Main Street west of the final
+ * intersection (off screen: the camera stops at the map's east edge) and V4's north / south legs (round the corner
+ * buildings onto Main Street). Every point is off screen and 500+ px from the landing zone.
+ */
+export const ALLEY_ASSAULT: Record<string, Vec[]> = {
+  north: [{ x: 4600, y: 690 }, { x: 4720, y: 690 }], south: [{ x: 4600, y: 2110 }, { x: 4720, y: 2110 }],
+  west: [{ x: 3400, y: 1400 }, { x: 3300, y: 1420 }], northWest: [{ x: 4060, y: 690 }, { x: 4060, y: 600 }], southWest: [{ x: 4060, y: 2110 }, { x: 4060, y: 2200 }],
+  final: [{ x: 4720, y: 690 }, { x: 4720, y: 2110 }],
+};
 export const ALLEY_CACHES: Vec[] = [{ x: 640, y: 1930 }, { x: 2540, y: 440 }, { x: 3520, y: 1880 }];
 export const ALLEY_ZONES = {
   district: { x: 640, y: 1300, w: 200, h: 200 } as Rect,
@@ -936,6 +953,9 @@ export const ALLEY_ZONES = {
   cross: { x: 1960, y: 1300, w: 160, h: 200 } as Rect,
   rooftops: { x: 2120, y: 600, w: 200, h: 1600 } as Rect,
   rear: { x: 2700, y: 600, w: 1300, h: 1600 } as Rect,
+  /** v0.9B.2 South Avenue between V1 and V2, and North Avenue between V2 and V3 with the cache courtyard */
+  southAvenue: { x: 1060, y: 1990, w: 1040, h: 250 } as Rect,
+  cacheAvenue: { x: 2140, y: 340, w: 840, h: 480 } as Rect,
 };
 export const ALLEY_EXTRACTION: Rect = { x: 4470, y: 1270, w: 260, h: 240 };
 export const ALLEY_MAP: MapDef = {

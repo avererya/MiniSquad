@@ -25,7 +25,7 @@ const TIERS = {
   'first-contact': null, 'heavy-support': 'intro', 'field-medicine': 'scripted', 'red-canyon': 'light', 'bring-them-home': 'light',
   'bridgehead': 'standard', 'prison-break': 'light', 'convoy-crusher': 'standard', 'blackout': 'standard', 'iron-fist': 'scripted',
   'resistance-rising': 'restrained', 'artillery-hunt': 'intense', 'hold-the-line': null, 'supply-line': null, 'last-stand': null,
-  'jungle-sweep': 'standard', 'fuel-for-the-fire': 'light', 'ambush-alley': 'intense',
+  'jungle-sweep': 'standard', 'fuel-for-the-fire': 'light', 'ambush-alley': 'assault', // v0.9B.2 (on purpose): Mission 18's own assault tier (tools/v09b2.cjs)
 };
 
 runSuite(async () => {
@@ -91,7 +91,7 @@ runSuite(async () => {
     return out;
   });
   const tierOk = Object.entries(TIERS).filter(([id, t]) => !ex.tiers[id] || ex.tiers[id].tier !== t);
-  check('A1 tiers: M1 none, M2 intro, M4 / M5 / M7 / M17 light, M6 / M8 / M9 / M16 standard, M11 restrained, M12 / M18 intense; M3 / M10 scripted; M13-15 none', tierOk.length === 0 && Object.keys(ex.tiers).length === 18, tierOk.map(([id, t]) => `${id}:${ex.tiers[id] && ex.tiers[id].tier}!=${t}`).join(' ') || Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.tier || '-'}`).join(' '));
+  check('A1 tiers: M1 none, M2 intro, M4 / M5 / M7 / M17 light, M6 / M8 / M9 / M16 standard, M11 restrained, M12 intense, M18 assault (v0.9B.2); M3 / M10 scripted; M13-15 none', tierOk.length === 0 && Object.keys(ex.tiers).length === 18, tierOk.map(([id, t]) => `${id}:${ex.tiers[id] && ex.tiers[id].tier}!=${t}`).join(' ') || Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.tier || '-'}`).join(' '));
   check('A2 never both a scripted final wave and pressure', Object.values(ex.tiers).every((t) => !t.both));
   const cds = { 'first-contact': 6, 'heavy-support': 12, 'field-medicine': 20, 'iron-fist': 8, 'resistance-rising': 12, 'hold-the-line': 10, 'supply-line': 12, 'last-stand': 10, ...V09B1.countdowns };
   check('A3 countdowns: light keeps the mission\'s own (12 s), standard 15 s, intense 20 s; the others unchanged', Object.entries(cds).every(([id, c]) => ex.tiers[id].cd === c), Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.cd}`).join(' '));
@@ -101,6 +101,8 @@ runSuite(async () => {
     light: [[P.lightAAt, P.lightA], [P.lightBAt, P.lightB]],
     standard: [[P.standardAAt, P.standardA], [P.standardBAt, P.standardB], [P.standardCAt, P.standardC]],
     intense: [[P.intenseAAt, P.intenseA], [P.intenseBAt, P.intenseB], [P.intenseCAt, P.intenseC]],
+    // v0.9B.2 Mission 18: groups entering together count as one here (north + south, then both V4 flanks)
+    assault: [[P.assaultAt, P.assaultNorth + P.assaultSouth], [P.assaultWestAt, P.assaultWest], [P.assaultFlankAt, 2 * P.assaultFlank], [P.assaultFinalAt, P.assaultFinal]],
   };
   const runs = Object.entries(ex.runs);
   const timing = runs.filter(([id, r]) => {
@@ -108,11 +110,11 @@ runSuite(async () => {
     if (r.groups.length !== want.length) return true;
     return want.some(([at, n], i) => { const sec = t === 'intro' || t === 'restrained' ? at : at * r.len; return Math.abs(r.groups[i].t - sec) > 0.05 || r.groups[i].n !== n; });
   });
-  check('A4 staggered: every group enters at its share of the countdown with its size (light 15% / 55%, standard 15 / 45 / 75%, intense 20 / 45 / 75%; intro / restrained as in v0.8A)', timing.length === 0, (timing.length ? 'wrong: ' + timing.map(([id]) => id).join() + ' ' : '') + runs.map(([id, r]) => `${id}:${r.groups.map((x) => `${x.n}@${x.t}`).join('/')}`).join(' '));
+  check('A4 staggered: every group enters at its share of the countdown with its size (light 15% / 55%, standard 15 / 45 / 75%, intense 20 / 45 / 75%, M18 assault 0 / 15 / 40 / 60%; intro / restrained as in v0.8A)', timing.length === 0, (timing.length ? 'wrong: ' + timing.map(([id]) => id).join() + ' ' : '') + runs.map(([id, r]) => `${id}:${r.groups.map((x) => `${x.n}@${x.t}`).join('/')}`).join(' '));
   const esc = runs.filter(([id]) => ['standard', 'intense'].includes(ex.tiers[id].tier));
   check('A5 escalation: standard / intense put their last group in the final quarter of the countdown (the final assault), intense brings snipers and armored troopers', esc.every(([, r]) => r.groups[r.groups.length - 1].t >= 0.7 * r.len) && runs.filter(([id]) => ex.tiers[id].tier === 'intense').every(([, r]) => /sniper/.test(r.groups.map((x) => x.kinds).join()) && /armored/.test(r.groups[2].kinds)), esc.map(([id, r]) => `${id}:${r.groups.map((x) => x.kinds).join('|')}`).join(' '));
   const sum = (t) => plan[t].reduce((a, [, n]) => a + n, 0);
-  check('A6 finite: each mission spawns exactly its tier (intro 3, light 5, standard 8, intense 13, restrained 3), nothing more while the helicopter waits', runs.every(([id, r]) => r.spawned === sum(ex.tiers[id].tier)), runs.map(([id, r]) => `${id}:${r.spawned}`).join(' '));
+  check('A6 finite: each mission spawns exactly its tier (intro 3, light 5, standard 8, intense 13, restrained 3, M18 assault 26), nothing more while the helicopter waits', runs.every(([id, r]) => r.spawned === sum(ex.tiers[id].tier)), runs.map(([id, r]) => `${id}:${r.spawned}`).join(' '));
   const dirs = runs.filter(([, r]) => r.groups.length >= 2);
   check('A7 more than one approach: every multi-group tier uses at least two different edges', dirs.every(([, r]) => new Set(r.groups.map((x) => x.c)).size >= 2), dirs.map(([id, r]) => `${id}:${[...new Set(r.groups.map((x) => x.c))].join('/')}`).join(' '));
   check('A8 fair spawns: off screen, on open ground, each group\'s point 500+ px from every soldier (units scatter up to 70 px around it); no reinforcement fires within its first second', runs.every(([, r]) => r.groups.every((x) => x.on === 0 && x.closed === 0 && x.d >= P.minDist - 70)) && runs.every(([, r]) => r.firstShot === null || r.firstShot >= 1), runs.map(([id, r]) => `${id}:${Math.min(...r.groups.map((x) => x.d))}/${r.firstShot}${r.groups.some((x) => x.on || x.closed) ? ' BAD ' + JSON.stringify(r.groups.filter((x) => x.on || x.closed)) : ''}`).join(' '));
@@ -282,7 +284,8 @@ runSuite(async () => {
     const roofs = A.defs.flatMap((d) => d.groups.filter((gr) => gr.roof)).reduce((n, gr) => n + gr.kinds.length, 0);
     return { placed: g.enemies.length, total: g.enemies.length + amb(A.defs.map((d) => d.id)), kinds, stretch, roofs, delays: A.defs.map((d) => `${d.id}:${d.delay}`).join(' ') };
   });
-  check('D1 Mission 18 enemy budget: 20 placed + 45 from ambushes = 65 (was 43), 49 of them Riflemen, 5 concealed rooftop snipers', m18.total === 65 && m18.placed === 20 && m18.kinds.rifleman === 49 && m18.roofs === 5, JSON.stringify({ total: m18.total, kinds: m18.kinds, roofs: m18.roofs }));
+  // v0.9B.2 (on purpose): + two isolated rooftop snipers off Main Street (67, 7 concealed; tools/v09b2.cjs)
+  check('D1 Mission 18 enemy budget: 20 placed + 47 from ambushes = 67 (v0.9B.1 65, v0.9B 43), 49 of them Riflemen, 7 concealed rooftop snipers', m18.total === 67 && m18.placed === 20 && m18.kinds.rifleman === 49 && m18.roofs === 7, JSON.stringify({ total: m18.total, kinds: m18.kinds, roofs: m18.roofs }));
   check('D2 stretches near the design targets: opening 12, crossfire 13, rooftops 6, rear 8, courtyard 12, final 14', JSON.stringify(m18.stretch) === JSON.stringify({ first: 12, cross: 13, roofs: 6, rear: 8, court: 12, final: 14 }), JSON.stringify(m18.stretch) + ' ' + m18.delays);
 
   // ================= E. BASE (v0.9B) =================

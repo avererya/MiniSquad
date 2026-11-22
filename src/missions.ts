@@ -13,7 +13,7 @@ import {
   FORTRESS_INNER_GATE, FORTRESS_INNER_LOCKED, FORTRESS_LOCKED, FORTRESS_MAIN_GATE, FORTRESS_MAP, FORTRESS_RELAYS, FORTRESS_VOSS,
   JUNGLE_EXTRACTION, JUNGLE_MAP, JUNGLE_MINES, JUNGLE_PRESSURE,
   FUEL_APPROACH, FUEL_COUNTER_FROM, FUEL_EXTRACTION, FUEL_INSTALLATIONS, FUEL_MAP, FUEL_PICKETS, FUEL_PRESSURE, FUEL_RESPONSE, FUEL_TANKS,
-  ALLEY_CACHES, ALLEY_EXTRACTION, ALLEY_MAP, ALLEY_POINTS, ALLEY_PRESSURE, ALLEY_ROOF_DECOYS, ALLEY_ROOFS, ALLEY_ZONES,
+  ALLEY_ASSAULT, ALLEY_CACHES, ALLEY_EXTRACTION, ALLEY_MAP, ALLEY_POINTS, ALLEY_PRESSURE, ALLEY_ROOF_DECOYS, ALLEY_ROOFS, ALLEY_ZONES,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -639,7 +639,8 @@ const FUEL_FOR_THE_FIRE: MissionScript = {
 // ---- Mission 18: Ambush Alley (Urban Ambush, 6 soldiers) ----
 // v0.9B.1: 20 placed enemies + 45 from twelve scripted ambushes (AmbushDirector, each once) = 65 (49 Riflemen,
 // 9 Armored Troopers, 7 Snipers, 5 of them concealed on rooftops), then intense extraction pressure (13, never
-// required). Three optional supply caches. Each stretch is a swarm of riflemen arriving in staggered groups:
+// required). v0.9B.2: + two isolated concealed rooftop snipers on the avenues (67) and the extraction assault (26).
+// Three optional supply caches. Each stretch is a swarm of riflemen arriving in staggered groups:
 //  Entry: the quiet western outskirts (Overwatch: "suspiciously empty") -> the first ambush (12): six riflemen down
 //  and up the column-1 alley, the Main Street post (3) holding its barricade and, 5 s later, three flankers down V1
 //  behind the squad. The crossfire at V2 (13): two groups of four walk to posts north and south of the intersection
@@ -675,6 +676,10 @@ export const ALLEY_AMBUSHES: StreetAmbushDef[] = [
     groups: [{ kinds: R4, from: ALLEY_POINTS.finalFrom }] },
   { id: 'final-wave-2', onObjective: 'final', delay: 24, banner: 'MORE REINFORCEMENTS', minDist: 560,
     groups: [{ kinds: R3, from: ALLEY_POINTS.finalFrom }] },
+  // v0.9B.2 two isolated rooftop snipers on the quiet routes (no group, no banner, no objective: a laser is the only
+  // warning), each concealed once the squad walks into its avenue
+  { id: 'avenue-roof', zone: ALLEY_ZONES.southAvenue, delay: 0.5, groups: [{ kinds: ['sniper'], roof: [ALLEY_ROOFS.avenue] }] },
+  { id: 'cache-roof', zone: ALLEY_ZONES.cacheAvenue, delay: 0.5, groups: [{ kinds: ['sniper'], roof: [ALLEY_ROOFS.cache] }] },
 ];
 export const ALLEY_CACHE_LOOT: CacheDef[] = [
   { pos: ALLEY_CACHES[0], loot: ['medkit', 'rapidfire'] }, { pos: ALLEY_CACHES[1], loot: ['medkit', 'medkit'] }, { pos: ALLEY_CACHES[2], loot: ['medkit', 'rapidfire'] },
@@ -702,7 +707,8 @@ const AMBUSH_ALLEY: MissionScript = {
   optionals: () => [new CachesOptional('caches', 'Recover 2 supply caches', 2)],
   hint: 'Ambushes come from the side streets: use corners and cars as cover. Rooftop snipers hide until a red laser gives them away: shoot back or get behind cover.',
   mechanics: () => [new AmbushDirector(ALLEY_AMBUSHES, 1.2, { decoys: ALLEY_ROOF_DECOYS, revealAfter: 30 }), new SupplyCaches(ALLEY_CACHE_LOOT)],
-  extraction: { zone: ALLEY_EXTRACTION, countdown: () => 20, pressure: { tier: 'intense', points: ALLEY_PRESSURE } }, // v0.9B.1 intense
+  // v0.9B.1 intense (13); v0.9B.2 its own three-direction assault (26), same 20 s countdown
+  extraction: { zone: ALLEY_EXTRACTION, countdown: () => 20, pressure: { tier: 'assault', points: ALLEY_PRESSURE, routes: ALLEY_ASSAULT } },
   story: {
     'start:street': 'm18-quiet', 'cue:first': 'm18-first', 'cue:crossfire': 'm18-crossfire', 'cue:rooftops': 'm18-rooftops', 'cue:rear': 'm18-rear',
     'start:courtyard': 'm18-courtyard', 'start:final': 'm18-final', victory: 'm18-extract',

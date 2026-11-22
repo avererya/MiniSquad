@@ -156,6 +156,15 @@ Chapter 4–5 feature → where it plugs in: **land mines** done in v0.9A (`src/
 | Tests | `v09b1` (A pressure tiers / staggering / directions / safe spawns / immediate extraction / exemptions, B concealed snipers: hidden, untargetable, reveal + laser, first shot timing, stays revealed, own building never blocks, decoys, iPhone SE render, C Mission 17 pickets / counterattack / skip, D Mission 18 totals, E vs v0.9B), `v09b` D / E (updated flows), `chapter3a` B (tier sizes), `fps-parity` (`*@extract` scenarios), `tools/lib.cjs` `V09B1` (older suites set aside exactly the `extractionPressure` group and the changed countdowns) |
 | Watch | A hidden sniper is not in `Game.enemies`: anything counting enemies (objectives, `alive()`) must ask the director (`AmbushObjective` completes only after hidden snipers are revealed and killed). Pressure groups are never required kills; extraction completes when the countdown ends. A mission gets either `finalWave` or `pressure`, never both. |
 
+## Mission 18 rooftop threats and extraction assault (v0.9B.2)
+
+| | |
+|---|---|
+| Main | `src/mission.ts` (`'assault'` tier in `pressureGroups(tier, squad)`: six groups with a `route` each, scaled by `Mission.pressureSquad` = soldiers not KIA as the countdown starts; `PressureGroup.route`, `ExtractionSpec.pressure.routes`; `updatePressure` fires every group due in a step and names all their directions in one banner; `pressurePoint(game, points, route)`), `src/missions.ts` (`ALLEY_AMBUSHES` `avenue-roof` / `cache-roof`, `AMBUSH_ALLEY.extraction`) |
+| Supporting | `CFG.extractionPressure.assault*` (`src/config.ts`; no tuning sliders), `src/map.ts` (`ALLEY_ASSAULT` routes, `ALLEY_ROOFS.avenue` / `.cache`, two `roof` strips, `ALLEY_ZONES.southAvenue` / `.cacheAvenue`) |
+| Tests | `v09b2` (A the two new snipers: count, Main Street never arms them, isolation, hidden → reveal → first shot → stays → killed from the street; B assault: tier, 26 / kinds, timing, directions + one banner, safe spawns with a straggler, immediate extraction, scaling for 4-5 soldiers; C engagement vs v0.9B.1 with a level-14 squad; D everything else identical to v0.9B.1; E version, iPhone SE frames), `v09b1` A (M18 `assault` row), D1 (67 enemies, 7 roofs), `v09b` E2, `fps-parity` (`ambush-alley@extract`), `v09b2-sim` (report: reached range / fired / alive / damage per scenario) |
+| Watch | The new snipers belong to no `AmbushObjective`: they never block a stretch and only spring if the squad walks into their avenue (the 30 s timer reveal still applies once sprung). The `assault` tier is the only tier that reads the squad size; every other tier ignores it. |
+
 ## Escort / truck mechanics (Mission 14)
 
 | | |
@@ -231,12 +240,12 @@ Chapter 4–5 feature → where it plugs in: **land mines** done in v0.9A (`src/
 | `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks`, `v08c` | Recruitment Office, roster |
 | `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
 | `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
-| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story`, `arch`, `v09a`, `v09b`, `v09b1` | missions, campaign, escort, defense, mechanic hooks, mines, fuel tanks, ambushes |
+| `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story`, `arch`, `v09a`, `v09b`, `v09b1`, `v09b2` | missions, campaign, escort, defense, mechanic hooks, mines, fuel tanks, ambushes |
 | `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c`, `v09a`, `v09b` | saves, fixtures, economy |
 | `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile`, `story` | HUD, menus, phone layouts |
 | `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
-| `all` | every rule suite (33) | full regression before a release |
-| `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, `v09a-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
+| `all` | every rule suite (34) | full regression before a release |
+| `reports` | `campaign`, `balance`, `progression-balance`, `squads`, `chapter2-sim`, `chapter3b-sim`, `v081-sim`, `v08c-sim`, `v09a-sim`, `v09b2-sim`, `perf` | balance / perf numbers (slow, no PASS/FAIL) |
 | `screens` | `shot`, `visual`, `fight`, `classes`, `lineup`, `touch`, `play` | screenshots judged by eye |
 
 | Change | Run at least |
@@ -248,7 +257,7 @@ Chapter 4–5 feature → where it plugs in: **land mines** done in v0.9A (`src/
 | HUD / menus / layout | `ui` |
 | Release | `all` |
 
-**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical); `story` against v0.8C (`V08C`, `1acc610`: every CFG group, Missions 1–15 and the Mission 15 rewards identical); `arch` and `v09a` against v0.8C.1 (`V08C1`, `924dc13`; `v09a` J: every CFG group but `mine` and Missions 1–15 identical, only Mission 15's unlock list names Mission 16); `v09b` against v0.9A (`V09A`, `550fcb8`; G: every CFG group but `fuel` identical, Missions 1–15 identical, Mission 16 identical but for its unlock list); `v09b1` against v0.9B (`V09B`, `2d09342`: every CFG group but `extractionPressure` identical, Missions 1-16 identical but for the pressure tier / countdown, which `V09B1` in `tools/lib.cjs` lists). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
+**BASE**: `accuracy`, `elite-progression`, `support`, `squad-training`, `training-rebalance`, `v081`, `v081-collision` compare against the previous gameplay release, v0.8B (`c3cae3d`, `PREV` in `tools/test-suites.cjs`), which the runner builds and serves automatically; `accuracy` and `support` fail without it. `v082` compares against v0.8B.1 (`V081`) and `v08c` against v0.8B.2 (`V082`, `3199529`: every pre-v0.8C CFG group and Missions 1–14 identical); `story` against v0.8C (`V08C`, `1acc610`: every CFG group, Missions 1–15 and the Mission 15 rewards identical); `arch` and `v09a` against v0.8C.1 (`V08C1`, `924dc13`; `v09a` J: every CFG group but `mine` and Missions 1–15 identical, only Mission 15's unlock list names Mission 16); `v09b` against v0.9A (`V09A`, `550fcb8`; G: every CFG group but `fuel` identical, Missions 1–15 identical, Mission 16 identical but for its unlock list); `v09b2` against v0.9B.1 (`V09B1`, `f4cf5e0`: every CFG group but `extractionPressure`, whose old keys are unchanged, and Missions 1-17 identical; the engagement check C3 replays the same seeded extraction on it); `v09b1` against v0.9B (`V09B`, `2d09342`: every CFG group but `extractionPressure` identical, Missions 1-16 identical but for the pressure tier / countdown, which `V09B1` in `tools/lib.cjs` lists). Move `PREV` forward when a release ships. `fps-parity` takes an optional `BASE` (`--base <ref>`; it differs from older builds by design). Manual: `npx vite preview --port 4174 --outDir <older dist>` and `BASE=http://localhost:4174/ node tools/<name>.cjs`.
 
 Known failures and test notes: [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md#test-status). `maps` only covers the Mission 1–10 maps; `chapter3b-e2e` is superseded (run by name only).
 
