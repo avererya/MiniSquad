@@ -38,6 +38,8 @@ const THEMES = {
   night: { base: '#4f6b57', patchA: 'rgba(60,85,70,0.45)', patchB: 'rgba(90,110,90,0.3)', dirt: 'rgba(90,85,70,0.4)', road: 'rgba(110,110,95,0.55)', blade: 'rgba(25,40,30,0.3)', tint: 'rgba(20,30,70,0.22)' },
   fortress: { base: '#8f8a72', patchA: 'rgba(110,105,85,0.4)', patchB: 'rgba(150,145,115,0.3)', dirt: 'rgba(110,95,75,0.4)', road: 'rgba(150,145,130,0.6)', blade: 'rgba(70,70,55,0.22)', tint: '' },
   // v0.9A Chapter 4: jungle floor (the canopy is 'tree' obstacles)
+  // v0.9B Mission 18: city streets (asphalt, worn paint, dust; the blocks are 'building' obstacles)
+  urban: { base: '#7a7872', patchA: 'rgba(90,88,84,0.35)', patchB: 'rgba(140,136,126,0.28)', dirt: 'rgba(120,105,85,0.25)', road: 'rgba(200,190,150,0.22)', blade: 'rgba(50,50,50,0.18)', tint: '' },
   jungle: { base: '#4f7a3a', patchA: 'rgba(40,85,35,0.45)', patchB: 'rgba(95,125,55,0.32)', dirt: 'rgba(110,85,50,0.35)', road: 'rgba(140,110,70,0.6)', blade: 'rgba(25,55,20,0.32)', tint: '' },
 } as const;
 
@@ -101,6 +103,7 @@ function buildGround(map: MapDef): HTMLCanvasElement {
     if (!isLowObstacle(o)) continue;
     if (o.kind === 'gate') continue; // v0.8B gates are drawn live (open / closed: drawGates)
     if (o.kind === 'wire') { drawWire(g, o); continue; }
+    if (o.kind === 'roof') { drawRoofPerch(g, o); continue; } // v0.9B Mission 18 rooftop perch (part of the ground)
     g.fillStyle = '#6b5a3c'; g.fillRect(o.x - 8, o.y, o.w + 16, o.h); // muddy banks
     g.fillStyle = '#3f86b8'; g.fillRect(o.x, o.y, o.w, o.h);
     g.fillStyle = 'rgba(30,70,120,0.35)'; g.fillRect(o.x + o.w * 0.3, o.y, o.w * 0.4, o.h); // deep channel
@@ -260,6 +263,17 @@ function drawZones(ctx: CanvasRenderingContext2D, game: Game) {
   ctx.beginPath(); ctx.arc(z.x + z.w / 2, z.y + z.h / 2, 60, 0, Math.PI * 2); ctx.stroke();
   ctx.fillStyle = ctx.strokeStyle; ctx.font = 'bold 56px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('H', z.x + z.w / 2, z.y + z.h / 2 + 2);
+}
+
+/** v0.9B a rooftop perch drawn into the ground: a flat tar roof with a parapet, gravel and a vent (Mission 18). */
+function drawRoofPerch(g: CanvasRenderingContext2D, o: Obstacle) {
+  g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(o.x + 5, o.y + 6, o.w, o.h);
+  g.fillStyle = '#56524c'; g.fillRect(o.x, o.y, o.w, o.h);
+  g.fillStyle = '#6e6a62';
+  for (let k = 0; k < (o.w * o.h) / 90; k++) { const px = o.x + 4 + ((k * 37) % Math.max(1, o.w - 8)), py = o.y + 4 + ((k * 53) % Math.max(1, o.h - 8)); g.fillRect(px, py, 2, 2); }
+  g.strokeStyle = '#38352f'; g.lineWidth = 5; g.strokeRect(o.x + 2.5, o.y + 2.5, o.w - 5, o.h - 5);
+  g.strokeStyle = '#8a857b'; g.lineWidth = 1.5; g.strokeRect(o.x + 6, o.y + 6, o.w - 12, o.h - 12);
+  g.fillStyle = '#8f8a80'; g.fillRect(o.x + o.w - 26, o.y + 10, 16, 12); g.strokeStyle = '#4a463f'; g.lineWidth = 1; g.strokeRect(o.x + o.w - 26, o.y + 10, 16, 12);
 }
 
 function drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle, clock: number) {

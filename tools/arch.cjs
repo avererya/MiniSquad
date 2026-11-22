@@ -71,8 +71,8 @@ runSuite(async () => {
     return out;
   });
   // v0.9A: Mission 16 (jungle-sweep) is the first script with a mechanic (its mine field); Missions 1-15 still declare none
-  check('A1 no Mission 1-15 script declares mechanics (v0.9A: only Mission 16, its mine field; v0.9B: Mission 17 fuel depot)', a.declared.join() === 'jungle-sweep,fuel-for-the-fire', a.declared.join(','));
-  check('A1 every Mission 1-15 attempt starts with an empty mechanic list (Mission 16: one; v0.9B Mission 17: one)', a.started.length === 17 && a.started.slice(0, 15).every((x) => x.endsWith(':0')) && a.started[15] === 'jungle-sweep:1' && a.started[16] === 'fuel-for-the-fire:1', a.started.join(' '));
+  check('A1 no Mission 1-15 script declares mechanics (v0.9A: only Mission 16, its mine field; v0.9B: Mission 17 fuel depot, Mission 18 ambushes + caches)', a.declared.join() === 'jungle-sweep,fuel-for-the-fire,ambush-alley', a.declared.join(','));
+  check('A1 every Mission 1-15 attempt starts with an empty mechanic list (Mission 16: one; v0.9B Mission 17: one, Mission 18: two)', a.started.length === 18 && a.started.slice(0, 15).every((x) => x.endsWith(':0')) && a.started[15] === 'jungle-sweep:1' && a.started[16] === 'fuel-for-the-fire:1' && a.started[17] === 'ambush-alley:2', a.started.join(' '));
   const s0 = a.startLog[0] || {};
   check('A2 start runs once, after the groups spawned and before the first objective / optionals activate', a.startLog.length === 1 && s0.enemies > 0 && s0.primary === 'pending' && s0.optionals.every((x) => x === 'pending'), JSON.stringify(a.startLog));
   check('A2 a unit spawned in start is in game.enemies', a.spawnedListed);
@@ -151,7 +151,7 @@ runSuite(async () => {
     const misDiff = Object.keys(sb.missions).filter((k) => (k === 'last-stand' ? m15(sb.missions[k]) !== m15(sc.missions[k]) : sb.missions[k] !== sc.missions[k]));
     const m15unl = JSON.parse(JSON.parse(sc.missions['last-stand']).def).unlocks.missions.join();
     check('D1 every CFG group identical to v0.8C.1 (v0.9A adds only `mine`, v0.9B only `fuel`)', cfgDiff.sort().join() === 'fuel,mine', cfgDiff.join(',') || `${Object.keys(sc.cfg).length} groups`);
-    check('D1 Missions 1-15 identical to v0.8C.1 (map, enemies, objectives, extraction, story, campaign row; Mission 15 now also unlocks Mission 16)', misDiff.length === 0 && Object.keys(sb.missions).length === 15 && Object.keys(sc.missions).length === 17 && m15unl === 'jungle-sweep', misDiff.join(',') || `${Object.keys(sb.missions).length} + ${Object.keys(sc.missions).length - Object.keys(sb.missions).length} (v0.9A-v0.9B), M15 unlocks ${m15unl}`);
+    check('D1 Missions 1-15 identical to v0.8C.1 (map, enemies, objectives, extraction, story, campaign row; Mission 15 now also unlocks Mission 16)', misDiff.length === 0 && Object.keys(sb.missions).length === 15 && Object.keys(sc.missions).length === 18 && m15unl === 'jungle-sweep', misDiff.join(',') || `${Object.keys(sb.missions).length} + ${Object.keys(sc.missions).length - Object.keys(sb.missions).length} (v0.9A-v0.9B), M15 unlocks ${m15unl}`);
     const pb2 = await openPage(browser, BASE, { seed: 4242 }), pc2 = await openPage(browser, URL, { seed: 4242 });
     const [fb, fc] = await Promise.all([pb2.evaluate(firefight), pc2.evaluate(firefight)]);
     const first = fb.hashes.findIndex((h, i) => h !== fc.hashes[i]);

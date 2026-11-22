@@ -122,7 +122,7 @@ runSuite(async () => {
   });
   check('A1 Mission 16 "jungle-sweep" is playable, number 16, a Minefield Sweep, in Chapter 4; Mission 15 stays in Chapter 3', camp.d && camp.d.number === 16 && camp.d.playable && camp.d.type === 'minefield' && camp.ch16 === 4 && camp.ch15 === 3, JSON.stringify({ d: camp.d, ch16: camp.ch16, ch15: camp.ch15 }));
   check('A1 Chapter 4 "Behind Enemy Lines" starts at Mission 16; Chapter 3 ends at Mission 15', camp.ch.includes('4:Behind Enemy Lines:16-inf') && camp.ch.some((c) => /^3:.*:11-15$/.test(c)), camp.ch.join(' | '));
-  check('A2 no Mission 18+ is playable (Chapter 4 continues later; v0.9B adds Mission 17)', camp.maxPlayable === 17 && camp.after.every((x) => x.endsWith(x.startsWith('fuel-for-the-fire:') ? ':true' : ':false')), JSON.stringify(camp.after));
+  check('A2 no Mission 19+ is playable (Chapter 4 continues later; v0.9B adds Missions 17 / 18)', camp.maxPlayable === 18 && camp.after.every((x) => x.endsWith(x.startsWith('fuel-for-the-fire:') || x.startsWith('ambush-alley:') ? ':true' : ':false')), JSON.stringify(camp.after));
   check('A3 objectives: advance -> approaches -> checkpoint (then extraction); the field is the "mines" mechanic', camp.prim.join() === 'advance,approaches,checkpoint' && camp.mech.join() === 'mines', camp.prim.join() + ' / ' + camp.mech.join());
   check('A4 one optional (3 enemies killed by mine blasts), stars optionals / no KIA, a full briefing, no class / recruit unlock (v0.9B: unlocks Mission 17)', camp.d.opt.length === 1 && camp.d.opt[0].startsWith('mine-ambush:') && camp.d.stars === '{"two":"optionals","three":"noKia"}' && camp.d.brief && /"missions":\["fuel-for-the-fire"\]/.test(camp.d.unlocks) && /"recruits":\[\]/.test(camp.d.unlocks), JSON.stringify(camp.d));
   check('A5 Mission 15 unlocks Mission 16; a new save has Mission 16 locked', camp.m15unlocks === 'jungle-sweep' && camp.locked, camp.m15unlocks);
@@ -578,7 +578,7 @@ runSuite(async () => {
     const misDiff = ids.filter((id) => norm(before.missions[id], id) !== norm(now.missions[id], id));
     const m15 = JSON.parse(JSON.parse(now.missions['last-stand']).def).unlocks.missions.join();
     check('J2 Missions 1-15 identical to v0.8C.1 (maps, enemies, objectives, extraction, story, campaign rows)', ids.length === 15 && misDiff.length === 0, misDiff.length ? `changed: ${misDiff.join()}` : `${ids.length} missions`);
-    check('J3 Mission 15\'s only change: its unlock list names Mission 16 (v0.9B: Mission 17 follows)', m15 === 'jungle-sweep' && Object.keys(now.missions).length === 17, `${m15} · ${Object.keys(now.missions).length} missions`);
+    check('J3 Mission 15\'s only change: its unlock list names Mission 16 (v0.9B: Missions 17 / 18 follow)', m15 === 'jungle-sweep' && Object.keys(now.missions).length === 18, `${m15} · ${Object.keys(now.missions).length} missions`);
   } else check('J BASE build available', false, 'BASE not set (npm test serves v0.8C.1)');
 
   // ================= K. PHONES =================

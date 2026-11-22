@@ -13,6 +13,7 @@ import {
   FORTRESS_INNER_GATE, FORTRESS_INNER_LOCKED, FORTRESS_LOCKED, FORTRESS_MAIN_GATE, FORTRESS_MAP, FORTRESS_RELAYS, FORTRESS_VOSS,
   JUNGLE_EXTRACTION, JUNGLE_MAP, JUNGLE_MINES, JUNGLE_PRESSURE,
   FUEL_APPROACH, FUEL_EXTRACTION, FUEL_INSTALLATIONS, FUEL_MAP, FUEL_RESPONSE, FUEL_TANKS,
+  ALLEY_CACHES, ALLEY_EXTRACTION, ALLEY_MAP, ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -31,6 +32,7 @@ import { ClearGroupsObjective, ClearRemainingObjective, FortressRelaysObjective,
 import { MineField } from './mines';
 import { FuelInstallationsObjective, FuelKillsOptional, MineKillsOptional, ResponseObjective, type ResponseWave } from './chapter4';
 import { FuelDepot } from './fuel';
+import { AmbushDirector, AmbushObjective, CachesOptional, SupplyCaches, type CacheDef, type StreetAmbushDef } from './urban';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -617,7 +619,65 @@ const FUEL_FOR_THE_FIRE: MissionScript = {
   story: { 'cue:fuel': 'm17-fuel', 'start:installations': 'm17-depot', 'start:response': 'm17-response', victory: 'm17-extract' },
 };
 
+// ---- Mission 18: Ambush Alley (Urban Ambush, 6 soldiers) ----
+// 20 placed enemies + 23 from six scripted ambushes (AmbushDirector, each once) = 43: 30 Riflemen, 8 Armored Troopers,
+// 5 Snipers (4 of them on rooftops); no other waves, no extraction pressure. Three optional supply caches.
+//  Entry: the quiet western outskirts (Overwatch: "suspiciously empty") -> the first ambush, four riflemen down and
+//  up the column-1 alley, while the Main Street post (3) holds its barricade. The crossfire at V2: two groups walk to
+//  posts north and south of the intersection and hold them. Past V2 the rooftops: Overwatch's warning, then three
+//  snipers on the Main Street perches (each first shot telegraphed for aimTime + 1 s), with the street barricade
+//  before V3 (3) still holding; once they fall and the squad pushes east, a rear group (5) comes from the streets
+//  behind, 600+ px from every soldier and off screen. The courtyard (8) behind its walls: west alley, north gate,
+//  south gate. The final intersection: six behind the sandbags at V4, a rooftop sniper over them, and 12 s into the
+//  assault a last group of four from the plaza's side streets. Then the helicopter in the plaza.
+const R3: EnemyKind[] = ['rifleman', 'rifleman', 'rifleman'];
+export const ALLEY_AMBUSHES: StreetAmbushDef[] = [
+  { id: 'first', zone: ALLEY_ZONES.first, delay: 1.5, cue: 'cue:first', banner: 'AMBUSH!', minDist: 420,
+    groups: [{ kinds: ['rifleman', 'rifleman'], from: [ALLEY_POINTS.firstFrom[0]] }, { kinds: ['rifleman', 'rifleman'], from: [ALLEY_POINTS.firstFrom[1]] }] },
+  { id: 'crossfire', zone: ALLEY_ZONES.cross, delay: 1.5, cue: 'cue:crossfire', banner: 'CROSSFIRE!', minDist: 420,
+    groups: [{ kinds: ['rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.crossNorth, posts: ALLEY_POINTS.crossNorthPosts }, { kinds: R3, from: ALLEY_POINTS.crossSouth, posts: ALLEY_POINTS.crossSouthPosts }] },
+  { id: 'rooftops', zone: ALLEY_ZONES.rooftops, after: ['crossfire'], delay: 2.5, cue: 'cue:rooftops', banner: 'ROOFTOP SNIPERS',
+    groups: [{ kinds: ['sniper', 'sniper', 'sniper'], roof: [ALLEY_ROOFS.north, ALLEY_ROOFS.south, ALLEY_ROOFS.corner] }] },
+  { id: 'rear', zone: ALLEY_ZONES.rear, after: ['rooftops'], delay: 2, cue: 'cue:rear', banner: 'ENEMIES BEHIND YOU', minDist: 600,
+    groups: [{ kinds: ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.rear }] },
+  { id: 'final-roof', onObjective: 'final', delay: 1, groups: [{ kinds: ['sniper'], roof: [ALLEY_ROOFS.final] }] },
+  { id: 'final-wave', onObjective: 'final', delay: 12, banner: 'ENEMY REINFORCEMENTS', minDist: 560,
+    groups: [{ kinds: ['rifleman', 'rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.finalFrom }] },
+];
+export const ALLEY_CACHE_LOOT: CacheDef[] = [
+  { pos: ALLEY_CACHES[0], loot: ['medkit', 'rapidfire'] }, { pos: ALLEY_CACHES[1], loot: ['medkit', 'medkit'] }, { pos: ALLEY_CACHES[2], loot: ['medkit', 'rapidfire'] },
+];
+const AMBUSH_ALLEY: MissionScript = {
+  id: 'ambush-alley', map: ALLEY_MAP,
+  groups: () => [
+    // the barricade across Main Street before V2 (they hold it)
+    { tag: 'street-post', points: [{ x: 1870, y: 1350 }, { x: 1870, y: 1470 }, { x: 1910, y: 1410 }], aggro: 420, hold: true },
+    // the barricade before V3 (they hold it)
+    { tag: 'sniper-street', points: [{ x: 2900, y: 1345 }, k(2900, 1470, 'armored'), { x: 2940, y: 1410 }], aggro: 420, hold: true },
+    // the courtyard: troopers and a sniper inside the walls, riflemen at the gates
+    { tag: 'courtyard', points: [k(3500, 1080, 'armored'), k(3700, 1180, 'armored'), k(3780, 1060, 'sniper'), { x: 3380, y: 1040 }, { x: 3460, y: 1200 }, { x: 3640, y: 960 }, { x: 3560, y: 1110 }, { x: 3760, y: 1220 }], aggro: 380 },
+    // the final intersection: dug in behind the sandbag line at V4
+    { tag: 'final', points: [k(4240, 1350, 'armored'), k(4240, 1470, 'armored'), { x: 4230, y: 1410 }, { x: 4300, y: 1330 }, { x: 4300, y: 1490 }, { x: 4360, y: 1410 }], aggro: 460, hold: true },
+  ],
+  triggers: [],
+  primaries: () => [
+    new ReachObjective('district', 'Enter the district', ALLEY_ZONES.district, 'DISTRICT'),
+    new AmbushObjective('street', 'Fight through Main Street', ['first', 'crossfire'], ['street-post']),
+    new AmbushObjective('rooftops', 'Clear the rooftops and the side streets', ['rooftops', 'rear'], ['sniper-street']),
+    new ClearGroupsObjective('courtyard', 'Storm the courtyard', ['courtyard'], 'COURTYARD'),
+    new AmbushObjective('final', 'Break the final intersection', ['final-roof', 'final-wave'], ['final'], 'INTERSECTION'),
+  ],
+  optionals: () => [new CachesOptional('caches', 'Recover 2 supply caches', 2)],
+  hint: 'Ambushes come from the side streets: use corners and cars as cover. A red laser from a rooftop means a sniper: step out of its line.',
+  mechanics: () => [new AmbushDirector(ALLEY_AMBUSHES), new SupplyCaches(ALLEY_CACHE_LOOT)],
+  extraction: { zone: ALLEY_EXTRACTION, countdown: () => 12 },
+  story: {
+    'start:street': 'm18-quiet', 'cue:first': 'm18-first', 'cue:crossfire': 'm18-crossfire', 'cue:rooftops': 'm18-rooftops', 'cue:rear': 'm18-rear',
+    'start:courtyard': 'm18-courtyard', 'start:final': 'm18-final', victory: 'm18-extract',
+  },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP, FUEL_FOR_THE_FIRE].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP, FUEL_FOR_THE_FIRE, AMBUSH_ALLEY].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

@@ -155,7 +155,7 @@ runSuite(async () => {
     };
   });
   check('A1 Mission 15 "General\'s Last Stand": number 15, playable, assault, 6 soldiers, Chapter 3', camp.n === 15 && camp.name === "General's Last Stand" && camp.playable && camp.type === 'assault' && camp.cap === 6 && camp.ch === 3 && camp.brief, JSON.stringify(camp));
-  check('A2 the Mission 15 placeholder is gone; Mission 15 is followed by Mission 16 (v0.9A: Chapter 4 starts there; v0.9B adds 17)', !camp.ids.includes('mission-15') && camp.max === 17 && camp.ids.length === 17 && camp.ids[15] === 'jungle-sweep' && camp.ids[16] === 'fuel-for-the-fire', camp.ids.join());
+  check('A2 the Mission 15 placeholder is gone; Mission 15 is followed by Mission 16 (v0.9A: Chapter 4 starts there; v0.9B adds 17 / 18)', !camp.ids.includes('mission-15') && camp.max === 18 && camp.ids.length === 18 && camp.ids[15] === 'jungle-sweep' && camp.ids[16] === 'fuel-for-the-fire' && camp.ids[17] === 'ambush-alley', camp.ids.join());
   check('A3 Mission 14\'s first clear unlocks Mission 15; Mission 15 unlocks the Demolitions Expert class and closes Chapter 3 (v0.9A: and opens Mission 16)', camp.m14 === 'last-stand' && camp.classes === 'demolitions' && camp.missions === 'jungle-sweep' && /Chapter 3 complete/.test(camp.note) && camp.unlockText, JSON.stringify(camp));
   check('A4 one optional ("allies-alive"), stars: optionals / no KIA', camp.opt === 'allies-alive' && camp.stars === '{"two":"optionals","three":"noKia"}', camp.opt + ' ' + camp.stars);
 

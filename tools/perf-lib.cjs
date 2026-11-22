@@ -16,6 +16,10 @@ function setupMission({ missionId, level }) {
   // patrols gone), so a short run covers the five-tank chain, the guards inside the ring and the enemy response
   const reserve = missionId === 'fuel-for-the-fire@reserve';
   if (reserve) missionId = 'fuel-for-the-fire';
+  // v0.9B 'ambush-alley@rooftops': Mission 18 past the crossfire (the first ambush, the Main Street post and the
+  // crossfire already beaten), so a short run covers the rooftop snipers, the rear ambush and the courtyard streets
+  const rooftops = missionId === 'ambush-alley@rooftops';
+  if (rooftops) missionId = 'ambush-alley';
   const story = missionId === 'last-stand@story';
   const voss = missionId === 'last-stand@voss' || story;
   if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
@@ -54,6 +58,17 @@ function setupMission({ missionId, level }) {
     g.enemies = g.enemies.filter((e) => e.state !== 'dead');
     g.soldiers.forEach((s, i) => { s.pos = { x: 3000 + (i % 3) * 30, y: 1480 + Math.floor(i / 3) * 30 }; s.vel = { x: 0, y: 0 }; });
     g.anchor = { x: 3030, y: 1495 }; g.cam = { x: 3030, y: 1495 };
+    if (g.story) g.story.skip(g);
+  }
+  if (rooftops && r.ok) {
+    const m = g.mission, A = m.mechanic('ambush');
+    for (const id of ['first', 'crossfire']) { const st = A.state(id); st.armedAt = 0; st.sprungAt = 0; }
+    for (const e of g.enemies) if (e.tag === 'street-post') e.state = 'dead';
+    g.enemies = g.enemies.filter((e) => e.state !== 'dead');
+    for (let i = 0; i < 2; i++) m.primaries[i].state = 'complete';
+    m.current = 2; m.primaries[2].activate(m, g); m.phase = m.primaries[2].phase;
+    g.soldiers.forEach((s, i) => { s.pos = { x: 2130 + (i % 3) * 30, y: 1380 + Math.floor(i / 3) * 30 }; s.vel = { x: 0, y: 0 }; });
+    g.anchor = { x: 2160, y: 1395 }; g.cam = { x: 2160, y: 1395 };
     if (g.story) g.story.skip(g);
   }
   void a;

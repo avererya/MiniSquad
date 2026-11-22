@@ -129,6 +129,40 @@ export const SCENES: Record<string, StoryScene> = {
     ],
   },
   'm17-extract': { id: 'm17-extract', mode: 'radio', lines: [{ speaker: O, text: 'The depot is burning. Helicopter inbound, north-east clearing.' }] },
+  // v0.9B Mission 18: Ambush Alley
+  'm18-quiet': {
+    id: 'm18-quiet', mode: 'radio', lines: [
+      { speaker: O, text: 'Main Street is empty. No traffic, no civilians, nobody at the windows.' },
+      { speaker: O, text: 'That is never a good sign. Keep your spacing and watch the side alleys.' },
+    ],
+  },
+  'm18-first': { id: 'm18-first', mode: 'radio', lines: [{ speaker: O, text: 'Contact! They were waiting in the alley. Get behind the cars!' }] },
+  'm18-crossfire': {
+    id: 'm18-crossfire', mode: 'radio', lines: [
+      { speaker: O, text: 'Movement on the cross street, north and south. You are walking into a crossfire.' },
+      { speaker: O, text: 'Take cover and deal with one side at a time.' },
+    ],
+  },
+  'm18-rooftops': {
+    id: 'm18-rooftops', mode: 'radio', lines: [
+      { speaker: O, text: 'Glint on the rooftops! Snipers above Main Street.' },
+      { speaker: O, text: 'Watch for the red laser and step out of its line. Your rounds reach them from the street.' },
+    ],
+  },
+  'm18-rear': { id: 'm18-rear', mode: 'radio', lines: [{ speaker: O, text: 'Behind you! A squad has circled round through the back streets.' }] },
+  'm18-courtyard': {
+    id: 'm18-courtyard', mode: 'radio', lines: [
+      { speaker: O, text: 'The courtyard is their strongpoint. Gates north and south, and an alley from the west.' },
+      { speaker: O, text: 'Pick your way in. Do not all push through the same gate.' },
+    ],
+  },
+  'm18-final': {
+    id: 'm18-final', mode: 'radio', lines: [
+      { speaker: O, text: 'Last intersection before the landing zone. They are dug in behind the sandbags.' },
+      { speaker: O, text: 'Break them and the plaza is yours. Expect company.' },
+    ],
+  },
+  'm18-extract': { id: 'm18-extract', mode: 'radio', lines: [{ speaker: O, text: 'The street is ours. Helicopter inbound to the plaza.' }] },
 };
 
 export function speakerOf(line: StoryLine): StorySpeaker { return SPEAKERS[line.speaker]; }

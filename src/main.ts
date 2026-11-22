@@ -24,6 +24,7 @@ import * as targeting from './targeting';
 import * as story from './story';
 import { MISSION_SCRIPTS } from './missions';
 import { FuelDepot } from './fuel';
+import { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES } from './map';
 import { blastDamage, explode } from './combat';
 
 const stage = document.getElementById('stage')!;
@@ -223,6 +224,6 @@ Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStat
   __perf: { stats: pstats, settings: perfSettings },
   // Phase 3 (tools/arch.cjs): mission scripts (MissionScript.mechanics) and the shared blast-damage helper
   __missions: MISSION_SCRIPTS, __combat: { blastDamage, explode },
-  // v0.9B (tools/v09b.cjs): the fuel depot mechanic, to lay test tanks in any mission
-  __fuelDepot: FuelDepot });
+  // v0.9B (tools/v09b.cjs): the fuel depot mechanic, to lay test tanks in any mission; Mission 18's zones and points
+  __fuelDepot: FuelDepot, __alley: { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES } });
 game.resetRosterSave = resetRosterSave;

@@ -15,13 +15,13 @@
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
-export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort' | 'minefield';
+export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort' | 'minefield' | 'urban';
 export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
   elimination: 'Elimination', sabotage: 'Sabotage', capture: 'Capture & Hold', survival: 'Survival / Extraction', rescue: 'Rescue / Escort',
   interception: 'Convoy Interception', night: 'Night Sabotage', assault: 'Assault / Boss',
   liberation: 'Liberation & Defense', artillery: 'Search & Destroy',
   defense: 'Defense / Waves', escort: 'Sabotage & Vehicle Escort',
-  minefield: 'Minefield Sweep',
+  minefield: 'Minefield Sweep', urban: 'Urban Ambush',
 };
 
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
@@ -337,6 +337,20 @@ export const CAMPAIGN: CampaignMission[] = [
       objective: 'Destroy the fuel tanks at all three installations, survive the enemy response, extract.',
       objectives: ['Infiltrate the supply network', 'Destroy the 3 fuel installations (any order)', 'Survive the enemy response', 'Reach helicopter extraction'],
       tip: 'Red tanks explode and hurt everyone close by, your squad too. Tap a tank to shoot it while enemies stand beside it, keep your soldiers out of the blast ring, and remember that tanks packed together set each other off.',
+    },
+    unlocks: { missions: ['ambush-alley'], recruits: [] },
+  },
+  {
+    id: 'ambush-alley', number: 18, name: 'Ambush Alley', type: 'urban', playable: true,
+    briefing: 'Push through an enemy-held city district full of ambushes and reach the landing zone beyond it.',
+    primary: ['Enter the district', 'Fight through Main Street', 'Clear the rooftops and the side streets', 'Storm the courtyard', 'Break the final intersection', 'Reach helicopter extraction'],
+    optional: [{ id: 'caches', label: 'Recover 2 supply caches' }], stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Street fighting: ambushes, crossfires and rooftop snipers',
+    brief: {
+      story: 'With their fuel gone, the enemy is pulling back through the city to the north. A helicopter can lift you out of the plaza on the far side, if you can cross the district. Intelligence says the streets are quiet. Intelligence has been wrong before.',
+      objective: 'Cross the district street by street, take the final intersection, extract from the plaza.',
+      objectives: ['Enter the district', 'Fight through Main Street (ambushes and a crossfire)', 'Clear the rooftop snipers and the side streets', 'Storm the courtyard', 'Break the final intersection, extract'],
+      tip: 'Buildings block movement, sight and rounds: use corners and wrecked cars as cover. A rooftop sniper shows a red laser before it fires, so step out of the line, then shoot back from the street. Alleys give you a second way round.',
     },
     unlocks: { missions: [], recruits: [], capacityNote: 'Chapter 4 continues in a future update' },
   },

@@ -21,7 +21,7 @@ Do not read [docs/CHANGELOG.md](docs/CHANGELOG.md) or `docs/archive/` unless you
 
 ## Current version: verify, don't trust
 
-The handoff names the last known release (v0.8C, package 0.8.4, save v9 at the time of writing). Always confirm:
+The handoff names the last known release (v0.9B, package 0.9.1, save v9 at the time of writing). Always confirm:
 
 ```
 git log --oneline -5 origin/main
@@ -53,7 +53,7 @@ npm test -- --list                      # groups and suites
 npm test                                # smoke group (~25 s)
 npm test -- progression                 # a group: combat movement recruitment progression permadeath missions persistence ui fps
 npm test -- logic squad-training        # named suites
-npm test -- all                         # full regression (29 rule suites, ~30 min)
+npm test -- all                         # full regression (33 rule suites, ~45 min)
 npm test -- logic --repeat 10 --no-build   # flake hunt; -v streams full output
 ```
 

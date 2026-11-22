@@ -4,14 +4,15 @@
 // objectives and triggers live in missions.ts, so a map can be reused by another mission.
 import type { Rect, Vec } from './util';
 
-export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag' | 'water' | 'fence' | 'concrete' | 'wire' | 'gate' | 'tree';
+export type ObstacleKind = 'building' | 'wall' | 'crate' | 'hut' | 'rock' | 'sandbag' | 'water' | 'fence' | 'concrete' | 'wire' | 'gate' | 'tree' | 'roof';
 export interface Obstacle extends Rect { kind: ObstacleKind; height: number }
-export type MapTheme = 'grass' | 'farm' | 'canyon' | 'dusk' | 'river' | 'prison' | 'desert' | 'night' | 'fortress' | 'jungle';
+export type MapTheme = 'grass' | 'farm' | 'canyon' | 'dusk' | 'river' | 'prison' | 'desert' | 'night' | 'fortress' | 'jungle' | 'urban';
 /**
  * v0.6.2: water blocks movement and navigation but not bullets or line of sight (you can shoot across a river).
  * v0.8B: so do barbed-wire perimeters and defensive gates (you can shoot through them, not walk through them).
+ * v0.9B: so do rooftop perches ('roof': a flat roof edge a sniper stands on; it can be shot from the street, never walked onto).
  */
-export const isLowObstacle = (o: Obstacle) => o.kind === 'water' || o.kind === 'wire' || o.kind === 'gate';
+export const isLowObstacle = (o: Obstacle) => o.kind === 'water' || o.kind === 'wire' || o.kind === 'gate' || o.kind === 'roof';
 /** Decoration only (never collides): floodlights light the night map, radar dishes / flags dress the set. */
 export interface MapProp { kind: 'flood' | 'radar' | 'flag' | 'tent'; x: number; y: number; dir?: number }
 
@@ -825,3 +826,86 @@ export const FUEL_MAP: MapDef = {
   props: [{ kind: 'flag', x: 2480, y: 440 }, { kind: 'tent', x: 2140, y: 470 }, { kind: 'tent', x: 3700, y: 1300 }, { kind: 'radar', x: 3950, y: 1350 }],
 };
 export const FUEL_OPEN_SHAPES = FUEL_OPEN;
+
+// =====================================================================================
+// v0.9B Mission 18 "Ambush Alley": an enemy-held city district (AmbushDirector / SupplyCaches, urban.ts)
+// =====================================================================================
+// A grid of streets between solid building blocks (they block walking, sight and rounds): North Avenue (y 600-780),
+// Main Street (y 1310-1490) and South Avenue (y 2020-2200) run west -> east, cross streets V1-V4 (x 900-1060,
+// 1940-2100, 2980-3140, 3980-4140) run north -> south, and 80 px alleys cut the blocks between V1 and V3, so every
+// stretch has at least two routes. The squad enters from the quiet western outskirts on Main Street. Barricades:
+// a sandbag post across Main Street before V2 and another before V3 (each with a gap). Rooftop perches ('roof': low
+// obstacles on the street edge of three buildings) hold the snipers. The courtyard block (x 3140-3980, y 780-1310) has
+// a west alley from V3, a north gate from North Avenue and a south gate from Main Street. The final intersection is
+// V4 / Main Street, defended from a sandbag line at its east side; the helicopter lands in the plaza behind it.
+// Three supply caches sit off the route: a backyard in the outskirts (off South Avenue), a courtyard off North
+// Avenue between V2 and V3, and a dead-end alley off Main Street between V3 and V4.
+const Rf = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'roof', height: 0 });
+/** Rooftop perches (Rf) and the sniper positions on them. */
+export const ALLEY_ROOFS = { north: { x: 2670, y: 1285 }, south: { x: 2670, y: 1506 }, corner: { x: 2915, y: 1284 }, final: { x: 4270, y: 1284 } };
+const ALLEY_BUILDINGS: Obstacle[] = [
+  // column 0, the outskirts (x 0-900): low buildings with open lots between them
+  B(60, 80, 380, 440), B(500, 120, 340, 400), B(80, 860, 320, 360), B(480, 880, 330, 340),
+  B(80, 1560, 330, 380), B(480, 1540, 330, 300), B(60, 2260, 380, 480), B(500, 2260, 340, 480),
+  // column 1 (x 1060-1940): an alley at x 1460-1540 through both Main Street blocks
+  B(1100, 60, 800, 500), B(1100, 820, 360, 440), B(1540, 820, 360, 440), B(1100, 1530, 360, 450), B(1540, 1530, 360, 450), B(1100, 2240, 800, 500),
+  // column 2 (x 2100-2980): a courtyard off North Avenue (top), alleys at x 2500-2580
+  B(2140, 60, 800, 280), B(2140, 340, 120, 220), B(2820, 340, 120, 220),
+  B(2140, 820, 360, 400), B(2580, 820, 360, 440), B(2140, 1530, 360, 450), B(2580, 1530, 360, 450), B(2140, 2240, 800, 500),
+  // column 3 (x 3140-3980): the courtyard block (north row with the north gate x 3600-3680; west buildings around the
+  // west alley y 1000-1080; the east wing) and, south of Main Street, a dead-end alley x 3480-3560
+  B(3180, 60, 760, 500), B(3180, 820, 420, 100), B(3680, 820, 260, 100), B(3180, 920, 140, 80), B(3180, 1080, 140, 180), B(3860, 920, 80, 350),
+  B(3180, 1530, 300, 450), B(3560, 1530, 380, 450), B(3480, 1940, 80, 80), B(3180, 2240, 760, 500),
+  // column 4 (x 4140-4800): buildings around the plaza (x 4360-4800, y 1080-1720)
+  B(4180, 60, 580, 500), B(4180, 820, 180, 440), B(4400, 820, 360, 260), B(4180, 1530, 180, 450), B(4400, 1720, 360, 300), B(4180, 2240, 580, 500),
+];
+const ALLEY_COVER: Obstacle[] = [
+  // rooftop perches: both sides of Main Street between V2 and V3 (a crossfire from above), the corner before V3, and
+  // the plaza's north-west building
+  Rf(2600, 1262, 140, 46), Rf(2600, 1484, 140, 44), Rf(2860, 1262, 110, 46), Rf(4200, 1262, 140, 46),
+  // the courtyard's south wall (gate x 3420-3500) and its inner cover
+  K(3180, 1262, 240, 30), K(3500, 1262, 440, 30), S(3450, 1000, 120, 16), S(3620, 1110, 16, 100), C(3400, 1150), C(3740, 990), K(3550, 1190, 60, 30, 26),
+  // barricades across Main Street (gaps y 1380-1440): the post before V2 and the one before V3
+  S(1820, 1310, 16, 70), S(1820, 1440, 16, 50), S(2850, 1310, 16, 70), S(2850, 1440, 16, 50),
+  // the final intersection's sandbag line (gap y 1380-1440) and plaza cover
+  S(4180, 1300, 16, 80), S(4180, 1440, 16, 80), C(4420, 1200), C(4420, 1560), K(4600, 1400, 50, 60, 28),
+  // wrecked cars and barriers along the streets (cover)
+  K(1250, 1340, 70, 36, 24), K(1700, 1440, 70, 36, 24), K(2250, 1330, 70, 36, 24), K(2450, 1440, 70, 36, 24), K(3300, 1350, 70, 36, 24), K(3720, 1440, 70, 36, 24),
+  K(1300, 640, 70, 36, 24), K(2600, 720, 70, 36, 24), K(3400, 640, 70, 36, 24), K(1600, 2140, 70, 36, 24), K(2700, 2050, 70, 36, 24), K(3700, 2140, 70, 36, 24),
+  K(640, 1330, 60, 36, 24), C(420, 1460),
+  // the outskirts backyard (cache 1) and the North Avenue courtyard (cache 2): crates
+  C(560, 1880), C(2380, 420), C(2700, 470),
+];
+/** Ambush entry points / posts (urban.ts AmbushDirector) and the supply caches. */
+export const ALLEY_POINTS = {
+  /** the first ambush: down the column-1 alley from North Avenue and up it from South Avenue */
+  firstFrom: [{ x: 1500, y: 690 }, { x: 1500, y: 2110 }],
+  /** the crossfire: down V2 from the north and up it from the south, to posts either side of the intersection */
+  crossNorth: [{ x: 2020, y: 340 }], crossNorthPosts: [{ x: 1990, y: 1150 }, { x: 2050, y: 1170 }, { x: 2020, y: 1110 }],
+  crossSouth: [{ x: 2020, y: 2460 }], crossSouthPosts: [{ x: 1990, y: 1650 }, { x: 2050, y: 1630 }, { x: 2020, y: 1690 }],
+  /** the rear ambush: back where the squad came from */
+  rear: [{ x: 1500, y: 1400 }, { x: 1000, y: 1400 }, { x: 2020, y: 690 }, { x: 2020, y: 2110 }, { x: 1000, y: 690 }],
+  /** the final wave: the plaza's north and south streets */
+  finalFrom: [{ x: 4600, y: 690 }, { x: 4600, y: 2110 }, { x: 4060, y: 300 }, { x: 4060, y: 2500 }],
+};
+export const ALLEY_CACHES: Vec[] = [{ x: 640, y: 1930 }, { x: 2540, y: 440 }, { x: 3520, y: 1880 }];
+export const ALLEY_ZONES = {
+  district: { x: 640, y: 1300, w: 200, h: 200 } as Rect,
+  first: { x: 1250, y: 1300, w: 200, h: 200 } as Rect,
+  cross: { x: 1960, y: 1300, w: 160, h: 200 } as Rect,
+  rooftops: { x: 2120, y: 600, w: 200, h: 1600 } as Rect,
+  rear: { x: 2700, y: 600, w: 1300, h: 1600 } as Rect,
+};
+export const ALLEY_EXTRACTION: Rect = { x: 4470, y: 1270, w: 260, h: 240 };
+export const ALLEY_MAP: MapDef = {
+  id: 'ambush-alley', w: 4800, h: 2800, theme: 'urban',
+  obstacles: [...ALLEY_BUILDINGS, ...ALLEY_COVER],
+  start: { x: 210, y: 1400 }, startZone: { x: 80, y: 1290, w: 260, h: 220 },
+  medkits: [{ x: 1500, y: 1250 }, { x: 2540, y: 1700 }, { x: 3060, y: 700 }, { x: 4060, y: 2110 }],
+  rapidFire: [{ x: 1500, y: 1700 }],
+  roads: [
+    [{ x: 0, y: 1400 }, { x: 4800, y: 1400 }], [{ x: 0, y: 690 }, { x: 4800, y: 690 }], [{ x: 0, y: 2110 }, { x: 4800, y: 2110 }],
+    [{ x: 980, y: 0 }, { x: 980, y: 2800 }], [{ x: 2020, y: 0 }, { x: 2020, y: 2800 }], [{ x: 3060, y: 0 }, { x: 3060, y: 2800 }], [{ x: 4060, y: 0 }, { x: 4060, y: 2800 }],
+  ],
+  props: [{ kind: 'flag', x: 4700, y: 1150 }, { kind: 'radar', x: 4300, y: 1650 }, { kind: 'tent', x: 3700, y: 1000 }],
+};

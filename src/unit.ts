@@ -187,6 +187,8 @@ export class Unit {
   radiusOverride: number | null = null;
   /** v0.9B the last unit whose hit landed on this structure (Game.damage; a fuel tank credits its blast to them). */
   lastHitBy: Unit | null = null;
+  /** v0.9B Mission 18: a sniper posted on a rooftop (fixed, drawn with its roof nest; urban.ts). */
+  rooftop = false;
   stuckT = 0;
   prevPos: Vec | null = null;
 

@@ -15,7 +15,7 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 
 ## Status
 
-Current release: **v0.9A, Chapter 4: Jungle Sweep** (package `0.9.0`, save v9), on v0.8C.1 Story & Cinematic Presentation. Missions 1-16 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines. Missions 17-20 are not built yet. The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.9B, Chapter 4: Missions 17-18** (package `0.9.1`, save v9), on v0.9A Chapter 4: Jungle Sweep. Missions 1-18 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines, Mission 17 adds exploding fuel tanks and Mission 18 an urban ambush. Missions 19-20 are not built yet. Chapter 2 is now called "Hostile Territory". The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -59,8 +59,8 @@ The sections below are the player-facing rules and numbers, grouped by system. H
 - [Recruitment](#recruitment-v05) · [Named campaign recruits](#named-campaign-recruits-v061) · [Permanent death](#permanent-death-v06)
 - [Training rebalance](#progression--training-rebalance-v07b1) · [Squad Training](#squad-training-expansion--mobile-polish-v07d) · [Accuracy soft floor](#accuracy-soft-floor--hud-touch-areas-v07d1)
 - [Elite Promotions](#elite-promotions-v07a) · [Elite Progression](#elite-progression-v07b) · [Tactical Support](#tactical-support-v07c)
-- [Chapter 2](#chapter-2-behind-enemy-lines-v062) · [Chapter 3A](#chapter-3a-the-resistance-begins-v08a) · [Chapter 3B](#chapter-3b-hold-the-line--supply-line-sabotage-v08b) · [Difficulty, Extended Escort & Ability Capacity](#difficulty-extended-escort--ability-capacity-v08b1)
-- [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a)
+- [Chapter 2](#chapter-2-hostile-territory-v062) · [Chapter 3A](#chapter-3a-the-resistance-begins-v08a) · [Chapter 3B](#chapter-3b-hold-the-line--supply-line-sabotage-v08b) · [Difficulty, Extended Escort & Ability Capacity](#difficulty-extended-escort--ability-capacity-v08b1)
+- [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a) · [Missions 17-18: fuel tanks and urban ambushes](#chapter-4-missions-17-18-v09b)
 - [Performance](#performance-v063)
 
 ## Campaign
@@ -84,7 +84,9 @@ Mission data (names, types, objectives, caps, star rules, unlocks) lives in `src
 | 13 | Hold the Line | Defense | 6 | Prepare the defenses, protect the command center, survive four waves, extract | Command center finishes with at least 50% HP | all optionals / no KIA | Mission 14 |
 | 14 | Supply Line Sabotage | Sabotage / Escort | 6 | Destroy three depots, capture the truck, escort it to extraction | Truck finishes with at least 50% HP | all optionals / no KIA | Mission 15 |
 | 15 | General's Last Stand | Assault / Boss | 6 | Break the outer defenses, destroy the gate generator and 2 relays, storm the command area, defeat General Voss, clear the defenders, extract | Mara, Elias and Tessa survive | all optionals / no KIA | **Demolitions Expert class** (Chapter 3 complete), Mission 16 |
-| 16 | Jungle Sweep | Minefield Sweep | 6 | Advance through the jungle, clear the patrols and minefield approaches, eliminate the checkpoint defenders, extract | Take out 3 enemies with mine blasts | all optionals / no KIA | nothing yet (Chapter 4 continues in a future update) |
+| 16 | Jungle Sweep | Minefield Sweep | 6 | Advance through the jungle, clear the patrols and minefield approaches, eliminate the checkpoint defenders, extract | Take out 3 enemies with mine blasts | all optionals / no KIA | Mission 17 |
+| 17 | Fuel for the Fire | Sabotage | 6 | Infiltrate the supply network, destroy the 3 fuel installations (any order), survive the enemy response, extract | Take out 5 enemies with fuel explosions | all optionals / no KIA | Mission 18 |
+| 18 | Ambush Alley | Urban Ambush | 6 | Enter the district, fight through Main Street, clear the rooftops and side streets, storm the courtyard, break the final intersection, extract | Recover 2 supply caches | all optionals / no KIA | nothing yet (Chapter 4 continues in a future update) |
 
 - Stars: 0 on defeat, ★ = primary objectives complete. Best stars are saved per mission and never go down. Missions can be replayed forever (replay rewards as in v0.3).
 - Squad caps by mission number: 1-2 → 2, 3-5 → 3, 6 → 4, 7-12 → 5, 13+ → 6. You may deploy fewer. If the saved squad is larger than the selected mission allows (for example a v0.3 squad of 3 on Mission 1), the extra slots are marked OVER LIMIT and Deploy is disabled until you remove someone or tap **Keep first N**. The saved squad is never trimmed automatically.
@@ -325,11 +327,13 @@ Code: `src/support.ts` (rules, state, damage), numbers in `src/config.ts` → `C
 
 **HUD**: AIRSTRIKE / NUKE buttons sit top left under the timer (the joystick zone stays free) and appear only when eligible (NUKE also shows when you own stock). The airstrike CONFIRM / CANCEL bar sits on the right above the soldier panels; the nuke confirmation is centred below the objective banner. Labels: READY / AIMING… / INCOMING 1.2s / USED; READY · 2 / 0 STOCK / 23s / USED.
 
-## Chapter 2: Behind Enemy Lines (v0.6.2)
+## Chapter 2: Hostile Territory (v0.6.2)
+
+Shipped as "Behind Enemy Lines"; renamed "Hostile Territory" in v0.9B so the name belongs to Chapter 4 alone (same missions, ids, progress and records).
 
 Missions: scripts in `src/missions.ts`, campaign data in `src/campaign.ts`, maps in `src/map.ts`. New code lives in `src/convoy.ts` (trucks and escorts), `src/boss.ts` (Iron Warden), `src/enemy.ts` (enemy kinds), `src/targeting.ts` (Sniper priorities) and `src/objectives.ts` (hold, relays, convoy, multi-destroy, boss, alarm and no-KIA optionals). The full spec is kept outside the repo, in the shared project folder.
 
-- **Campaign screen**: three chapter tabs (CH 1 ★x/15, CH 2 Behind Enemy Lines ★x/15, CH 3 SOON). Only the selected chapter's missions are listed, so phones never scroll. Chapter 1 keeps its v0.6.1 look and has no name of its own.
+- **Campaign screen**: three chapter tabs (CH 1 ★x/15, CH 2 Hostile Territory ★x/15, CH 3 SOON). Only the selected chapter's missions are listed, so phones never scroll. Chapter 1 keeps its v0.6.1 look and has no name of its own.
 - **M6 Bridgehead** (cap 4): cross the river, clear the bridge guards (two enemy Snipers), then hold the bridge zone for 45 s against waves from both banks. Optional: no soldier KIA. The card notes "Squad size 5 from Mission 7".
 - **M7 Prison Break** (cap 5): four Watchtowers and the guard garrison, then free the POW medic and escort them to the helicopter. Optional: the prisoner is never downed. Clearing M7 opens **Patch** (Medic, Healer) in the Recruitment Office for 1,000 CR. Patch is not free.
 - **M8 Convoy Crusher** (cap 5): three trucks (1,000 HP each, +30% grenade damage) drive a fixed road with escorts (rifles, then armored). Destroy at least 2, then extract. Optional: all three. The HUD shows T1-T3 chips with HP and "destroyed / escaped / on the road".
@@ -464,9 +468,41 @@ Optional (+25 XP / +150 CR): **Take out 3 enemies with mine blasts** (shoot a mi
 - **Hidden** until a standing soldier comes within **130 px**: then a mine plate, a pulsing red trigger ring, a dashed **65 px blast ring** and a warning triangle mark it ("MINE!"). It stays marked until it goes off. Mines are never all shown at the start, and there is none near the landing zone.
 - **Trigger**: anyone on foot whose centre comes within **20 px** sets it off, hidden or marked: your soldiers, captives / allies and enemies (structures and towers never). Nobody walks around mines on their own; steering is yours.
 - **Blast**: up to **60 damage** at the centre falling to 35% (21) at the edge of the 65 px ring, on **both teams**. Solid cover blocks it, Armored Troopers take it in full (no frontal plate), Elite reductions apply. 60 is 60% of an Infantry soldier's HP: a mine never kills a soldier from full HP (the lowest class HP is 75), but it hurts, and it can down a wounded one. A blast sets off other mines within 90 px in sight 0.2 s later (each mine once, so chains always end).
-- **Shoot it**: tap (touch) or click a marked mine and the whole squad is ordered to shoot it (yellow reticle) for up to 8 s. Soldiers in range and line of sight fire at it first (15 HP, so one or two rounds); out of range or sight they keep fighting normally until you move closer. The order ends when the mine goes off or after 8 s. Grenades, rockets and Inferno flames set a marked mine off too. A mine is **never** an automatic target, and rounds aimed at enemies pass over it. A Tactical Support airstrike leaves a marked mine at 1 HP like any objective structure (the squad finishes it).
+- **Shoot it**: tap (touch) or click a marked mine and the whole squad is ordered to shoot it (yellow reticle) for up to 8 s. Soldiers in range and line of sight fire at it first (15 HP, so one or two rounds); out of range or sight they keep fighting normally until you move closer. The order ends when the mine goes off or after 8 s. Grenades, rockets and Inferno flames set a marked mine off too. A mine is **never** an automatic target, and rounds aimed at enemies pass over it. A Tactical Support airstrike sets off every armed mine (hidden or marked) inside its circle, and a Nuclear Strike every armed mine on the map, each once with its normal blast (v0.9B; before, a marked mine was left at 1 HP).
 - Taps: a quick touch (moved less than 18 stage px, under 0.35 s) on either half of the screen is a tap; the joystick only moves the squad when you drag. The tap area is a 48 px radius around the mine (about 50 CSS px across on an iPhone SE).
 - Every attempt is fresh: Retry or a reload hides every mine again; nothing about mines is saved.
+
+## Chapter 4: Missions 17-18 (v0.9B)
+
+Chapter 4 **Behind Enemy Lines** continues with Missions 17 and 18; Missions 19-20 are not playable yet. Save v9 unchanged; Missions 1-15 and every class, enemy, price and number are exactly v0.9A's (Mission 16 now unlocks Mission 17; one new `CFG.fuel` group). Chapter 2 is renamed **Hostile Territory**. Tactical Support now sets off mines: an airstrike detonates every armed mine in its circle, a Nuclear Strike every armed mine on the map (each once, its normal blast and chains, both teams); objective structures keep their 1 HP support floor.
+
+**Mission 17: Fuel for the Fire** (`fuel-for-the-fire`, Sabotage, squad cap 6, map `FUEL_MAP` 4,600 × 2,600 jungle supply depot; script in `src/missions.ts`, tanks in `src/fuel.ts`). Unlocked by the first clear of Mission 16. Riflemen, Armored Troopers and Snipers only: 34 placed plus a finite 12-strong response, nothing respawns. Target length 6-8 minutes on a phone.
+1. **Infiltrate the supply network**: along the trail from the south-west landing zone past a patrol. OVERWATCH explains the fuel tanks as you near the first installation.
+2. **Destroy the 3 fuel installations** (any order; chips A / B / C): **A exposed storage** (two tank pairs in the open, guards beside them), **B fortified depot** to the north (a sandbagged compound with gaps west, south and north; four defenders hold the sandbags; a five-tank cluster that chains end to end), **C central reserve** to the east (a five-tank ring with four guards holding inside it, two lone outer tanks, sandbag arcs at a safe distance). An installation counts once all of its tanks have exploded, however that happened (rounds, grenades, rockets, a chain, an airstrike or the nuke), so nothing can softlock.
+3. **Survive the enemy response**: once the last installation burns, three waves (4, then 4 with a trooper, then 4 with a trooper and a sniper; 12 in all) come from the jungle edges, off screen and at least 520 px from every soldier.
+4. **Reach helicopter extraction** in the north-east clearing (12 s countdown, no extraction pressure).
+
+Optional (+25 XP / +150 CR): **Take out 5 enemies with fuel explosions** (a tank blast, or the chain it starts). ★★ all optionals, ★★★ no KIA. The soldier whose round (or grenade, rocket or flames) set the tank off gets the kills of its blast and its chain.
+
+**Fuel tanks** (`CFG.fuel`; a reusable mission mechanic, `FuelDepot`):
+- Red tanks, visible from the start, 50 HP; soldiers walk around them, and rounds aimed at enemies pass over them.
+- **Explosion**: up to **70 damage** at the centre falling to 30% (21) at the edge of a **115 px blast** on **both teams**; solid cover blocks it, Armored Troopers take it in full. 70 is below the lowest class HP (75), so a tank never kills a soldier from full HP, but it downs a wounded one. Stronger and wider than a mine (60 / 65 px).
+- **Chains**: an explosion sets off every intact tank within 170 px in line of sight 0.35 s later (each tank once, so chains always end). Tanks packed together go up one after another.
+- **Targeting**: a tank is an automatic target only while nobody on your side (a standing or downed soldier, an ally, an escorted captive) is within 175 px of it. Otherwise your soldiers will not shoot it on their own, and rounds aimed at enemies pass over it. Tap (touch) or click a tank to order the whole squad to shoot it for up to 8 s (yellow reticle; the tap area is a 56 px radius, about 58 CSS px across on an iPhone SE). Grenades, rockets, mines, airstrikes and the nuke set tanks off too; a dashed blast ring shows when your squad is close.
+- Every attempt is fresh: nothing about tanks is saved.
+
+**Mission 18: Ambush Alley** (`ambush-alley`, Urban Ambush, squad cap 6, map `ALLEY_MAP` 4,800 × 2,800 city district; script in `src/missions.ts`, ambushes and caches in `src/urban.ts`). Unlocked by the first clear of Mission 17. Riflemen, Armored Troopers and Snipers only: 20 placed plus 23 from six scripted ambushes (43 in all), each ambush once, nothing respawns. Target length 7-9 minutes on a phone.
+- **The district**: a grid of streets (three avenues west to east, four cross streets) between solid building blocks. Buildings block movement, sight and rounds (no interiors); alleys cut through the blocks, so every stretch has at least two routes. Wrecked cars, crates and sandbag barricades are cover.
+1. **Enter the district**: the western outskirts are quiet. OVERWATCH: "suspiciously empty".
+2. **Fight through Main Street**: the **first ambush** (four riflemen from the alley north and south, a radio warning and 1.5 s before they appear), a sandbag post across the street, then the **crossfire** at the second cross street: two groups walk to posts north and south of the intersection and hold them.
+3. **Clear the rooftops and the side streets**: OVERWATCH calls the glint, and 2.5 s later three **rooftop snipers** appear on perches over Main Street (they never move, you cannot climb up, but you can shoot them from the street). Each one's first shot shows the red laser for 1 s longer than a normal sniper's (2.6 s in all) with a "ROOFTOP SNIPER!" marker. A second barricade holds the corner. Once the snipers fall and you push east, a **rear ambush** (five) comes from the streets behind you, off screen and at least 600 px away.
+4. **Storm the courtyard**: eight defenders behind walls with three ways in (west alley, north gate, south gate).
+5. **Break the final intersection**: six dug in behind sandbags, a rooftop sniper over them and, 12 s in, a last group of four from the plaza's side streets. Not a boss.
+6. **Reach helicopter extraction** in the plaza (12 s countdown, no extraction pressure).
+
+Optional (+25 XP / +150 CR): **Recover 2 supply caches** of the three hidden off the main route (an outskirts backyard, a courtyard off North Avenue, a dead-end alley off Main Street). Walk up to a cache to open it: it drops existing pickups (medkits, Rapid Fire). No new currency or inventory; nothing is saved. ★★ all optionals, ★★★ no KIA.
+
+Fairness rules for ambushes: every ambush has a radio line or banner before its enemies appear, ground ambushes appear off screen at a minimum distance from every soldier (420-600 px), rooftop snipers give the long first telegraph, and every encounter is finite. Rewards follow the usual rules (XP by mission number, flat Credits, 75% XP on replays, no second first-clear bonus).
 
 ## Story & Cinematic Presentation (v0.8C.1)
 
