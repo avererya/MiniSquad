@@ -35,6 +35,9 @@ export interface StorySpeaker {
 export const SPEAKERS = {
   overwatch: { name: 'OVERWATCH', role: 'COMMAND · SECURE CHANNEL', tone: 'command' },
   voss: { name: 'GENERAL VOSS', role: 'ENEMY COMMANDER · INTERCEPTED', tone: 'enemy' },
+  // v0.9C Mission 19: a freed specialist on the squad's channel, and the prison camp's intercepted radio
+  specialist: { name: 'RESCUED SPECIALIST', role: 'FRIENDLY · ON YOUR CHANNEL', tone: 'command' },
+  camp: { name: 'CAMP COMMAND', role: 'ENEMY RADIO · INTERCEPTED', tone: 'enemy' },
 } satisfies Record<string, StorySpeaker>;
 export type SpeakerId = keyof typeof SPEAKERS;
 
@@ -169,6 +172,30 @@ export const SCENES: Record<string, StoryScene> = {
     ],
   },
   'm18-extract': { id: 'm18-extract', mode: 'radio', lines: [{ speaker: O, text: 'The street is ours. Helicopter inbound to the plaza. Every patrol in the district heard that: hold until it lands.' }] },
+  // v0.9C Mission 19 "Prison Break" (radio only: the fights are never interrupted). Rescue lines go by COUNT, never by
+  // cell, so any order reads right.
+  'm19-intro': {
+    id: 'm19-intro', mode: 'radio', lines: [
+      { speaker: O, text: 'Intel confirms it: three of our best are locked up in that camp. A rocket gunner, a flamethrower and a shadow operative.' },
+      { speaker: O, text: 'Get inside, open those cells and they will fight beside you. Watch the towers at the gate.' },
+    ],
+  },
+  'm19-rescue1': { id: 'm19-rescue1', mode: 'radio', lines: [{ speaker: 'specialist', text: 'About time! They still have two more of us in here. Nobody leaves without them.' }] },
+  'm19-rescue2': {
+    id: 'm19-rescue2', mode: 'radio', lines: [
+      { speaker: 'camp', text: 'Cells are open! Breakout in progress! Every guard to the yard!' },
+      { speaker: O, text: 'They know you are there. More of them coming out of the barracks.' },
+    ],
+  },
+  'm19-rescue3': { id: 'm19-rescue3', mode: 'radio', lines: [{ speaker: 'camp', text: 'Lock down the camp! Nobody leaves this jungle!' }] },
+  'm19-extract': { id: 'm19-extract', mode: 'radio', lines: [{ speaker: O, text: 'All three are out! The helicopter is heading for the clearing east of the camp. Move!' }] },
+  'm19-assault': {
+    id: 'm19-assault', mode: 'radio', lines: [
+      { speaker: O, text: 'Squad, I count dozens of hostiles closing on that clearing from every direction. This is the whole garrison.' },
+      { speaker: O, text: 'Thirty seconds to the helicopter. Hold the zone!' },
+    ],
+  },
+  'm19-intel': { id: 'm19-intel', mode: 'radio', lines: [{ speaker: 'specialist', text: "I grabbed their maps on the way out. These orders come straight from the Warlord's headquarters, and now we know where it is." }] },
 };
 
 export function speakerOf(line: StoryLine): StorySpeaker { return SPEAKERS[line.speaker]; }

@@ -970,3 +970,116 @@ export const ALLEY_MAP: MapDef = {
   ],
   props: [{ kind: 'flag', x: 4700, y: 1150 }, { kind: 'radar', x: 4300, y: 1650 }, { kind: 'tent', x: 3700, y: 1000 }],
 };
+
+// =====================================================================================
+// v0.9C Mission 19 "Prison Break": a jungle prison camp (PrisonBreak, prison.ts)
+// =====================================================================================
+// The squad lands in the south-west, passes a patrol clearing and reaches the camp's outer gate (sandbags, two
+// watchtowers). Past it the central yard holds the barracks (where reinforcements stage) and the alarm tower. Three
+// prisoner enclosures open off the yard and can be taken in any order, each with a second way in:
+//  - north-west, the ROCKET enclosure: fortified (sandbag arcs, concrete blocks, armored defenders); also reached
+//    straight up from the outer gate;
+//  - south, the FLAME enclosure: huts and crates, big rifle squads; also reached along the southern track from the gate;
+//  - north-east, the SHADOW enclosure: guards spread over a wide clearing; the northern flanking trail from the rocket
+//    enclosure comes in behind them, at its north door.
+// Each prisoner sits in a wire cell (wire blocks walking, never sight or rounds) with a door gap. East of the yard a
+// trail leads to the extraction clearing, which seven jungle trails reach from every side: that is where the camp's
+// last assault comes from.
+const CAMP_OPEN: OpenShape[] = [
+  // start, patrol clearing, outer gate, yard (two circles), rocket / flame / shadow enclosures, extraction clearing
+  { c: { x: 260, y: 2500 }, r: 270 }, { c: { x: 1000, y: 2250 }, r: 260 }, { c: { x: 1700, y: 1750 }, r: 250 },
+  { c: { x: 2650, y: 1450 }, r: 470 }, { c: { x: 3150, y: 1400 }, r: 300 },
+  { c: { x: 2050, y: 760 }, r: 300 }, { c: { x: 2850, y: 2250 }, r: 320 }, { c: { x: 3560, y: 700 }, r: 290 },
+  { c: { x: 4500, y: 1400 }, r: 370 },
+  // trails: start -> patrol -> gate -> yard; gate -> rocket; gate -> flame (southern track)
+  { a: { x: 260, y: 2500 }, b: { x: 1000, y: 2250 }, r: 130 }, { a: { x: 1000, y: 2250 }, b: { x: 1700, y: 1750 }, r: 130 },
+  { a: { x: 1700, y: 1750 }, b: { x: 2250, y: 1550 }, r: 150 }, { a: { x: 1650, y: 1550 }, b: { x: 1900, y: 980 }, r: 120 },
+  { a: { x: 1850, y: 1950 }, b: { x: 2550, y: 2280 }, r: 115 },
+  // yard -> rocket, yard -> flame, yard -> shadow; the northern flanking trail rocket -> shadow's north door
+  { a: { x: 2400, y: 1100 }, b: { x: 2180, y: 960 }, r: 130 }, { a: { x: 2700, y: 1850 }, b: { x: 2800, y: 2000 }, r: 150 },
+  { a: { x: 3100, y: 1150 }, b: { x: 3380, y: 900 }, r: 120 },
+  { a: { x: 2250, y: 560 }, b: { x: 2800, y: 330 }, r: 100 }, { a: { x: 2800, y: 330 }, b: { x: 3450, y: 420 }, r: 100 },
+  // yard -> extraction clearing
+  { a: { x: 3400, y: 1400 }, b: { x: 4150, y: 1400 }, r: 140 },
+  // the assault routes into the extraction clearing: north, south, north-east, south-east, west (behind, from the
+  // yard trail), north-west (from the shadow enclosure), south-west (from the flame enclosure)
+  { a: { x: 4500, y: 1050 }, b: { x: 4460, y: 0 }, r: 115 }, { a: { x: 4500, y: 1750 }, b: { x: 4560, y: 2800 }, r: 115 },
+  { a: { x: 4760, y: 1150 }, b: { x: 5200, y: 760 }, r: 105 }, { a: { x: 4760, y: 1650 }, b: { x: 5200, y: 2060 }, r: 105 },
+  { a: { x: 3780, y: 860 }, b: { x: 4260, y: 1160 }, r: 105 }, { a: { x: 3150, y: 2250 }, b: { x: 4240, y: 1660 }, r: 105 },
+];
+/** Wire cells: four wire sides around `c` (w x h) with a door gap (`door` side, 70 px). */
+function cell(c: Vec, w: number, h: number, door: 'n' | 's' | 'e' | 'w'): Obstacle[] {
+  const x0 = c.x - w / 2, y0 = c.y - h / 2, t = 10, g = 70, out: Obstacle[] = [];
+  const side = (d: 'n' | 's' | 'e' | 'w') => {
+    const hor = d === 'n' || d === 's', len = hor ? w : h, x = d === 'e' ? x0 + w - t : x0, y = d === 's' ? y0 + h - t : y0;
+    if (d !== door) { out.push(hor ? Wr(x, y, len, t) : Wr(x, y, t, len)); return; }
+    const a = (len - g) / 2;
+    if (hor) { out.push(Wr(x, y, a, t), Wr(x + a + g, y, a, t)); } else { out.push(Wr(x, y, t, a), Wr(x, y + a + g, t, a)); }
+  };
+  (['n', 's', 'e', 'w'] as const).forEach(side);
+  return out;
+}
+/** v0.9C the three prisoners (cell centres) and where each cell's door is. */
+export const CAMP_CELLS = {
+  rocket: { x: 2050, y: 740 }, flame: { x: 2860, y: 2270 }, star: { x: 3570, y: 690 },
+};
+export const CAMP_ALARM: Vec = { x: 2940, y: 1200 };
+/** The first objective: through the outer gate into the yard. */
+export const CAMP_INFILTRATE: Rect = { x: 2150, y: 1300, w: 260, h: 360 };
+export const CAMP_EXTRACTION: Rect = { x: 4380, y: 1280, w: 240, h: 240 };
+/** Where rescue reinforcements stage: the barracks edges and the jungle trail ends around the camp (safeSpawnPoint). */
+export const CAMP_STAGING: Vec[] = [
+  { x: 3350, y: 1400 }, { x: 2600, y: 1860 }, { x: 2300, y: 1150 }, { x: 3300, y: 950 }, { x: 2800, y: 330 }, { x: 1850, y: 1950 },
+  { x: 3150, y: 2250 }, { x: 3780, y: 860 }, { x: 1650, y: 1550 },
+];
+/**
+ * v0.9C the last stand's routes into the extraction clearing (spawn candidates per direction, nearest first; the
+ * mechanic takes the nearest one that is off screen and CFG.prison.waveMinDist from everyone).
+ */
+export const CAMP_ASSAULT: Record<string, Vec[]> = {
+  north: [{ x: 4480, y: 760 }, { x: 4470, y: 480 }, { x: 4460, y: 200 }],
+  south: [{ x: 4520, y: 2050 }, { x: 4540, y: 2320 }, { x: 4550, y: 2600 }],
+  northEast: [{ x: 5000, y: 930 }, { x: 5120, y: 820 }],
+  southEast: [{ x: 5000, y: 1880 }, { x: 5120, y: 2000 }],
+  west: [{ x: 3720, y: 1400 }, { x: 3500, y: 1400 }, { x: 3300, y: 1400 }],
+  northWest: [{ x: 3900, y: 940 }, { x: 3780, y: 860 }],
+  southWest: [{ x: 3820, y: 1900 }, { x: 3600, y: 2020 }, { x: 3300, y: 2180 }],
+};
+const CAMP_COVER: Obstacle[] = [
+  // patrol clearing and the approach: logs, rocks
+  Tr(920, 2130, 70, 60, 40), R(1120, 2330, 90, 50, 30), C(880, 2350),
+  // the outer gate: a sandbag line with a gap on the trail, two watchtowers (enemies), a concrete block
+  S(1560, 1640, 110, 16), S(1760, 1640, 110, 16), S(1560, 1860, 16, 90), K(1820, 1820, 70, 40, 30), R(1500, 1780, 80, 50, 30),
+  // the yard: barracks, a supply hut, crates and sandbags to fight from
+  B(2470, 1230, 170, 90), B(2760, 1560, 180, 90), { x: 3080, y: 1500, w: 80, h: 70, kind: 'hut', height: 60 },
+  C(2380, 1520), C(2416, 1520), C(2600, 1720), S(2300, 1380, 16, 110), S(2950, 1350, 110, 16), K(3200, 1250, 70, 40, 30), C(3240, 1560),
+  // the rocket enclosure (fortified): sandbag arcs with gaps, concrete blocks, a hut
+  ...cell(CAMP_CELLS.rocket, 130, 110, 's'),
+  S(1880, 880, 110, 16), S(2090, 900, 120, 16), S(1860, 620, 16, 120), S(2230, 640, 16, 120), K(1930, 560, 80, 36, 32), K(2160, 560, 80, 36, 32),
+  K(1960, 1000, 60, 34, 30), K(2200, 1010, 60, 34, 30), { x: 2240, y: 760, w: 70, h: 60, kind: 'hut', height: 60 },
+  // the flame enclosure: huts and crates (big rifle squads in the open between them)
+  ...cell(CAMP_CELLS.flame, 130, 110, 'n'),
+  { x: 2620, y: 2180, w: 80, h: 70, kind: 'hut', height: 60 }, { x: 3020, y: 2340, w: 80, h: 70, kind: 'hut', height: 60 },
+  C(2700, 2380), C(2736, 2380), C(3010, 2140), C(2980, 2420), R(2760, 2050, 80, 40, 28), S(2900, 2050, 110, 16),
+  // the shadow enclosure: scattered rocks and trees over a wide clearing (dispersed guards); its door faces north
+  ...cell(CAMP_CELLS.star, 130, 110, 'n'),
+  Tr(3380, 620, 60, 60, 40), R(3700, 540, 80, 50, 30), Tr(3640, 930, 60, 50, 40), R(3420, 860, 90, 40, 28), C(3600, 900),
+  // the trail east and the extraction clearing: rocks, sandbag arcs and crates around the landing zone (gaps everywhere)
+  R(3800, 1320, 80, 50, 30), C(3960, 1480),
+  S(4280, 1200, 110, 16), S(4620, 1200, 110, 16), S(4280, 1590, 110, 16), S(4620, 1590, 110, 16),
+  S(4250, 1340, 16, 110), S(4740, 1340, 16, 110), R(4440, 1130, 80, 40, 28), R(4470, 1640, 80, 40, 28), C(4660, 1420), C(4320, 1440),
+];
+export const CAMP_MAP: MapDef = {
+  id: 'jungle-camp', w: 5200, h: 2800, theme: 'jungle',
+  obstacles: [...jungleCanopy(5200, 2800, CAMP_OPEN), ...CAMP_COVER],
+  start: { x: 260, y: 2500 }, startZone: { x: 130, y: 2370, w: 260, h: 260 },
+  medkits: [{ x: 1120, y: 2150 }, { x: 1760, y: 1560 }, { x: 2660, y: 1660 }, { x: 2280, y: 880 }, { x: 3060, y: 2150 }, { x: 3740, y: 720 }, { x: 3900, y: 1460 }, { x: 4520, y: 1180 }],
+  rapidFire: [{ x: 2540, y: 1460 }, { x: 4560, y: 1250 }],
+  roads: [
+    [{ x: 0, y: 2520 }, { x: 600, y: 2400 }, { x: 1000, y: 2250 }, { x: 1700, y: 1750 }, { x: 2250, y: 1550 }, { x: 2650, y: 1450 }, { x: 3150, y: 1400 }, { x: 4150, y: 1400 }, { x: 4500, y: 1400 }],
+    [{ x: 2650, y: 1450 }, { x: 2300, y: 1050 }, { x: 2050, y: 760 }], [{ x: 2650, y: 1450 }, { x: 2800, y: 2000 }, { x: 2860, y: 2270 }],
+    [{ x: 3150, y: 1400 }, { x: 3380, y: 900 }, { x: 3570, y: 690 }],
+  ],
+  props: [{ kind: 'flag', x: 2560, y: 1210 }, { kind: 'tent', x: 3000, y: 1700 }, { kind: 'tent', x: 2360, y: 1720 }, { kind: 'radar', x: 3120, y: 1300 }],
+};
+export const CAMP_OPEN_SHAPES = CAMP_OPEN;

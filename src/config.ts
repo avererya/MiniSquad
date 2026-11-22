@@ -435,6 +435,26 @@ function makeDefaults() {
       hp: 50, radius: 20, blastRadius: 115, damage: 70, edgeFrac: 0.3,
       chainRadius: 170, chainDelay: 0.35, safeDist: 175, tapRadius: 56, orderTime: 8, shake: 18,
     },
+    // v0.9C Mission 19 "Prison Break" rescued specialists (prison.ts): temporary allies (Game.allies, never soldiers),
+    // each with a soldier-class stat block read through Unit.stats. ROCKET: a slow, heavy launcher whose rounds explode
+    // like the Demolitions Expert's (combat.ts rocketImpact: CFG.rocket splash, +30% vs Armored, no friendly fire).
+    // FLAME: a short cone of fire like Inferno (`damage` = damage per second to every enemy in the cone, ticked by
+    // fireRate; CFG.prison flame* for cone / burn / armor bypass). STAR: fast spinning throwing stars, short range.
+    prisonRocket: soldierClassStats({ hp: 150, damage: 46, fireRate: 0.6, accuracy: 4, movePenalty: 10, moveSpeed: 140, projectileSpeed: 540, reviveTime: 10, range: 470 }),
+    prisonFlame: soldierClassStats({ hp: 170, damage: 34, fireRate: 4, accuracy: 0, movePenalty: 0, moveSpeed: 150, projectileSpeed: 1, reviveTime: 10, range: 165 }),
+    prisonStar: soldierClassStats({ hp: 120, damage: 9, fireRate: 4.5, accuracy: 6, movePenalty: 6, moveSpeed: 172, projectileSpeed: 820, reviveTime: 10, range: 320 }),
+    // v0.9C Mission 19 mechanic numbers (prison.ts PrisonBreak)
+    prison: {
+      freeTime: 2.5, // s a standing soldier must stay within freeRadius of a cell door (progress kept)
+      freeRadius: 110,
+      flameCone: 60, // full flame cone (deg) of the flame specialist
+      flameBurnDps: 4, flameBypass: 0.35, // afterburn (CFG.inferno.burnTime s) and armor bypass, as Inferno
+      flameEngage: 280, // the flame specialist steps toward an enemy this close to it (and near the squad)
+      alarmHp: 260, // the camp's alarm tower (optional target)
+      countdown: 30, // s from reaching the clearing to the helicopter
+      waveMinDist: 520, // last-stand groups spawn off screen and at least this far from every soldier / specialist
+      carryRadius: 1300, // hostiles this close to the landing zone at the countdown each take one attacker off the assault
+    },
     feel: {
       cameraSmoothing: 6, // higher = snappier
       hitFlash: 0.1,

@@ -13,6 +13,7 @@ import {
   FORTRESS_INNER_GATE, FORTRESS_INNER_LOCKED, FORTRESS_LOCKED, FORTRESS_MAIN_GATE, FORTRESS_MAP, FORTRESS_RELAYS, FORTRESS_VOSS,
   JUNGLE_EXTRACTION, JUNGLE_MAP, JUNGLE_MINES, JUNGLE_PRESSURE,
   FUEL_APPROACH, FUEL_COUNTER_FROM, FUEL_EXTRACTION, FUEL_INSTALLATIONS, FUEL_MAP, FUEL_PICKETS, FUEL_PRESSURE, FUEL_RESPONSE, FUEL_TANKS,
+  CAMP_ALARM, CAMP_ASSAULT, CAMP_CELLS, CAMP_EXTRACTION, CAMP_INFILTRATE, CAMP_MAP, CAMP_STAGING,
   ALLEY_ASSAULT, ALLEY_CACHES, ALLEY_EXTRACTION, ALLEY_MAP, ALLEY_POINTS, ALLEY_PRESSURE, ALLEY_ROOF_DECOYS, ALLEY_ROOFS, ALLEY_ZONES,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
@@ -33,6 +34,7 @@ import { MineField } from './mines';
 import { FuelInstallationsObjective, FuelKillsOptional, InstallationCounterattack, MineKillsOptional, ResponseObjective, type CounterattackDef, type ResponseWave } from './chapter4';
 import { FuelDepot } from './fuel';
 import { AmbushDirector, AmbushObjective, CachesOptional, SupplyCaches, type CacheDef, type StreetAmbushDef } from './urban';
+import { AlarmTowerOptional, PrisonBreak, RescuePrisonersObjective, SpecialistsAliveOptional, type AssaultWave, type PrisonerDef, type RescueResponse } from './prison';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -715,7 +717,67 @@ const AMBUSH_ALLEY: MissionScript = {
   },
 };
 
+// ---- v0.9C Mission 19: Prison Break (Rescue / Last Stand, 6 soldiers + up to 3 rescued specialists) ----
+// 47 placed enemies: a patrol on the approach (4), the outer gate (5 + an Armored Trooper + two watchtowers), the
+// yard by the barracks (6 + 1 Armored) and the alarm tower; the ROCKET enclosure dug in (4 Armored, 3 Riflemen, a
+// Sniper; half hold their sandbag posts), the FLAME enclosure's two big rifle squads (6 + 6), the SHADOW enclosure's
+// guards spread in pairs over its clearing (7 + a Sniper; the north flanking trail reaches them from behind).
+// Releases escalate (PrisonBreak responses, by count, never by cell): 5 after the first, 8 + 2 Armored after the
+// second (4 + 1 if the alarm tower fell first), 6 + 1 Armored with the lockdown after the third. Then the last stand
+// at the extraction clearing (30 s, 60 Riflemen in four waves from seven routes; scaled for the force that arrives).
+export const CAMP_PRISONERS: PrisonerDef[] = [
+  { kind: 'rocket', name: 'KRAKEN', role: 'Rocket Specialist', cell: CAMP_CELLS.rocket },
+  { kind: 'flame', name: 'TORCH', role: 'Flamethrower Specialist', cell: CAMP_CELLS.flame },
+  { kind: 'star', name: 'WRAITH', role: 'Shadow Operative', cell: CAMP_CELLS.star },
+];
+const RN = (n: number): EnemyKind[] => Array.from({ length: n }, () => 'rifleman');
+export const CAMP_RESPONSES: RescueResponse[] = [
+  { after: 1, delay: 4, kinds: RN(5), banner: 'GUARDS MOBILIZING' },
+  { after: 2, delay: 5, kinds: [...RN(8), 'armored', 'armored'], reduced: [...RN(4), 'armored'], banner: 'BREAKOUT ALERT — REINFORCEMENTS FROM THE BARRACKS' },
+  { after: 3, delay: 3, kinds: [...RN(6), 'armored'], banner: 'LOCKDOWN SQUAD INBOUND' },
+];
+/** The last stand: 60 Riflemen (12 + 15 + 18 + 15) at 0.5 / 7 / 14 / 21 s of the 30 s countdown. */
+export const CAMP_ASSAULT_WAVES: AssaultWave[] = [
+  { at: 0.5, groups: [{ route: 'north', size: 12 }], banner: 'ENEMY ASSAULT' },
+  { at: 7, groups: [{ route: 'west', size: 8 }, { route: 'northEast', size: 7 }], banner: 'MORE OF THEM' },
+  { at: 14, groups: [{ route: 'south', size: 6 }, { route: 'northWest', size: 6 }, { route: 'southEast', size: 6 }], banner: 'THEY ARE SURROUNDING THE CLEARING' },
+  { at: 21, groups: [{ route: 'north', size: 5 }, { route: 'southWest', size: 5 }, { route: 'west', size: 5 }], banner: 'FINAL RUSH — THE HELICOPTER IS ALMOST HERE' },
+];
+const PRISON_CAMP: MissionScript = {
+  id: 'jungle-prison', map: CAMP_MAP,
+  groups: () => [
+    { tag: 'patrol', points: [{ x: 1000, y: 2180 }, { x: 1070, y: 2260 }, { x: 940, y: 2290 }, { x: 1040, y: 2120 }], aggro: 420 },
+    { tag: 'gate', points: [{ x: 1640, y: 1600 }, { x: 1800, y: 1600 }, { x: 1720, y: 1690 }, { x: 1880, y: 1700 }, { x: 1620, y: 1720 }, k(1760, 1580, 'armored'), k(1590, 1560, 'tower'), k(1900, 1580, 'tower')], aggro: 440 },
+    { tag: 'yard', points: [{ x: 2560, y: 1380 }, { x: 2680, y: 1340 }, { x: 2740, y: 1460 }, { x: 2860, y: 1300 }, { x: 3000, y: 1420 }, { x: 3100, y: 1300 }, k(2900, 1260, 'armored')], aggro: 420 },
+    // the rocket enclosure: troopers and a sniper dug in behind the sandbags (half hold), riflemen at the door
+    { tag: 'rocket-posts', points: [k(1950, 860, 'armored'), k(2150, 870, 'armored'), k(1920, 650, 'armored')], aggro: 400, hold: true },
+    { tag: 'rocket', points: [k(2140, 660, 'armored'), k(2050, 560, 'sniper'), { x: 1990, y: 900 }, { x: 2110, y: 930 }, { x: 2280, y: 880 }], aggro: 420 },
+    // the flame enclosure: two big rifle squads in the open
+    { tag: 'flame-a', points: [{ x: 2740, y: 2140 }, { x: 2800, y: 2100 }, { x: 2680, y: 2080 }, { x: 2860, y: 2150 }, { x: 2720, y: 2220 }, { x: 2950, y: 2110 }], aggro: 440 },
+    { tag: 'flame-b', points: [{ x: 2980, y: 2250 }, { x: 3060, y: 2260 }, { x: 2940, y: 2380 }, { x: 3080, y: 2420 }, { x: 2800, y: 2420 }, { x: 2660, y: 2320 }], aggro: 380 },
+    // the shadow enclosure: guards spread in pairs over the clearing (small aggro: they can be taken apart)
+    { tag: 'star-a', points: [{ x: 3330, y: 780 }, { x: 3390, y: 820 }], aggro: 300 },
+    { tag: 'star-b', points: [{ x: 3700, y: 640 }, { x: 3740, y: 700 }], aggro: 300 },
+    { tag: 'star-c', points: [{ x: 3560, y: 900 }, { x: 3640, y: 880 }], aggro: 300 },
+    { tag: 'star-d', points: [{ x: 3480, y: 540 }, k(3660, 520, 'sniper')], aggro: 320 },
+  ],
+  triggers: [],
+  primaries: () => [
+    new ReachObjective('infiltrate', 'Infiltrate the prison compound', CAMP_INFILTRATE, 'COMPOUND'),
+    new RescuePrisonersObjective('rescue', 'Rescue the three specialists'),
+  ],
+  optionals: () => [new AlarmTowerOptional('alarm-tower', 'Destroy the alarm tower'), new SpecialistsAliveOptional('specialists-alive', 'Keep all three specialists alive')],
+  hint: 'Three prisoners, any order: stand by a cell door to free one. Each rescue brings more guards. The alarm tower in the yard calls them.',
+  mechanics: () => [new PrisonBreak({ prisoners: CAMP_PRISONERS, alarm: CAMP_ALARM, staging: CAMP_STAGING, responses: CAMP_RESPONSES, routes: CAMP_ASSAULT, assault: CAMP_ASSAULT_WAVES })],
+  // the camp's own last stand (PrisonBreak); no generic extraction pressure on top
+  extraction: { zone: CAMP_EXTRACTION, countdown: () => CFG.prison.countdown },
+  story: {
+    'start:infiltrate': 'm19-intro', 'cue:rescue1': 'm19-rescue1', 'cue:rescue2': 'm19-rescue2', 'cue:rescue3': 'm19-rescue3',
+    victory: 'm19-extract', 'cue:assault': 'm19-assault', 'cue:intel': 'm19-intel',
+  },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP, FUEL_FOR_THE_FIRE, AMBUSH_ALLEY].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP, FUEL_FOR_THE_FIRE, AMBUSH_ALLEY, PRISON_CAMP].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

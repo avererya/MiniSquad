@@ -24,6 +24,10 @@ function setupMission({ missionId, level }) {
   // run covers the countdown, the staggered extraction pressure and the helicopter (no captive missions)
   const extract = /@extract$/.test(missionId);
   if (extract) missionId = missionId.replace(/@extract$/, '');
+  // v0.9C 'jungle-prison@stand': Mission 19 with the three specialists freed and the camp cleared, the squad at the
+  // landing zone, so a short run covers the 30 s countdown, the four-wave last stand (60 Riflemen) and the helicopter
+  const stand = missionId === 'jungle-prison@stand';
+  if (stand) missionId = 'jungle-prison';
   const story = missionId === 'last-stand@story';
   const voss = missionId === 'last-stand@voss' || story;
   if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
@@ -84,6 +88,20 @@ function setupMission({ missionId, level }) {
     for (const e of g.enemies) if (!e.structure) e.state = 'dead';
     g.enemies = g.enemies.filter((e) => e.state !== 'dead');
     const z = m.extraction.zone, c = { x: z.x + z.w / 2, y: z.y + z.h / 2 };
+    g.soldiers.forEach((s, i) => { s.pos = { x: c.x - 45 + (i % 3) * 45, y: c.y - 25 + Math.floor(i / 3) * 50 }; s.vel = { x: 0, y: 0 }; });
+    g.anchor = { ...c }; g.cam = { ...c };
+  }
+  if (stand && r.ok) {
+    const m = g.mission, P = m.mechanic('prison');
+    if (g.story) g.story.skip(g);
+    for (const e of g.enemies) if (!e.structure) e.state = 'dead';
+    g.enemies = g.enemies.filter((e) => e.state !== 'dead');
+    const z = m.extraction.zone, c = { x: z.x + z.w / 2, y: z.y + z.h / 2 };
+    for (const p of P.prisoners) { p.npc.pos = { x: c.x - 80 + 40 * P.prisoners.indexOf(p), y: c.y + 70 }; P.free(m, g, p); }
+    P.pending.length = 0;
+    if (g.story) { g.story.skip(g); if (g.story.queue) g.story.queue.length = 0; }
+    for (const o of m.primaries) o.state = 'complete';
+    m.current = m.primaries.length; m.phase = 'toExtraction';
     g.soldiers.forEach((s, i) => { s.pos = { x: c.x - 45 + (i % 3) * 45, y: c.y - 25 + Math.floor(i / 3) * 50 }; s.vel = { x: 0, y: 0 }; });
     g.anchor = { ...c }; g.cam = { ...c };
   }

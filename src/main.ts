@@ -24,7 +24,7 @@ import * as targeting from './targeting';
 import * as story from './story';
 import { MISSION_SCRIPTS } from './missions';
 import { FuelDepot } from './fuel';
-import { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES } from './map';
+import { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES, CAMP_ALARM, CAMP_ASSAULT, CAMP_CELLS, CAMP_EXTRACTION, CAMP_INFILTRATE, CAMP_OPEN_SHAPES, CAMP_STAGING } from './map';
 import { blastDamage, explode } from './combat';
 
 const stage = document.getElementById('stage')!;
@@ -225,5 +225,7 @@ Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStat
   // Phase 3 (tools/arch.cjs): mission scripts (MissionScript.mechanics) and the shared blast-damage helper
   __missions: MISSION_SCRIPTS, __combat: { blastDamage, explode },
   // v0.9B (tools/v09b.cjs): the fuel depot mechanic, to lay test tanks in any mission; Mission 18's zones and points
-  __fuelDepot: FuelDepot, __alley: { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES } });
+  __fuelDepot: FuelDepot, __alley: { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES },
+  // v0.9C (tools/v09c.cjs): Mission 19's camp geometry and the flame tick
+  __camp: { CAMP_CELLS, CAMP_ASSAULT, CAMP_EXTRACTION, CAMP_STAGING, CAMP_INFILTRATE, CAMP_ALARM, CAMP_OPEN_SHAPES } });
 game.resetRosterSave = resetRosterSave;

@@ -185,5 +185,32 @@ const V09B1 = {
   normCd(id, s) { return s && V09B1.countdowns[id] !== undefined ? s.replace(/"cd":[0-9.]+/, '"cd":"v0.9B.1"') : s; },
 };
 
-module.exports = { V09B1, RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
+/**
+ * v0.9C PRISON BREAK, the intended changes to older content: four new CFG groups (the Mission 19 mechanic and its
+ * three specialists), Mission 7's campaign name ("Prison Break" -> "Operation Breakout", id `prison-break` kept) and
+ * Mission 18's unlock list (now Mission 19). Older suites that compare with an older BASE set exactly these aside;
+ * `v09c` checks the new values and that nothing else moved since v0.9B.2.
+ */
+const V09C = {
+  cfgGroups: ['prison', 'prisonFlame', 'prisonRocket', 'prisonStar'],
+  /** CFG group names that differ, without the v0.9C groups. */
+  cfgDiff(keys) { return keys.filter((k) => !V09C.cfgGroups.includes(k)); },
+  /** A mission's snapshot string with Mission 7's name and Mission 18's unlock list set aside (other missions as is). */
+  norm(id, s) {
+    if (!s || (id !== 'prison-break' && id !== 'ambush-alley')) return s;
+    try {
+      const o = JSON.parse(s);
+      if (o && typeof o.def === 'string') {
+        const d = JSON.parse(o.def);
+        if (id === 'prison-break') d.name = 'M7';
+        else d.unlocks = 'v0.9C'; // Mission 18: unlocks Mission 19, its "future update" note moved to Mission 19
+        o.def = JSON.stringify(d);
+        return JSON.stringify(o);
+      }
+    } catch { /* not a missionSnapshot string: fall through */ }
+    return id === 'prison-break' ? s.replace(/(\\?"name\\?":\\?")(Prison Break|Operation Breakout)/g, '$1M7') : s;
+  },
+};
+
+module.exports = { V09B1, V09C, RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
   seedRandom, installPageHelpers, missionSnapshot, openPage };

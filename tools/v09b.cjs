@@ -22,7 +22,7 @@
 //  H. Phones (iPhone SE / 14 / Pixel 7 landscape): the tank tap area is at least 44 CSS px; a touch tap orders a tank
 // Usage: npm test -- v09b   (or: npx vite preview --port 4173 & BASE=<v0.9A url> node tools/v09b.cjs)
 const fs = require('fs');
-const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot, installPageHelpers, V09B1 } = require('./lib.cjs');
+const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot, installPageHelpers, V09B1, V09C } = require('./lib.cjs');
 
 /** Page-side helpers on top of window.T (tools/lib.cjs). */
 function installHelpers() {
@@ -154,7 +154,7 @@ runSuite(async () => {
   check('A3 Mission 17 "fuel-for-the-fire": number 17, playable, Sabotage, Chapter 4, six soldiers, the fuel-kills optional, briefing', camp.r17 && camp.r17.n === 17 && camp.r17.playable && camp.r17.type === 'sabotage' && camp.ch17 === 4 && camp.cap17 === 6 && camp.r17.opt === 'fuel-kills' && camp.r17.brief, JSON.stringify(camp.r17));
   const HAS18 = !!camp.r18; // checkpoint 1 (Mission 17 only) runs the Mission 17 checks alone
   check('A4 Mission 18 "ambush-alley": number 18, playable, Urban Ambush, Chapter 4, six soldiers, optional caches, briefing', camp.r18 && camp.r18.n === 18 && camp.r18.playable && camp.r18.type === 'urban' && camp.ch18 === 4 && camp.cap18 === 6 && camp.r18.opt === 'caches' && camp.r18.brief, JSON.stringify(camp.r18));
-  check('A5 unlock chain: Mission 16 unlocks 17, 17 unlocks 18, 18 unlocks nothing yet (Missions 19-20 not playable)', camp.m16unl === 'fuel-for-the-fire' && (HAS18 ? camp.r17.unl === 'ambush-alley' && camp.r18.unl === '' && camp.maxPlayable === 18 : camp.r17.unl === '' && camp.maxPlayable === 17) && camp.after.every((x) => x.endsWith(':false')), JSON.stringify({ m16: camp.m16unl, m17: camp.r17.unl, m18: camp.r18 && camp.r18.unl, max: camp.maxPlayable, after: camp.after }));
+  check('A5 unlock chain: Mission 16 unlocks 17, 17 unlocks 18 (v0.9C: 18 unlocks Mission 19, the last playable; Mission 20 not playable)', camp.m16unl === 'fuel-for-the-fire' && (HAS18 ? camp.r17.unl === 'ambush-alley' && camp.r18.unl === 'jungle-prison' && camp.maxPlayable === 19 : camp.r17.unl === '' && camp.maxPlayable === 17) && camp.after.every((x) => x.endsWith(x.startsWith('jungle-prison:') ? ':true' : ':false')), JSON.stringify({ m16: camp.m16unl, m17: camp.r17.unl, m18: camp.r18 && camp.r18.unl, max: camp.maxPlayable, after: camp.after }));
 
   // unlocks through real settlements: a failure unlocks nothing, the first win unlocks the next, a replay adds nothing
   await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForFunction(() => !!window.game && !!window.T);
@@ -681,15 +681,16 @@ runSuite(async () => {
     const np = await openPage(browser, URL, { seed: 4242 });
     const now = await np.evaluate(missionSnapshot);
     await np.context().close();
-    const cfgDiff = V09B1.cfgDiff(Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k])); // v0.9B.1: extraction pressure set aside
-    check('G1 every CFG group identical to v0.9A except the new `fuel` group', cfgDiff.join() === 'fuel', cfgDiff.join() || 'none');
+    const cfgDiff = V09C.cfgDiff(V09B1.cfgDiff(Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k]))); // v0.9B.1: extraction pressure, v0.9C: prison* set aside
+    check('G1 every CFG group identical to v0.9A except the new `fuel` group (v0.9C prison* set aside)', cfgDiff.join() === 'fuel', cfgDiff.join() || 'none');
     // v0.9B.1: the countdowns it changed are set aside (V09B1.normCd)
-    const norm = (s, id) => { s = V09B1.normCd(id, s); if (!s || id !== 'jungle-sweep') return s; const o = JSON.parse(s), d = JSON.parse(o.def); d.unlocks = {}; o.def = JSON.stringify(d); return JSON.stringify(o); };
+    const norm = (s, id) => { s = V09B1.normCd(id, V09C.norm(id, s)); // v0.9C: Mission 7's name set aside
+      if (!s || id !== 'jungle-sweep') return s; const o = JSON.parse(s), d = JSON.parse(o.def); d.unlocks = {}; o.def = JSON.stringify(d); return JSON.stringify(o); };
     const ids = Object.keys(before.missions);
     const misDiff = ids.filter((id) => norm(before.missions[id], id) !== norm(now.missions[id], id));
     const m16 = JSON.parse(JSON.parse(now.missions['jungle-sweep']).def).unlocks.missions.join();
-    check('G2 Missions 1-16 identical to v0.9A (maps, enemies, objectives, extraction, story, campaign rows)', ids.length === 16 && misDiff.length === 0, misDiff.length ? `changed: ${misDiff.join()}` : `${ids.length} missions`);
-    check('G3 Mission 16\'s only change: its unlock list names Mission 17; two new missions', m16 === 'fuel-for-the-fire' && Object.keys(now.missions).length === (HAS18 ? 18 : 17), `${m16}, ${Object.keys(now.missions).length} missions`);
+    check('G2 Missions 1-16 identical to v0.9A (maps, enemies, objectives, extraction, story, campaign rows; v0.9C: Mission 7 renamed)', ids.length === 16 && misDiff.length === 0, misDiff.length ? `changed: ${misDiff.join()}` : `${ids.length} missions`);
+    check('G3 Mission 16\'s only change: its unlock list names Mission 17; two new missions (v0.9C: and Mission 19)', m16 === 'fuel-for-the-fire' && Object.keys(now.missions).length === (HAS18 ? 19 : 17), `${m16}, ${Object.keys(now.missions).length} missions`);
   } else check('G BASE build available', false, 'BASE not set (npm test serves v0.9A)');
 
   // ================= H. PHONES =================

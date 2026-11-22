@@ -308,7 +308,9 @@ export function updateAllies(game: Game, dt: number) {
   game.allies.forEach((u, i) => {
     if (!u.active) { u.vel.x = 0; u.vel.y = 0; return; }
     let goal: Vec;
+    const rush = u.special === 'flame' ? flameRush(game, u, a) : null; // v0.9C the flame specialist closes in
     if (u.post) goal = u.post;
+    else if (rush) goal = rush;
     else {
       const t = heading + Math.PI + (n > 1 ? (i - (n - 1) / 2) * 0.7 : 0);
       goal = { x: a.x + Math.cos(t) * 95, y: a.y + Math.sin(t) * 95 };
@@ -347,4 +349,25 @@ export function updateAllies(game: Game, dt: number) {
       u.pos.x = p.x; u.pos.y = p.y; u.vel.x = 0; u.vel.y = 0; u.path = null; u.stuckT = 0;
     }
   });
+}
+
+/**
+ * v0.9C Mission 19 flame specialist (prison.ts): its flamer reaches only CFG.prisonFlame.range, so while an enemy it
+ * can see is within CFG.prison.flameEngage of it and close to the squad (the anchor, 360 px), it steps to just inside
+ * flame reach of the nearest such enemy instead of trailing behind the squad. Null otherwise (normal following).
+ */
+function flameRush(game: Game, u: Unit, anchor: Vec): Vec | null {
+  const P = CFG.prison, reach = CFG.prisonFlame.range * 0.7;
+  let best: Unit | null = null, bd = P.flameEngage;
+  for (const e of game.enemies) {
+    if (!e.targetable || e.structure) continue;
+    const d = dist(u.pos, e.pos);
+    if (d >= bd || dist(anchor, e.pos) > 360 || !game.world.clear(u.pos, e.pos)) continue;
+    bd = d; best = e;
+  }
+  if (!best) return null;
+  if (bd <= reach) return { x: u.pos.x, y: u.pos.y };
+  const k = reach / Math.max(1, bd);
+  const p = { x: best.pos.x + (u.pos.x - best.pos.x) * k, y: best.pos.y + (u.pos.y - best.pos.y) * k };
+  return game.world.isOpen(p.x, p.y) && !game.world.insideObstacle(p, u.radius) ? p : null;
 }

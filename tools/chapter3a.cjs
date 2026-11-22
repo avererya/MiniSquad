@@ -298,7 +298,7 @@ function installHelpers() {
   // ================= C. BRIEFINGS =================
   await fresh();
   const br = await ev(() => window.__campaign.CAMPAIGN.filter((m) => m.playable).map((m) => ({ id: m.id, n: m.number, b: m.brief, opt: m.optional.map((o) => o.label || o.id) })));
-  check('C1 Missions 1-18 all have a briefing (story, objective, tip; v0.8B adds 13 / 14, v0.8C 15, v0.9A 16, v0.9B 17 / 18); the optional row lists the mission\'s optionals ("None" when it has none)', br.length === 18 && br.every((m) => m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip), br.filter((m) => !(m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip)).map((m) => `${m.id}:${JSON.stringify(m.b).slice(0, 60)}:${m.opt.length}`).join(' ') + ` (${br.length})`);
+  check('C1 Missions 1-19 all have a briefing (story, objective, tip; v0.8B adds 13 / 14, v0.8C 15, v0.9A 16, v0.9B 17 / 18, v0.9C 19); the optional row lists the mission\'s optionals ("None" when it has none)', br.length === 19 && br.every((m) => m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip), br.filter((m) => !(m.b && m.b.story.length > 20 && m.b.objective.length > 5 && m.b.tip)).map((m) => `${m.id}:${JSON.stringify(m.b).slice(0, 60)}:${m.opt.length}`).join(' ') + ` (${br.length})`);
   check('C2 no spoilers: no briefing before Mission 15 names General Voss (v0.8C: Mission 15 is his; v0.9A: Mission 16, after him, may)', br.filter((m) => m.n < 15).every((m) => !/voss/i.test(JSON.stringify(m.b))) && br.some((m) => m.id === 'last-stand'), '');
   await page.click('[data-a="csel"][data-id="first-contact"]');
   await page.click('.c-btns [data-a="deploy"]'); await page.waitForTimeout(80);

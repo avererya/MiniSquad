@@ -6,6 +6,7 @@ import { DEG, dist, rand, segCircle, turnToward, angleDiff, type Vec } from './u
 import { sfx } from './audio';
 import { sniperShouldSwitch } from './targeting';
 import { closeQuartersMul, onFire, onHit, penetrate } from './elite';
+import { ignite } from './abilities';
 
 export interface Projectile {
   pos: Vec;
@@ -33,6 +34,9 @@ export interface Projectile {
   liftDist?: number;
   /** v0.8C: a Demolitions Expert rocket: explodes on the first enemy, wall or at the end of its flight (rocketImpact). */
   rocket?: boolean;
+  /** v0.9C a rescued specialist's oversized rocket (drawn bigger; same impact rules) / spinning throwing star (render only). */
+  big?: boolean;
+  star?: boolean;
 }
 
 export interface Particle { pos: Vec; vel: Vec; life: number; maxLife: number; color: string; size: number; z?: number; vz?: number }
@@ -139,6 +143,8 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   if (Math.abs(angleDiff(u.aim, desired)) > st.aimTolerance * DEG) return;
   if (aimNeed > 0 && u.aimHeld < aimNeed) return;
 
+  // v0.9C the rescued flame specialist: no round, a cone of fire on every enemy in reach (flameBurst)
+  if (u.special === 'flame') { flameBurst(u, game); return; }
   // Fire: direction randomized uniformly inside the current cone. No shot leading.
   const half = (u.cone * DEG) / 2;
   const a = u.aim + rand(-half, half);
@@ -151,7 +157,7 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
   const el = u.team === 'squad' && (u.elite || u.rallied) ? onFire(u) : null;
   // v0.8C General Voss's Rally: enemies near him deal +20% for its duration (decided when the round leaves the barrel)
   const rally = u.team === 'enemy' && u.rallyUntil > game.time ? 1 + CFG.general.rallyBonus : 1;
-  const rocket = vis?.weapon === 'rocket';
+  const rocket = vis?.weapon === 'rocket' || u.special === 'rocket'; // v0.9C the rescued rocket specialist fires the same rocket
   game.projectiles.push({
     pos: { x: u.pos.x + dx * 6 + sx, y: u.pos.y + dy * 6 + sy },
     vel: { x: dx * speed, y: dy * speed },
@@ -167,12 +173,37 @@ export function updateWeapon(u: Unit, game: Game, dt: number, hostiles: Unit[]) 
     precise: aimNeed > 0,
     ...(u.team === 'squad' ? { from: { x: u.pos.x, y: u.pos.y } } : {}),
     ...(rocket ? { rocket: true } : {}),
+    ...(u.special === 'rocket' ? { big: true } : u.special === 'star' ? { star: true } : {}),
   });
   u.aimHeld = 0;
   u.shots++;
   u.fireCooldown = (1 / u.fireRate) * (u.team === 'enemy' ? rand(0.85, 1.2) : rand(0.95, 1.05));
   u.muzzle = CFG.feel.muzzleFlash;
   if (u.team === 'squad') sfx(rocket ? 'throw' : aimNeed > 0 ? 'snipe' : 'shot'); else sfx('eshot');
+}
+
+/**
+ * v0.9C FLAME SPECIALIST (Mission 19, prison.ts): one "shot" (every 1 / fireRate s while a target is in reach and
+ * the aim is on it) is a tick of fire on EVERY targetable enemy inside the cone (CFG.prison.flameCone, reach =
+ * stats.range + the enemy's body, a clear line from the specialist): damage / fireRate each, flame damage with the
+ * Inferno armor bypass, and the Inferno afterburn (ignite). Structures and hazards are never hit (no friendly fire,
+ * nothing new for mines / fuel tanks). No Math.random: the cone is exact.
+ */
+export function flameBurst(u: Unit, game: Game) {
+  const P = CFG.prison, st = u.stats, reach = st.range, half = (P.flameCone / 2) * DEG, per = st.damage / Math.max(0.1, st.fireRate);
+  for (const e of game.enemies) {
+    if (!e.targetable || e.structure) continue;
+    const dx = e.pos.x - u.pos.x, dy = e.pos.y - u.pos.y, d = Math.hypot(dx, dy);
+    if (d > reach + e.radius) continue;
+    if (d > e.radius && Math.abs(angleDiff(u.aim, Math.atan2(dy, dx))) > half) continue;
+    if (!game.world.clear(u.pos, e.pos)) continue;
+    game.damage(e, per, u, { flame: true, pen: P.flameBypass, at: e.pos, origin: u.pos });
+    if (e.active) ignite(game, e, u, P.flameBurnDps);
+  }
+  u.shots++;
+  u.fireCooldown = 1 / Math.max(0.1, st.fireRate);
+  u.muzzle = 0.3; // render: the flame stays lit between ticks
+  if (game.isOnScreen(u.pos, 40) && u.shots % 3 === 1) sfx('suppress');
 }
 
 /** Reaction before a squad unit's first shot on a new target (0.08 s; v0.8A Quick Draw / Enhanced Bullet Storm: faster). */

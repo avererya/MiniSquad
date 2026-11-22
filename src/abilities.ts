@@ -295,7 +295,7 @@ export class InfernoAbility extends BaseAbility implements Ability {
 }
 
 /** v0.8C set an enemy alight (or refresh its burn; the stronger burn is kept, never stacked). Burning starts once it is out of the flames. */
-function ignite(game: Game, e: Unit, src: Unit, dps: number) {
+export function ignite(game: Game, e: Unit, src: Unit, dps: number) {
   const b = e.burn;
   if (b) { b.t = CFG.inferno.burnTime; b.dps = Math.max(b.dps, dps); b.src = src; b.lit = game.time; }
   else e.burn = { t: CFG.inferno.burnTime, dps, src, acc: 0, lit: game.time };

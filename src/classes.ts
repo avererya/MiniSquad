@@ -18,7 +18,7 @@ import { CLASS_BRANCHES, eliteModifiers } from './elite';
 
 export type SoldierClassId = 'infantry' | 'heavy' | 'medic' | 'sniper' | 'commando' | 'demolitions';
 export type AbilityId = 'grenade' | 'suppressive' | 'fieldTreatment' | 'focus' | 'bulletStorm' | 'inferno';
-export type WeaponKind = 'rifle' | 'mg' | 'smg' | 'sniper' | 'pistols' | 'rocket';
+export type WeaponKind = 'rifle' | 'mg' | 'smg' | 'sniper' | 'pistols' | 'rocket' | 'bazooka' | 'flamer' | 'stars'; // v0.9C last three: Mission 19 rescued specialists only
 
 export interface ClassVisual {
   bodyW: number; // torso width (Infantry 14)

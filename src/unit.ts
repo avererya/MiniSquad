@@ -13,6 +13,13 @@ import type { MountedGun } from './escort';
 
 export type Team = 'squad' | 'enemy';
 export type UnitState = 'active' | 'downed' | 'kia' | 'dead';
+/** v0.9C Mission 19 rescued specialists: rocket launcher, flamethrower, throwing stars. */
+export type SpecialistKind = 'rocket' | 'flame' | 'star';
+const SPECIAL_CFG: Record<SpecialistKind, () => EffectiveStats> = {
+  rocket: () => CFG.prisonRocket as EffectiveStats,
+  flame: () => CFG.prisonFlame as EffectiveStats,
+  star: () => CFG.prisonStar as EffectiveStats,
+};
 /** v0.6.2 enemy kinds; each reads its own CFG group (missing behaviour = rifleman). */
 export type EnemyKind = 'rifleman' | 'sniper' | 'armored' | 'tower' | 'boss' | 'truck' | 'general';
 type EnemyStats = typeof CFG.enemy;
@@ -157,6 +164,11 @@ export class Unit {
   ally = false;
   /** Ally: where to hold during a defence (null = follow the squad). */
   post: Vec | null = null;
+  /**
+   * v0.9C Mission 19 rescued specialist (prison.ts): an ally with its own weapon and CFG stat block (prisonRocket /
+   * prisonFlame / prisonStar). Still a plain ally: no identity, XP, roster slot or casualty record.
+   */
+  special: SpecialistKind | null = null;
 
   /**
    * v0.8B friendly mission object (team 'squad', never a soldier: no identity, XP, training, casualty record or
@@ -212,7 +224,7 @@ export class Unit {
   get stats(): StatBlock {
     if (this.identity) return this.soldierStats;
     if (this.team === 'enemy') return KIND_CFG[this.kind]();
-    if (this.ally) return CFG.resistance as EffectiveStats;
+    if (this.ally) return this.special ? SPECIAL_CFG[this.special]() : CFG.resistance as EffectiveStats;
     if (this.asset) return ASSET_CFG[this.asset]();
     return CFG.enemy;
   }
@@ -235,7 +247,7 @@ export class Unit {
   get radius() { return this.radiusOverride ?? this.stats.radius; }
   get maxSpeed() {
     if (this.npc) return CFG.escort.moveSpeed * this.catchUp;
-    if (this.ally) return CFG.resistance.moveSpeed * this.catchUp;
+    if (this.ally) return (this.special ? this.stats.moveSpeed : CFG.resistance.moveSpeed) * this.catchUp;
     if (this.structure || this.fixed || this.asset) return 0;
     return this.team === 'squad' ? this.stats.moveSpeed * this.speedMul * this.rallyMul * this.catchUp : this.stats.moveSpeed * this.speedRand;
   }

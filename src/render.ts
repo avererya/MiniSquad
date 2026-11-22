@@ -3,7 +3,7 @@
 // oversized heads.
 import { CFG } from './config';
 import type { Game } from './game';
-import { isBoss, type Unit } from './unit';
+import { isBoss, type SpecialistKind, type Unit } from './unit';
 import { isLowObstacle, type MapDef, type Obstacle } from './map';
 import { grenadePos } from './abilities';
 import { VIEW_W, VIEW_H } from './view';
@@ -535,8 +535,9 @@ function drawGrenade(ctx: CanvasRenderingContext2D, x: number, y: number, z: num
 function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   const sq = u.team === 'squad';
   const el = sq ? u.elite : null;
-  const helmet = u.ally ? COL.allyCap : el ? COL.eliteHelmet : sq ? COL.squadHelmet : COL.enemyHelmet;
-  const body = u.ally ? COL.allyBody : el ? COL.eliteBody : sq ? COL.squadBody : COL.enemyBody;
+  const sp = u.special ? SPECIAL_COL[u.special] : null; // v0.9C rescued specialist
+  const helmet = sp ? sp.cap : u.ally ? COL.allyCap : el ? COL.eliteHelmet : sq ? COL.squadHelmet : COL.enemyHelmet;
+  const body = sp ? sp.body : u.ally ? COL.allyBody : el ? COL.eliteBody : sq ? COL.squadBody : COL.enemyBody;
   const { x, y } = u.pos;
 
   // shadow
@@ -575,7 +576,11 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   const sc = CHAR_SCALE * (u.classDef?.id === 'heavy' ? 1.06 : armored ? 1.16 : 1);
   ctx.save();
   ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
-  const vis = u.team === 'enemy' ? ENEMY_VIS[u.kind] : u.ally ? ALLY_VIS : undefined;
+  if (sp) { // v0.9C a ground ring in the specialist's colour so the three read apart from the squad in a crowd
+    ctx.strokeStyle = sp.tag; ctx.globalAlpha = 0.7; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.ellipse(x, y, 17, 7.5, 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  const vis = u.team === 'enemy' ? ENEMY_VIS[u.kind] : u.special ? SPECIAL_VIS[u.special] : u.ally ? ALLY_VIS : undefined;
   drawStanding(ctx, u, x, y, armored ? '#7d8794' : helmet, body, vis, el?.id ?? null);
   if (armored) drawArmorPlate(ctx, u, x, y);
   ctx.restore();
@@ -745,6 +750,18 @@ const ENEMY_VIS: Partial<Record<string, ClassVisual>> = {
 
 /** v0.8A resistance fighter: rifle, no pack, soft cap. */
 const ALLY_VIS: ClassVisual = { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'cap', tracerWidth: 3, tracerLen: 18 };
+/** v0.9C Mission 19 rescued specialists: an oversized launcher, a flamethrower with tanks, throwing stars (prison.ts). */
+const SPECIAL_VIS: Record<SpecialistKind, ClassVisual> = {
+  rocket: { bodyW: 16, weapon: 'bazooka', pack: 'ammo', helmet: 'cap', tracerWidth: 3, tracerLen: 18 },
+  flame: { bodyW: 16, weapon: 'flamer', pack: 'fuel', helmet: 'blast', tracerWidth: 3, tracerLen: 18 },
+  star: { bodyW: 13, weapon: 'stars', pack: 'none', helmet: 'beret', tracerWidth: 3, tracerLen: 18 },
+};
+/** v0.9C specialist colours: body, headgear, label / health bar. */
+export const SPECIAL_COL: Record<SpecialistKind, { body: string; cap: string; tag: string }> = {
+  rocket: { body: '#5f6b34', cap: '#8a3a2a', tag: '#ffb070' },
+  flame: { body: '#6b4a2a', cap: '#3a3a3a', tag: '#ff8a4a' },
+  star: { body: '#2a2d3a', cap: '#16181d', tag: '#b8a8ff' },
+};
 
 /** Armored Trooper: a big steel plate carried in front (where he faces) + a dark visor. */
 function drawArmorPlate(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: number) {
@@ -871,6 +888,36 @@ function drawStanding(ctx: CanvasRenderingContext2D, u: Unit, x: number, y: numb
       if (fl) { ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.arc(gx + ax * 14, gy + 3 + ay * 11, 2.6, 0, Math.PI * 2); ctx.fill(); }
       if (u.muzzle > 0) { ctx.fillStyle = 'rgba(220,220,220,0.8)'; ctx.beginPath(); ctx.arc(sx - ax * 12, sy - ay * 9, 5, 0, Math.PI * 2); ctx.fill(); } // back-blast
       muzzle(26, 1.2);
+    } else if (weapon === 'bazooka') {
+      // v0.9C rescued rocket specialist: an OVERSIZED shoulder launcher (thick tube, flared back end, big warhead)
+      const loaded = u.fireCooldown <= 0.4;
+      const sx = gx - ay * 3, sy = gy - 6 + ax * 1.5;
+      ctx.strokeStyle = '#22281a'; ctx.lineWidth = 11;
+      ctx.beginPath(); ctx.moveTo(sx - ax * 15, sy - ay * 11); ctx.lineTo(sx + ax * 24, sy + ay * 18); ctx.stroke();
+      ctx.strokeStyle = '#6b7a40'; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.moveTo(sx - ax * 14, sy - ay * 10.5); ctx.lineTo(sx + ax * 23, sy + ay * 17.5); ctx.stroke();
+      ctx.fillStyle = '#e0b83c'; ctx.fillRect(sx + ax * 6 - 2, sy + ay * 4.5 - 4, 4, 8); // hazard band
+      ctx.fillStyle = '#22281a'; ctx.beginPath(); ctx.arc(sx - ax * 16, sy - ay * 12, 6.5, 0, Math.PI * 2); ctx.fill(); // flared back end
+      if (loaded) { ctx.fillStyle = '#c8402c'; ctx.beginPath(); ctx.arc(sx + ax * 26, sy + ay * 19.5, 4.5, 0, Math.PI * 2); ctx.fill(); }
+      if (u.muzzle > 0) { ctx.fillStyle = 'rgba(230,230,230,0.85)'; ctx.beginPath(); ctx.arc(sx - ax * 20, sy - ay * 15, 8, 0, Math.PI * 2); ctx.fill(); }
+      muzzle(32, 1.5);
+    } else if (weapon === 'flamer') {
+      // v0.9C rescued flame specialist: a long wand with a pilot light (the flames themselves: drawFlames)
+      ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(gx - ax * 2, gy); ctx.lineTo(gx + ax * 20, gy + ay * 15); ctx.stroke();
+      ctx.strokeStyle = '#8a2f22'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(gx - ax * 6, gy - 2); ctx.quadraticCurveTo(x - ax * 4, by + 2, gx, gy + 2); ctx.stroke();
+      ctx.fillStyle = u.muzzle > 0 ? '#ffd060' : '#4aa8ff';
+      ctx.beginPath(); ctx.arc(gx + ax * 21, gy + ay * 16, u.muzzle > 0 ? 3.5 : 2, 0, Math.PI * 2); ctx.fill();
+    } else if (weapon === 'stars') {
+      // v0.9C rescued shadow operative: a throwing star ready in the hand, a short blade at the back
+      const sx = gx + ax * 9, sy = gy + ay * 7, r0 = (u.walkPhase * 0.4) % (Math.PI / 2);
+      ctx.fillStyle = '#d8dde6'; ctx.strokeStyle = '#30343c'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 0; k < 8; k++) { const a = r0 + (k * Math.PI) / 4, rr = k % 2 ? 2 : 5.5; ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#9aa0aa'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - ax * 3 + 5, by - 14); ctx.lineTo(x - ax * 3 - 6, by + 2); ctx.stroke();
     } else if (weapon === 'smg') {
       // compact SMG
       ctx.strokeStyle = COL.gun; ctx.lineWidth = 3.5;
@@ -1023,16 +1070,27 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game) {
       ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, py - 18); ctx.stroke();
       continue;
     }
+    if (p.star) {
+      // v0.9C throwing star: a spinning four-point star with a faint trail
+      const x0 = p.pos.x, y0 = py - 18, r0 = (p.life * 28) % (Math.PI / 2);
+      ctx.strokeStyle = 'rgba(200,190,255,0.35)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x0 - (p.vel.x / sp) * 14, y0 - (p.vel.y / sp) * 14); ctx.lineTo(x0, y0); ctx.stroke();
+      ctx.fillStyle = '#e8ecf4'; ctx.strokeStyle = '#2a2d3a'; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let k = 0; k < 8; k++) { const a = r0 + (k * Math.PI) / 4, rr = k % 2 ? 2.2 : 6.5; ctx.lineTo(x0 + Math.cos(a) * rr, y0 + Math.sin(a) * rr); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      continue;
+    }
     if (p.rocket) {
-      // v0.8C rocket: dark body, red tip, flame and smoke tail (one short path set per rocket)
-      const ux = p.vel.x / sp, uy = p.vel.y / sp, rl = CFG.rocket.length, x0 = p.pos.x, y0 = py - 18;
-      ctx.strokeStyle = 'rgba(200,200,200,0.35)'; ctx.lineWidth = 6;
+      // v0.8C rocket: dark body, red tip, flame and smoke tail (one short path set per rocket); v0.9C `big` x1.5
+      const ux = p.vel.x / sp, uy = p.vel.y / sp, rl = CFG.rocket.length * (p.big ? 1.5 : 1), x0 = p.pos.x, y0 = py - 18;
+      ctx.strokeStyle = 'rgba(200,200,200,0.35)'; ctx.lineWidth = p.big ? 9 : 6;
       ctx.beginPath(); ctx.moveTo(x0 - ux * (rl + 26), y0 - uy * (rl + 26)); ctx.lineTo(x0 - ux * rl, y0 - uy * rl); ctx.stroke();
       ctx.strokeStyle = '#ffb030'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(x0 - ux * (rl + 8), y0 - uy * (rl + 8)); ctx.lineTo(x0 - ux * rl, y0 - uy * rl); ctx.stroke();
-      ctx.strokeStyle = '#2d3320'; ctx.lineWidth = 5;
+      ctx.strokeStyle = '#2d3320'; ctx.lineWidth = p.big ? 7.5 : 5;
       ctx.beginPath(); ctx.moveTo(x0 - ux * rl, y0 - uy * rl); ctx.lineTo(x0, y0); ctx.stroke();
-      ctx.fillStyle = '#c8402c'; ctx.beginPath(); ctx.arc(x0, y0, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#c8402c'; ctx.beginPath(); ctx.arc(x0, y0, p.big ? 4 : 2.6, 0, Math.PI * 2); ctx.fill();
       continue;
     }
     if (p.mounted) {
@@ -1130,11 +1188,12 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
   for (const a of game.allies) {
     if (a.state === 'downed') { drawDownedMarker(ctx, a, game); continue; }
     if (a.state !== 'active') { if (a.state === 'kia') { ctx.fillStyle = '#bbb'; ctx.fillText(`${a.name} OUT`, a.pos.x, a.pos.y - 24); } continue; }
-    const w = 30, f = clamp(a.hp / a.maxHp, 0, 1), bx = a.pos.x - w / 2, byy = a.pos.y - 60;
+    const tc = a.special ? SPECIAL_COL[a.special].tag : COL.ally; // v0.9C specialists: their own colour, a wider bar
+    const w = a.special ? 36 : 30, f = clamp(a.hp / a.maxHp, 0, 1), bx = a.pos.x - w / 2, byy = a.pos.y - 60;
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 1, byy - 1, w + 2, 7);
-    ctx.fillStyle = a.hitFlash > 0 ? '#ffffff' : COL.ally; ctx.fillRect(bx, byy, w * f, 5);
+    ctx.fillStyle = a.hitFlash > 0 ? '#ffffff' : tc; ctx.fillRect(bx, byy, w * f, 5);
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(a.name, a.pos.x + 1, a.pos.y - 69);
-    ctx.fillStyle = COL.ally; ctx.fillText(a.name, a.pos.x, a.pos.y - 70);
+    ctx.fillStyle = tc; ctx.fillText(a.name, a.pos.x, a.pos.y - 70);
   }
   for (const s of game.soldiers) {
     if (s.state === 'active') {
@@ -1505,26 +1564,29 @@ function drawGeneral(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
  */
 function drawFlames(ctx: CanvasRenderingContext2D, game: Game) {
   const I = CFG.inferno, t = game.clock;
-  for (const s of game.soldiers) {
+  for (const s of [...game.soldiers, ...game.allies]) {
     const ab = s.ability as { flaming?: boolean } | null;
-    if (!s.active || !ab?.flaming) continue;
-    const half = (I.cone / 2) * DEG, a = s.aim;
+    // v0.9C the rescued flame specialist: lit while it is firing (muzzle bridges its ticks), its own cone and reach
+    const fs = s.special === 'flame' && s.active && s.muzzle > 0;
+    if (!fs && (!s.active || !ab?.flaming)) continue;
+    const R = fs ? CFG.prisonFlame.range : I.range;
+    const half = ((fs ? CFG.prison.flameCone : I.cone) / 2) * DEG, a = s.aim;
     const ox = s.pos.x + Math.cos(a) * 12, oy = s.pos.y - 14 + Math.sin(a) * 12;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let k = 0; k < 3; k++) {
-      const L = I.range * (0.55 + 0.15 * k + 0.05 * Math.sin(t * 17 + k * 2));
+      const L = R * (0.55 + 0.15 * k + 0.05 * Math.sin(t * 17 + k * 2));
       ctx.fillStyle = ['rgba(255,220,120,0.22)', 'rgba(255,140,40,0.2)', 'rgba(255,70,20,0.14)'][k];
       ctx.beginPath(); ctx.moveTo(ox, oy); ctx.arc(ox, oy, L, a - half * (0.5 + 0.25 * k), a + half * (0.5 + 0.25 * k)); ctx.closePath(); ctx.fill();
     }
     for (let k = 0; k < 7; k++) { // licks of flame along the cone
-      const ph = (t * 2.2 + k / 7) % 1, d = 20 + ph * (I.range - 30), da = Math.sin(t * 9 + k * 3.1) * half * 0.7;
+      const ph = (t * 2.2 + k / 7) % 1, d = 20 + ph * (R - 30), da = Math.sin(t * 9 + k * 3.1) * half * 0.7;
       ctx.fillStyle = `rgba(255,${160 + Math.round(80 * (1 - ph))},60,${0.5 * (1 - ph)})`;
       ctx.beginPath(); ctx.arc(ox + Math.cos(a + da) * d, oy + Math.sin(a + da) * d, 5 + ph * 12, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
     ctx.strokeStyle = 'rgba(255,150,60,0.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]);
-    ctx.beginPath(); ctx.moveTo(s.pos.x, s.pos.y); ctx.arc(s.pos.x, s.pos.y, I.range, a - half, a + half); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(s.pos.x, s.pos.y); ctx.arc(s.pos.x, s.pos.y, R, a - half, a + half); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
   }
   for (const e of game.enemies) {
     if (!e.active) continue;

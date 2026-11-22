@@ -19,7 +19,7 @@
 //  F. Phones: an iPhone SE screenshot of a revealed rooftop sniper (OUT=, for the report)
 // Usage: npm test -- v09b1   (or: npx vite preview --port 4173 & BASE=<v0.9B url> node tools/v09b1.cjs)
 const fs = require('fs');
-const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot, V09B1 } = require('./lib.cjs');
+const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot, V09B1, V09C } = require('./lib.cjs');
 
 const TIERS = {
   'first-contact': null, 'heavy-support': 'intro', 'field-medicine': 'scripted', 'red-canyon': 'light', 'bring-them-home': 'light',
@@ -91,7 +91,7 @@ runSuite(async () => {
     return out;
   });
   const tierOk = Object.entries(TIERS).filter(([id, t]) => !ex.tiers[id] || ex.tiers[id].tier !== t);
-  check('A1 tiers: M1 none, M2 intro, M4 / M5 / M7 / M17 light, M6 / M8 / M9 / M16 standard, M11 restrained, M12 intense, M18 assault (v0.9B.2); M3 / M10 scripted; M13-15 none', tierOk.length === 0 && Object.keys(ex.tiers).length === 18, tierOk.map(([id, t]) => `${id}:${ex.tiers[id] && ex.tiers[id].tier}!=${t}`).join(' ') || Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.tier || '-'}`).join(' '));
+  check('A1 tiers: M1 none, M2 intro, M4 / M5 / M7 / M17 light, M6 / M8 / M9 / M16 standard, M11 restrained, M12 intense, M18 assault (v0.9B.2); M3 / M10 scripted; M13-15 none (v0.9C: M19 none, its own last stand)', tierOk.length === 0 && Object.keys(ex.tiers).length === 19 && !!ex.tiers['jungle-prison'] && !ex.tiers['jungle-prison'].tier, tierOk.map(([id, t]) => `${id}:${ex.tiers[id] && ex.tiers[id].tier}!=${t}`).join(' ') || Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.tier || '-'}`).join(' '));
   check('A2 never both a scripted final wave and pressure', Object.values(ex.tiers).every((t) => !t.both));
   const cds = { 'first-contact': 6, 'heavy-support': 12, 'field-medicine': 20, 'iron-fist': 8, 'resistance-rising': 12, 'hold-the-line': 10, 'supply-line': 12, 'last-stand': 10, ...V09B1.countdowns };
   check('A3 countdowns: light keeps the mission\'s own (12 s), standard 15 s, intense 20 s; the others unchanged', Object.entries(cds).every(([id, c]) => ex.tiers[id].cd === c), Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.cd}`).join(' '));
@@ -298,14 +298,14 @@ runSuite(async () => {
     const np = await openPage(browser, URL, { seed: 4242 });
     const now = await np.evaluate(missionSnapshot);
     await np.context().close();
-    const cfgDiff = Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k]);
-    check('E2 every CFG group identical to v0.9B except `extractionPressure`', cfgDiff.join() === 'extractionPressure', cfgDiff.join() || 'none');
+    const cfgDiff = V09C.cfgDiff(Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k])); // v0.9C: prison* set aside
+    check('E2 every CFG group identical to v0.9B except `extractionPressure` (v0.9C prison* set aside)', cfgDiff.join() === 'extractionPressure', cfgDiff.join() || 'none');
     const ids = Object.keys(before.missions).filter((id) => id !== 'fuel-for-the-fire' && id !== 'ambush-alley');
-    const misDiff = ids.filter((id) => V09B1.normCd(id, before.missions[id]) !== V09B1.normCd(id, now.missions[id]));
-    const cdDiff = ids.filter((id) => before.missions[id] !== now.missions[id]);
+    const misDiff = ids.filter((id) => V09B1.normCd(id, V09C.norm(id, before.missions[id])) !== V09B1.normCd(id, V09C.norm(id, now.missions[id]))); // v0.9C: Mission 7's name set aside
+    const cdDiff = ids.filter((id) => V09C.norm(id, before.missions[id]) !== V09C.norm(id, now.missions[id]));
     check('E3 Missions 1-16 identical to v0.9B but for the countdowns of the missions whose pressure changed (maps, enemies, objectives, story, campaign rows)', ids.length === 16 && misDiff.length === 0 && cdDiff.every((id) => V09B1.countdowns[id] !== undefined), misDiff.length ? `changed: ${misDiff.join()}` : `countdowns changed: ${cdDiff.join()}`);
     const m17 = (x) => JSON.parse(x).enemies.length;
-    check('E4 Missions 17-18: more enemies placed than in v0.9B (pickets; the courtyard and final keep theirs), campaign rows unchanged', m17(now.missions['fuel-for-the-fire']) > m17(before.missions['fuel-for-the-fire']) && JSON.parse(now.missions['ambush-alley']).def === JSON.parse(before.missions['ambush-alley']).def && JSON.parse(now.missions['fuel-for-the-fire']).def === JSON.parse(before.missions['fuel-for-the-fire']).def, `${m17(before.missions['fuel-for-the-fire'])} -> ${m17(now.missions['fuel-for-the-fire'])}`);
+    check('E4 Missions 17-18: more enemies placed than in v0.9B (pickets; the courtyard and final keep theirs), campaign rows unchanged (v0.9C: Mission 18\'s unlock list set aside)', m17(now.missions['fuel-for-the-fire']) > m17(before.missions['fuel-for-the-fire']) && JSON.parse(V09C.norm('ambush-alley', now.missions['ambush-alley'])).def === JSON.parse(V09C.norm('ambush-alley', before.missions['ambush-alley'])).def && JSON.parse(now.missions['fuel-for-the-fire']).def === JSON.parse(before.missions['fuel-for-the-fire']).def, `${m17(before.missions['fuel-for-the-fire'])} -> ${m17(now.missions['fuel-for-the-fire'])}`);
   } else check('E BASE build available', false, 'BASE not set (npm test serves v0.9B)');
 
   const errs = [...page.errors];

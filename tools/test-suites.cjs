@@ -29,6 +29,8 @@ const V09A = { ref: '550fcb8', label: 'v0.9A' };
 const V09B = { ref: '2d09342', label: 'v0.9B' };
 // v0.9B.2's suite compares against v0.9B.1 (only Mission 18's rooftop snipers and extraction assault change).
 const V09B1 = { ref: 'f4cf5e0', label: 'v0.9B.1' };
+// v0.9C's suite compares against v0.9B.2 (only Mission 19 is new; Mission 7's name and Mission 18's unlock change).
+const V09B2 = { ref: '4199686', label: 'v0.9B.2' };
 
 const SUITES = [
   // ---- rule suites (PASS / FAIL per check) ----
@@ -75,6 +77,8 @@ const SUITES = [
   { name: 'squads', kind: 'report', about: 'roster squads autopilot with a damage ledger (exit 1 if the ledger disagrees)' },
   { name: 'chapter2-sim', kind: 'report', about: 'Chapter 2 autopilot simulations (SCEN, RUNS)' },
   { name: 'chapter3b-sim', kind: 'report', about: 'Missions 13-14 autopilot simulations (SCEN, RUNS, LEVEL)' },
+  { name: 'v09c', kind: 'rules', base: V09B2, out: true, about: 'v0.9C Mission 19 Prison Break: map, rescue in any order, the three specialist allies (weapons, follow, downs, no permadeath / XP / save), escalation and the alarm tower, the 30 s last stand (60 Riflemen, timing, safety, scaling, engagement), stars; everything else identical to v0.9B.2 but Mission 7\'s name and Mission 18\'s unlock' },
+  { name: 'v09c-sim', kind: 'report', about: 'v0.9C Mission 19 last stand (MODE=stand SCEN=strong,weak,four,worn,nospec,fourone) or the whole mission with the autopilot (MODE=full)' },
   { name: 'v09b2-sim', kind: 'report', about: 'v0.9B.2 Mission 18 extraction effectiveness (SCEN=strong,weak,four RUNS): reached range, fired, alive, damage, extracted' },
   { name: 'v081-sim', kind: 'report', about: 'v0.8B.1 Missions 13-14 balance simulations (SCEN, RUNS)' },
   { name: 'v09a-sim', kind: 'report', about: 'Mission 16 autopilot simulations: duration, mine reveals / blasts, naive vs aware play (SCEN, RUNS, POLICY)' },
@@ -106,8 +110,8 @@ const GROUPS = {
   recruitment: { about: 'Recruitment Office, named recruits, roster', suites: ['recruitment', 'recruit-mobile', 'failure-recruit', 'failure-recruit-mobile', 'barracks', 'v08c'] },
   progression: { about: 'XP, training, Squad Training, Elite', suites: ['progression', 'training-rebalance', 'squad-training', 'accuracy', 'elite', 'elite-progression'] },
   permadeath: { about: 'KIA, resurrection, Memorial, failed missions', suites: ['permadeath', 'permadeath-mobile', 'failure-recruit'] },
-  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-15', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch', 'v09a', 'v09b', 'v09b1', 'v09b2'] },
-  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c', 'v09a', 'v09b'] },
+  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-19', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch', 'v09a', 'v09b', 'v09b1', 'v09b2', 'v09c'] },
+  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c', 'v09a', 'v09b', 'v09c'] },
   ui: { about: 'phone layouts and touch (HUD / menus)', suites: ['mobile', 'chapter2-mobile', 'permadeath-mobile', 'failure-recruit-mobile', 'recruit-mobile', 'story'] },
   fps: { about: '30 / 60 FPS parity and default frame cap', suites: ['fps-default', 'fps-parity'] },
   all: { about: 'full regression: every rule suite', suites: RULES },

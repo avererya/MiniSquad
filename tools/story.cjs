@@ -16,7 +16,7 @@
 //  G. Phones (iPhone SE / 14 / Pixel 7 landscape): panel, text and SKIP fit (SKIP >= 44 CSS px), touch advances
 //     and skips, enemy panel, radio strip clear of the HUD
 // Usage: npm test -- story   (or: npx vite preview --port 4173 & BASE=<v0.8C url> node tools/story.cjs)
-const { chromium, URL, BASE, OUT, createChecks, runSuite, V09B1 } = require('./lib.cjs');
+const { chromium, URL, BASE, OUT, createChecks, runSuite, V09B1, V09C } = require('./lib.cjs');
 const fs = require('fs');
 
 function installHelpers() {
@@ -161,7 +161,7 @@ runSuite(async () => {
     'OVERWATCH: We’ve recovered his communications. Turns out the General was taking orders from someone else.',
     'OVERWATCH: Get to extraction. We’re going behind enemy lines.']), data.victory.join(' | '));
   check('A4 modes: intro / victory are blocking cinematics, the phase lines non-blocking radio; Command vs enemy tones', data.modes === 'cinematic,radio,radio,cinematic' && data.tones === 'command,enemy', `${data.modes} · ${data.tones}`);
-  check('A5 Mission 15 cues: bossIntro, bossPhase2, bossPhase3, victory; no other Mission 1-14 has story cues (v0.9A: Mission 16 has its own radio lines; v0.9B: Missions 17 / 18 too)', data.cues === '{"bossIntro":"m15-intro","bossPhase2":"m15-phase2","bossPhase3":"m15-phase3","victory":"m15-victory"}' && data.others.join() === 'jungle-sweep,fuel-for-the-fire,ambush-alley', `${data.cues} · others: ${data.others.join() || 'none'}`);
+  check('A5 Mission 15 cues: bossIntro, bossPhase2, bossPhase3, victory; no other Mission 1-14 has story cues (v0.9A: Mission 16 has its own radio lines; v0.9B: Missions 17 / 18 too; v0.9C: Mission 19)', data.cues === '{"bossIntro":"m15-intro","bossPhase2":"m15-phase2","bossPhase3":"m15-phase3","victory":"m15-victory"}' && data.others.join() === 'jungle-sweep,fuel-for-the-fire,ambush-alley,jungle-prison', `${data.cues} · others: ${data.others.join() || 'none'}`);
   check('A6 no scripted line names a recruit (named recruits, the roster)', data.named.length === 0, data.named.join(' | ') || 'none');
   check('A7 text-only: no portrait is set anywhere (no artwork shipped)', data.art === 0, String(data.art));
   check('A8 reading time: intro and victory 8-12 s when left to auto-advance', data.read.every((t) => t >= 8 && t <= 12), data.read.join(' s, ') + ' s');
@@ -439,12 +439,12 @@ runSuite(async () => {
     await fresh(bp, BASE);
     await fresh();
     const a = await ev(snapshot), b = await bp.evaluate(snapshot);
-    const cfgDiff = V09B1.cfgDiff([...new Set([...Object.keys(a.cfg), ...Object.keys(b.cfg)])].filter((k) => a.cfg[k] !== b.cfg[k])); // v0.9B.1: extraction pressure set aside
+    const cfgDiff = V09C.cfgDiff(V09B1.cfgDiff([...new Set([...Object.keys(a.cfg), ...Object.keys(b.cfg)])].filter((k) => a.cfg[k] !== b.cfg[k]))); // v0.9B.1: extraction pressure set aside; v0.9C: the prison* groups
     // v0.9A (on purpose): a `mine` CFG group, Mission 16, and Mission 15's first clear also unlocks Mission 16 (its row's unlock list is set aside)
     const m15 = (x) => { if (!x) return x; const o = JSON.parse(x), d = JSON.parse(o.def); d.unlocks.missions = []; o.def = JSON.stringify(d); return JSON.stringify(o); };
-    const misDiff = Object.keys(b.missions).filter((k) => (k === 'last-stand' ? m15(a.missions[k]) !== m15(b.missions[k]) : V09B1.normCd(k, a.missions[k]) !== V09B1.normCd(k, b.missions[k]))); // v0.9B.1 countdowns set aside
-    check('F1 every CFG group identical to v0.8C (Voss, enemies, classes, training, Elite, support; v0.9A adds only `mine`, v0.9B only `fuel`)', cfgDiff.sort().join() === 'fuel,mine' && Object.keys(b.cfg).length > 20, cfgDiff.length ? `changed: ${cfgDiff.join()}` : `${Object.keys(b.cfg).length} groups`);
-    check('F2 Missions 1-15 identical to v0.8C (maps, enemy groups, objectives, optionals, gates, Voss, extraction, campaign rows; v0.9A: Mission 15 also unlocks Mission 16; v0.9B adds 17 / 18)', misDiff.length === 0 && Object.keys(b.missions).length === 15 && Object.keys(a.missions).length === 18, misDiff.length ? `changed: ${misDiff.join()}` : `${Object.keys(a.missions).length} missions`);
+    const misDiff = Object.keys(b.missions).filter((k) => (k === 'last-stand' ? m15(a.missions[k]) !== m15(b.missions[k]) : V09B1.normCd(k, V09C.norm(k, a.missions[k])) !== V09B1.normCd(k, V09C.norm(k, b.missions[k])))); // v0.9B.1 countdowns, v0.9C Mission 7's name set aside
+    check('F1 every CFG group identical to v0.8C (Voss, enemies, classes, training, Elite, support; v0.9A adds only `mine`, v0.9B only `fuel`, v0.9C only prison* (set aside))', cfgDiff.sort().join() === 'fuel,mine' && Object.keys(b.cfg).length > 20, cfgDiff.length ? `changed: ${cfgDiff.join()}` : `${Object.keys(b.cfg).length} groups`);
+    check('F2 Missions 1-15 identical to v0.8C (maps, enemy groups, objectives, optionals, gates, Voss, extraction, campaign rows; v0.9A: Mission 15 also unlocks Mission 16; v0.9B adds 17 / 18; v0.9C 19 and renames Mission 7)', misDiff.length === 0 && Object.keys(b.missions).length === 15 && Object.keys(a.missions).length === 19, misDiff.length ? `changed: ${misDiff.join()}` : `${Object.keys(a.missions).length} missions`);
     await fresh(bp, BASE);
     const wBase = await bp.evaluate(scriptedWin, null);
     check('F3 the scripted Mission 15 win pays the same as v0.8C (XP, Credits, stars, Demolitions unlock, optional)', wBase.phase === 'won' && wBase.reward === wAuto.reward && wBase.stars === wAuto.stars && wBase.demo && wBase.opt === wAuto.opt && wBase.credits === wAuto.credits, JSON.stringify({ base: [wBase.reward, wBase.stars, wBase.credits], now: [wAuto.reward, wAuto.stars, wAuto.credits] }));

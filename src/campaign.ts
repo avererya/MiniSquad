@@ -15,13 +15,13 @@
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
-export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort' | 'minefield' | 'urban';
+export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort' | 'minefield' | 'urban' | 'breakout';
 export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
   elimination: 'Elimination', sabotage: 'Sabotage', capture: 'Capture & Hold', survival: 'Survival / Extraction', rescue: 'Rescue / Escort',
   interception: 'Convoy Interception', night: 'Night Sabotage', assault: 'Assault / Boss',
   liberation: 'Liberation & Defense', artillery: 'Search & Destroy',
   defense: 'Defense / Waves', escort: 'Sabotage & Vehicle Escort',
-  minefield: 'Minefield Sweep', urban: 'Urban Ambush',
+  minefield: 'Minefield Sweep', urban: 'Urban Ambush', breakout: 'Rescue / Last Stand',
 };
 
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
@@ -188,7 +188,7 @@ export const CAMPAIGN: CampaignMission[] = [
     unlocks: { missions: ['prison-break'], recruits: [], capacityNote: 'Squad size 5 from Mission 7' },
   },
   {
-    id: 'prison-break', number: 7, name: 'Prison Break', type: 'rescue', playable: true,
+    id: 'prison-break', number: 7, name: 'Operation Breakout', type: 'rescue', playable: true, // v0.9C renamed (was 'Prison Break', now Mission 19's name; id unchanged)
     briefing: 'A captured field medic is held in a guarded camp. Break in and bring them out.',
     primary: ['Clear the camp guards', 'Free the captured medic', 'Escort the medic to extraction'],
     optional: [{ id: 'prisoner-safe', label: 'The prisoner is never downed' }], stars: { two: 'optionals', three: 'noKia' },
@@ -352,7 +352,23 @@ export const CAMPAIGN: CampaignMission[] = [
       objectives: ['Enter the district', 'Fight through Main Street (ambushes and a crossfire)', 'Clear the rooftop snipers and the side streets', 'Storm the courtyard', 'Break the final intersection, extract'],
       tip: 'Buildings block movement, sight and rounds: use corners and wrecked cars as cover. A rooftop sniper shows a red laser before it fires, so step out of the line, then shoot back from the street. Alleys give you a second way round.',
     },
-    unlocks: { missions: [], recruits: [], capacityNote: 'Chapter 4 continues in a future update' },
+    unlocks: { missions: ['jungle-prison'], recruits: [] }, // v0.9C opens Mission 19
+  },
+  {
+    // v0.9C Mission 19 (prison.ts PrisonBreak): three rescued specialists fight beside the squad, then a 60-strong last stand
+    id: 'jungle-prison', number: 19, name: 'Prison Break', type: 'breakout', playable: true,
+    briefing: 'Three captured allied specialists are held in a jungle prison camp. Break them out and hold the clearing until the helicopter arrives.',
+    primary: ['Infiltrate the prison compound', 'Rescue the three specialists (any order)', 'Reach the extraction clearing', 'Survive until the helicopter arrives'],
+    optional: [{ id: 'alarm-tower', label: 'Destroy the alarm tower' }, { id: 'specialists-alive', label: 'Keep all three specialists alive' }],
+    stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Rescued specialists fight beside you: a rocket launcher, a flamethrower and throwing stars',
+    brief: {
+      story: 'Intelligence has found a jungle prison camp holding three captured specialists: a rocket gunner, a flamethrower and a shadow operative. Get them out and they fight for you. The whole camp will come after you once the first cell opens.',
+      objective: 'Get inside the compound, free all three prisoners in any order, then hold the extraction clearing for 30 seconds.',
+      objectives: ['Infiltrate the prison compound', 'Free the three specialists (any order; each rescue brings more guards)', 'Reach the extraction clearing east of the camp', 'Survive the final assault until the helicopter lands'],
+      tip: 'Stand by a cell door to free a prisoner. Shoot the alarm tower in the yard before the second rescue to weaken the camp\'s response. The flamethrower only reaches a few steps but burns everything in front of it: let enemies come to it.',
+    },
+    unlocks: { missions: [], recruits: [], capacityNote: 'The specialists\' intel points to the Warlord\'s headquarters: Chapter 4 continues in a future update' },
   },
 ];
 
@@ -367,7 +383,7 @@ export const capacityOf = (id: string): number => capacityFor(campaignMission(id
  * Recruitment Office offer for this named soldier (`key` = their stable soldier id, also the
  * offer key: claims are tracked by it, never by the display name). The same milestone unlocks the
  * generic class (`newClass`) and the soldier's trait for random recruits, independently of the
- * purchase. Patch's milestone is Mission 7 (Prison Break, v0.6.2).
+ * purchase. Patch's milestone is Mission 7 (Operation Breakout, named Prison Break until v0.9C; v0.6.2).
  */
 export interface NamedRecruitDef {
   key: string;

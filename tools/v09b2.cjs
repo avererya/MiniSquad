@@ -18,7 +18,7 @@
 //     without page errors (OUT= writes the screenshots for the report)
 // Usage: npm test -- v09b2   (or: npx vite preview --port 4173 & BASE=<v0.9B.1 url> node tools/v09b2.cjs)
 const fs = require('fs');
-const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot } = require('./lib.cjs');
+const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot, V09C } = require('./lib.cjs');
 const { setup } = require('./v08c-sim.cjs');
 const { play } = require('./v09b2-sim.cjs');
 
@@ -189,21 +189,21 @@ runSuite(async () => {
     const pres = async (pp) => pp.evaluate(() => { const g = window.game, out = {}; window.__debugUnlockAll(); for (const d of window.__campaign.CAMPAIGN.filter((x) => x.playable)) { g.selectMission(d.id, true); g.reset(["infantry"]); const X = g.mission.script.extraction; out[d.id] = JSON.stringify({ p: X.pressure || null, f: X.finalWave ? X.finalWave.points : null, cd: X.countdown(), z: X.zone }); } return out; });
     const pB = await pres(pb), pN = await pres(pn);
     await pb.context().close(); await pn.context().close();
-    const cfgDiff = Object.keys(nowS.cfg).filter((k) => nowS.cfg[k] !== before.cfg[k]);
+    const cfgDiff = V09C.cfgDiff(Object.keys(nowS.cfg).filter((k) => nowS.cfg[k] !== before.cfg[k])); // v0.9C: prison* set aside
     const EPb = JSON.parse(before.cfg.extractionPressure), EPn = JSON.parse(nowS.cfg.extractionPressure);
     const epChanged = Object.keys(EPb).filter((k) => EPb[k] !== EPn[k]), added = Object.keys(EPn).filter((k) => !(k in EPb));
-    check('D1 every CFG group identical to v0.9B.1 but `extractionPressure`, where every v0.9B.1 key is unchanged and only assault* keys are new (other tiers untouched)', cfgDiff.join() === 'extractionPressure' && epChanged.length === 0 && added.every((k) => /^assault/.test(k)), `${cfgDiff.join() || 'none'} changed ${epChanged.join() || '-'} added ${added.join()}`);
-    const xDiff = Object.keys(pB).filter((id) => id !== 'ambush-alley' && pB[id] !== pN[id]);
-    check('D2 every other mission\'s extraction (pressure tier and points, scripted waves, countdown, zone) identical to v0.9B.1', Object.keys(pB).length === Object.keys(pN).length && xDiff.length === 0, xDiff.length ? `${xDiff.join()} e.g. ${pB[xDiff[0]]} vs ${pN[xDiff[0]]}` : `${Object.keys(pN).length} missions`);
+    check('D1 every CFG group identical to v0.9B.1 but `extractionPressure` (v0.9C prison* set aside), where every v0.9B.1 key is unchanged and only assault* keys are new (other tiers untouched)', cfgDiff.join() === 'extractionPressure' && epChanged.length === 0 && added.every((k) => /^assault/.test(k)), `${cfgDiff.join() || 'none'} changed ${epChanged.join() || '-'} added ${added.join()}`);
+    const xDiff = Object.keys(pB).filter((id) => id !== 'ambush-alley' && pB[id] !== pN[id]); // v0.9C: Mission 19 (new) is not in BASE
+    check('D2 every other mission\'s extraction (pressure tier and points, scripted waves, countdown, zone) identical to v0.9B.1', Object.keys(pB).every((id) => id in pN) && Object.keys(pN).length - Object.keys(pB).length <= 1 && xDiff.length === 0, xDiff.length ? `${xDiff.join()} e.g. ${pB[xDiff[0]]} vs ${pN[xDiff[0]]}` : `${Object.keys(pN).length} missions`);
     const ids = Object.keys(before.missions).filter((id) => id !== 'ambush-alley');
-    const misDiff = ids.filter((id) => before.missions[id] !== nowS.missions[id]);
-    check('D3 Missions 1-17 identical to v0.9B.1 (maps, enemies, objectives, story, campaign rows); Mission 18 keeps its map size, placed enemies, objectives and campaign row', ids.length === 17 && misDiff.length === 0 && ['enemies', 'obj', 'def', 'zone', 'cd'].every((k) => JSON.stringify(JSON.parse(before.missions['ambush-alley'])[k]) === JSON.stringify(JSON.parse(nowS.missions['ambush-alley'])[k])), misDiff.join() || `${ids.length} missions`);
+    const misDiff = ids.filter((id) => V09C.norm(id, before.missions[id]) !== V09C.norm(id, nowS.missions[id])); // v0.9C: Mission 7's name set aside
+    check('D3 Missions 1-17 identical to v0.9B.1 (maps, enemies, objectives, story, campaign rows; v0.9C: Mission 7 renamed); Mission 18 keeps its map size, placed enemies, objectives and campaign row (v0.9C: its unlock list set aside)', ids.length === 17 && misDiff.length === 0 && ['enemies', 'obj', 'def', 'zone', 'cd'].every((k) => JSON.stringify(JSON.parse(V09C.norm('ambush-alley', before.missions['ambush-alley']))[k]) === JSON.stringify(JSON.parse(V09C.norm('ambush-alley', nowS.missions['ambush-alley']))[k])), misDiff.join() || `${ids.length} missions`);
   } else check('D BASE build available', false, 'BASE not set');
 
   // ================= E. VERSION, SAVE, PHONES =================
   const pkg = JSON.parse(fs.readFileSync(require('path').join(__dirname, '..', 'package.json'), 'utf8'));
   const saveSrc = fs.readFileSync(require('path').join(__dirname, '..', 'src', 'save.ts'), 'utf8');
-  check('E1 package 0.9.3, label 0.9B.2; SAVE_VERSION 9 (nothing new is saved)', pkg.version === '0.9.3' && pkg.versionLabel === '0.9B.2' && /SAVE_VERSION = 9;/.test(saveSrc) && !/assault|avenue-roof|cache-roof/.test(await ev(() => localStorage.getItem('minisquad.save') || '')), `${pkg.version} ${pkg.versionLabel}`);
+  check('E1 package 0.9.3 / label 0.9B.2 or a later release (v0.9C: 0.9.4, checked by v09c J1); SAVE_VERSION 9 (nothing new is saved)', pkg.version >= '0.9.3' && /^0\.9(B\.2|[C-Z])/.test(pkg.versionLabel) && /SAVE_VERSION = 9;/.test(saveSrc) && !/assault|avenue-roof|cache-roof/.test(await ev(() => localStorage.getItem('minisquad.save') || '')), `${pkg.version} ${pkg.versionLabel}`);
   {
     const p2 = await openPage(browser, URL, { seed: 9292, viewport: { width: 667, height: 375 }, context: { deviceScaleFactor: 2, isMobile: true, hasTouch: true } });
     const shot = async (name) => { if (OUT) { fs.mkdirSync(OUT, { recursive: true }); await p2.screenshot({ path: `${OUT}/${name}.png` }); } };
