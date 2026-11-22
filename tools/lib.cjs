@@ -171,5 +171,19 @@ async function openPage(browser, url, { seed = null, save = null, viewport = { w
   return page;
 }
 
-module.exports = { RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
+/**
+ * v0.9B.1 EXTRACTION PRESSURE, the one intended change to older missions: the `extractionPressure` CFG group (staggered
+ * light / standard / intense tiers) and these missions' countdowns. Suites that compare older missions / CFG with an
+ * older BASE set exactly this aside (`v09b1` checks the new values and that nothing else moved since v0.9B).
+ */
+const V09B1 = {
+  cfgGroup: 'extractionPressure',
+  countdowns: { 'red-canyon': 12, 'bring-them-home': 12, 'bridgehead': 15, 'prison-break': 12, 'convoy-crusher': 15, 'blackout': 15, 'artillery-hunt': 20, 'jungle-sweep': 15, 'fuel-for-the-fire': 15, 'ambush-alley': 20 },
+  /** CFG group names that differ, without the v0.9B.1 pressure group. */
+  cfgDiff(keys) { return keys.filter((k) => k !== V09B1.cfgGroup); },
+  /** A mission's snapshot string with its countdown (`"cd":N`) set aside when v0.9B.1 changed it. */
+  normCd(id, s) { return s && V09B1.countdowns[id] !== undefined ? s.replace(/"cd":[0-9.]+/, '"cd":"v0.9B.1"') : s; },
+};
+
+module.exports = { V09B1, RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
   seedRandom, installPageHelpers, missionSnapshot, openPage };

@@ -20,7 +20,7 @@
 //  H. Phones (iPhone SE / 14 / Pixel 7 landscape): briefing fits, boss bar clear of the controls, Inferno button,
 //     six soldier panels
 // Usage: npm test -- v08c   (or: npx vite preview --port 4173 & BASE=<v0.8B.2 url> node tools/v08c.cjs)
-const { chromium, URL, BASE, OUT, createChecks, runSuite } = require('./lib.cjs');
+const { chromium, URL, BASE, OUT, createChecks, runSuite, V09B1 } = require('./lib.cjs');
 const fs = require('fs');
 
 function installHelpers() {
@@ -667,8 +667,8 @@ runSuite(async () => {
     await fresh(bp, BASE);
     await fresh();
     const a = await ev(snapshot), b = await bp.evaluate(snapshot);
-    const cfgDiff = Object.keys(b.cfg).filter((k) => a.cfg[k] !== b.cfg[k]);
-    const misDiff = Object.keys(b.missions).filter((k) => a.missions[k] !== b.missions[k]);
+    const cfgDiff = V09B1.cfgDiff(Object.keys(b.cfg).filter((k) => a.cfg[k] !== b.cfg[k])); // v0.9B.1: extraction pressure set aside
+    const misDiff = Object.keys(b.missions).filter((k) => V09B1.normCd(k, a.missions[k]) !== V09B1.normCd(k, b.missions[k])); // v0.9B.1 countdowns set aside
     check('G1 every pre-v0.8C CFG group identical to v0.8B.2 (enemies, classes, bosses, training, Elite, support, M13 / M14 assets)', cfgDiff.length === 0 && Object.keys(b.cfg).length > 20, cfgDiff.length ? `changed: ${cfgDiff.join()}` : `${Object.keys(b.cfg).length} groups`);
     check('G2 Missions 1-14 identical to v0.8B.2 (maps, enemy groups, objectives, optionals, extraction)', misDiff.length === 0, misDiff.length ? `changed: ${misDiff.join()}` : '14 missions');
     await bp.close();

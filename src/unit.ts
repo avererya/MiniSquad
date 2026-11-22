@@ -189,6 +189,13 @@ export class Unit {
   lastHitBy: Unit | null = null;
   /** v0.9B Mission 18: a sniper posted on a rooftop (fixed, drawn with its roof nest; urban.ts). */
   rooftop = false;
+  /**
+   * v0.9B.1 rooftop snipers are drawn this many px higher than their (street-edge) position, on the building's roof
+   * (render only: sight, rounds and hits use pos).
+   */
+  roofLift = 0;
+  /** v0.9B.1 seconds added to an enemy sniper's telegraph until its next shot (a revealed rooftop sniper's warning). */
+  aimBonus = 0;
   stuckT = 0;
   prevPos: Vec | null = null;
 

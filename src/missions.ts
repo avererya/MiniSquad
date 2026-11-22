@@ -12,8 +12,8 @@ import {
   FORTRESS_ALLY_ENTRY, FORTRESS_ARENA, FORTRESS_CALL_POINTS, FORTRESS_EXTRACTION, FORTRESS_GENERATOR,
   FORTRESS_INNER_GATE, FORTRESS_INNER_LOCKED, FORTRESS_LOCKED, FORTRESS_MAIN_GATE, FORTRESS_MAP, FORTRESS_RELAYS, FORTRESS_VOSS,
   JUNGLE_EXTRACTION, JUNGLE_MAP, JUNGLE_MINES, JUNGLE_PRESSURE,
-  FUEL_APPROACH, FUEL_EXTRACTION, FUEL_INSTALLATIONS, FUEL_MAP, FUEL_RESPONSE, FUEL_TANKS,
-  ALLEY_CACHES, ALLEY_EXTRACTION, ALLEY_MAP, ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES,
+  FUEL_APPROACH, FUEL_COUNTER_FROM, FUEL_EXTRACTION, FUEL_INSTALLATIONS, FUEL_MAP, FUEL_PICKETS, FUEL_PRESSURE, FUEL_RESPONSE, FUEL_TANKS,
+  ALLEY_CACHES, ALLEY_EXTRACTION, ALLEY_MAP, ALLEY_POINTS, ALLEY_PRESSURE, ALLEY_ROOF_DECOYS, ALLEY_ROOFS, ALLEY_ZONES,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
 } from './map';
@@ -30,7 +30,7 @@ import { AssetHpOptional, PrepareDefenseObjective, WaveDefenseObjective, type De
 import { CaptureVehicleObjective, CountDestroyObjective, EscortObjective, type AmbushDef } from './escort';
 import { ClearGroupsObjective, ClearRemainingObjective, FortressRelaysObjective, GeneralObjective, GeneratorObjective, ResistanceSurvivesOptional } from './fortress';
 import { MineField } from './mines';
-import { FuelInstallationsObjective, FuelKillsOptional, MineKillsOptional, ResponseObjective, type ResponseWave } from './chapter4';
+import { FuelInstallationsObjective, FuelKillsOptional, InstallationCounterattack, MineKillsOptional, ResponseObjective, type CounterattackDef, type ResponseWave } from './chapter4';
 import { FuelDepot } from './fuel';
 import { AmbushDirector, AmbushObjective, CachesOptional, SupplyCaches, type CacheDef, type StreetAmbushDef } from './urban';
 import type { Vec } from './util';
@@ -71,7 +71,7 @@ const HEAVY_SUPPORT: MissionScript = {
   optionals: () => [new EliminateOptional('mg-nest', 'Eliminate the guarded MG nest', ['mg-nest'], 'MG NEST')],
   extraction: {
     zone: { x: 2490, y: 1110, w: 270, h: 240 }, countdown: () => 12,
-    pressure: { tier: 'light', points: [{ x: 2760, y: 600 }, { x: 1900, y: 1380 }, { x: 2780, y: 1380 }, { x: 1700, y: 1250 }] },
+    pressure: { tier: 'intro', points: [{ x: 2760, y: 600 }, { x: 1900, y: 1380 }, { x: 2780, y: 1380 }, { x: 1700, y: 1250 }] },
   },
 };
 
@@ -114,8 +114,8 @@ const RED_CANYON: MissionScript = {
   ],
   optionals: () => [],
   extraction: {
-    zone: { x: 3480, y: 320, w: 260, h: 250 }, countdown: () => 10,
-    pressure: { tier: 'small', points: [{ x: 2400, y: 300 }, { x: 2300, y: 800 }, { x: 2380, y: 450 }] }, // the canyon's far end: the zone's view covers the east, north and south edges
+    zone: { x: 3480, y: 320, w: 260, h: 250 }, countdown: () => 12, // v0.9B.1 light (was small, 10 s)
+    pressure: { tier: 'light', points: [{ x: 2400, y: 300 }, { x: 2300, y: 800 }, { x: 2380, y: 450 }] }, // the canyon's far end: the zone's view covers the east, north and south edges
   },
 };
 
@@ -137,8 +137,8 @@ const BRING_THEM_HOME: MissionScript = {
   ],
   optionals: () => [new CaptiveUnharmedOptional('captive-unharmed', 'The captive takes no damage')],
   extraction: {
-    zone: { x: 110, y: 110, w: 270, h: 230 }, countdown: () => 10, requireNpc: true,
-    pressure: { tier: 'small', points: [{ x: 1200, y: 120 }, { x: 900, y: 700 }, { x: 600, y: 1140 }] },
+    zone: { x: 110, y: 110, w: 270, h: 230 }, countdown: () => 12, requireNpc: true, // v0.9B.1 light (was small, 10 s)
+    pressure: { tier: 'light', points: [{ x: 1200, y: 120 }, { x: 900, y: 700 }, { x: 600, y: 1140 }] },
   },
   captive: CAPTIVE_POS,
 };
@@ -177,8 +177,8 @@ const BRIDGEHEAD: MissionScript = {
   ],
   optionals: () => [new NoKiaOptional('no-kia', 'No soldier KIA')],
   extraction: {
-    zone: { x: 2880, y: 120, w: 260, h: 220 }, countdown: () => 10,
-    pressure: { tier: 'moderate', points: [{ x: 3150, y: 900 }, { x: 2400, y: 40 }, { x: 3150, y: 1300 }] },
+    zone: { x: 2880, y: 120, w: 260, h: 220 }, countdown: () => 15, // v0.9B.1 standard (was moderate, 10 s)
+    pressure: { tier: 'standard', points: [{ x: 3150, y: 900 }, { x: 2400, y: 40 }, { x: 3150, y: 1300 }] },
   },
 };
 
@@ -210,8 +210,8 @@ const PRISON_BREAK: MissionScript = {
   ],
   optionals: () => [new CaptiveNeverDownedOptional('prisoner-safe', 'The prisoner is never downed')],
   extraction: {
-    zone: { x: 110, y: 110, w: 270, h: 230 }, countdown: () => 10, requireNpc: true,
-    pressure: { tier: 'moderate', points: [{ x: 1300, y: 60 }, { x: 60, y: 760 }, { x: 900, y: 900 }] },
+    zone: { x: 110, y: 110, w: 270, h: 230 }, countdown: () => 12, requireNpc: true, // v0.9B.1 light (was moderate, 10 s): the captive is escorted
+    pressure: { tier: 'light', points: [{ x: 1300, y: 60 }, { x: 60, y: 760 }, { x: 900, y: 900 }] },
   },
   captive: PRISON_CAPTIVE,
   captiveLabel: 'POW MEDIC',
@@ -232,8 +232,8 @@ const CONVOY_CRUSHER: MissionScript = {
     escorts: [['rifleman', 'rifleman', 'rifleman'], ['armored', 'rifleman', 'rifleman'], ['armored', 'armored', 'rifleman', 'rifleman']],
   },
   extraction: {
-    zone: { x: 1750, y: 110, w: 260, h: 180 }, countdown: () => 10,
-    pressure: { tier: 'moderate', points: [{ x: 2600, y: 160 }, { x: 1000, y: 160 }, { x: 3350, y: 600 }] },
+    zone: { x: 1750, y: 110, w: 260, h: 180 }, countdown: () => 15, // v0.9B.1 standard (was moderate, 10 s)
+    pressure: { tier: 'standard', points: [{ x: 2600, y: 160 }, { x: 1000, y: 160 }, { x: 3350, y: 600 }] },
   },
 };
 
@@ -256,8 +256,8 @@ const BLACKOUT: MissionScript = {
   },
   optionals: () => [new AlarmOptional('alarm', 'Destroy every relay before the alarm maxes out', () => relays)],
   extraction: {
-    zone: { x: 2650, y: 110, w: 270, h: 220 }, countdown: () => 10,
-    pressure: { tier: 'moderate', points: [{ x: 2960, y: 700 }, { x: 2000, y: 40 }, { x: 2960, y: 1200 }] },
+    zone: { x: 2650, y: 110, w: 270, h: 220 }, countdown: () => 15, // v0.9B.1 standard (was moderate, 10 s)
+    pressure: { tier: 'standard', points: [{ x: 2960, y: 700 }, { x: 2000, y: 40 }, { x: 2960, y: 1200 }] },
   },
 };
 
@@ -355,8 +355,8 @@ const ARTILLERY_HUNT: MissionScript = {
     ],
   },
   extraction: {
-    zone: { x: 2880, y: 1600, w: 260, h: 220 }, countdown: () => 15,
-    pressure: { tier: 'strong', points: [{ x: 3150, y: 850 }, { x: 1600, y: 1860 }, { x: 2400, y: 800 }, { x: 1500, y: 1300 }] },
+    zone: { x: 2880, y: 1600, w: 260, h: 220 }, countdown: () => 20, // v0.9B.1 intense (was strong, 15 s)
+    pressure: { tier: 'intense', points: [{ x: 3150, y: 850 }, { x: 1600, y: 1860 }, { x: 2400, y: 800 }, { x: 1500, y: 1300 }] },
   },
 };
 
@@ -573,25 +573,35 @@ const JUNGLE_SWEEP: MissionScript = {
   optionals: () => [new MineKillsOptional('mine-ambush', 'Take out 3 enemies with mine blasts', 3)],
   hint: 'The trails are mined: a soldier who gets close reveals a mine. Steer around it, or tap it to shoot it.',
   mechanics: () => [new MineField({ mines: JUNGLE_MINES, warnCue: 'minesAhead', warnRadius: 520 })],
-  extraction: { zone: JUNGLE_EXTRACTION, countdown: () => 12, pressure: { tier: 'moderate', points: JUNGLE_PRESSURE } },
+  extraction: { zone: JUNGLE_EXTRACTION, countdown: () => 15, pressure: { tier: 'standard', points: JUNGLE_PRESSURE } }, // v0.9B.1 standard (was moderate, 12 s)
   story: { minesAhead: 'm16-mines', 'start:checkpoint': 'm16-checkpoint', victory: 'm16-extract' },
 };
 
 // ---- Mission 17: Fuel for the Fire (Sabotage, 6 soldiers) ----
-// 34 placed enemies (7 Armored Troopers, 4 Snipers) + a finite 12-strong response (3 waves) once the last installation
-// burns = 46, no other waves, no extraction pressure; 16 fuel tanks (FuelDepot) in three installations.
+// v0.9B.1: 45 placed enemies (8 Armored Troopers, 4 Snipers) + a 7-strong counterattack before the last installation
+// + the finite 12-strong response (3 waves) once the last installation burns = 64, then light extraction pressure
+// (5, never required). 16 fuel tanks (FuelDepot) in three installations.
 //  Opening: patrol 1 (3) on the trail; Installation A, exposed storage (6: guards beside two chainable tank pairs;
 //  Overwatch's fuel warning on the way in). Then any order: Installation B, the fortified depot north (9: four hold
-//  their posts behind the sandbags, a five-tank cluster that chains end to end; west, south and north gaps), and,
-//  past patrol 2 (4) on the eastern trail, Installation C, the central reserve (12: four guards hold inside the
-//  five-tank ring, two lone outer tanks, sandbag arcs at a safe distance). Then the response from the jungle edges
-//  (safeSpawnPoint: off screen, 520+ px from every soldier) and the helicopter clearing north-east.
+//  their posts behind the sandbags, a five-tank cluster that chains end to end; west, south and north gaps; v0.9B.1 a
+//  picket of 4 on the A -> B trail and 3 on the south track), and, past patrol 2 (4) on the eastern trail,
+//  Installation C, the central reserve (12: four guards hold inside the five-tank ring, two lone outer tanks, sandbag
+//  arcs at a safe distance; v0.9B.1 a picket of 4 on the northern track from B). v0.9B.1 COUNTERATTACK: once two
+//  installations are down, 7 more come for the squad from the jungle edge (chapter4.ts InstallationCounterattack, once;
+//  skipped if the last two fall together). Then the response from the jungle edges (safeSpawnPoint: off screen, 520+ px
+//  from every soldier) and the helicopter clearing north-east, under light pressure.
 const R4: EnemyKind[] = ['rifleman', 'rifleman', 'rifleman', 'rifleman'];
 export const FUEL_RESPONSE_WAVES: ResponseWave[] = [
   { at: 2, points: FUEL_RESPONSE, kinds: R4 },
   { at: 14, points: FUEL_RESPONSE, kinds: ['rifleman', 'rifleman', 'rifleman', 'armored'], banner: 'MORE ENEMIES INBOUND' },
   { at: 28, points: FUEL_RESPONSE, kinds: ['rifleman', 'rifleman', 'armored', 'sniper'], banner: 'LAST ENEMY GROUP INBOUND' },
 ];
+/** v0.9B.1 the defensive response before the last installation (once, finite, never required). */
+export const FUEL_COUNTERATTACK: CounterattackDef = {
+  objective: 'installations', after: 2, delay: 4, minDist: 520, from: FUEL_COUNTER_FROM, cue: 'cue:counter',
+  banner: 'COUNTERATTACK — THEY ARE DEFENDING THE LAST INSTALLATION',
+  kinds: ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'rifleman', 'rifleman', 'armored'],
+};
 const FUEL_FOR_THE_FIRE: MissionScript = {
   id: 'fuel-for-the-fire', map: FUEL_MAP,
   groups: () => [
@@ -605,6 +615,10 @@ const FUEL_FOR_THE_FIRE: MissionScript = {
     // C: four guards inside the ring (they hold), troopers and snipers around it, three riflemen on the flanks
     { tag: 'site-c-ring', points: [{ x: 3470, y: 1450 }, { x: 3540, y: 1440 }, { x: 3500, y: 1380 }, { x: 3460, y: 1520 }], aggro: 380, hold: true },
     { tag: 'site-c', points: [k(3720, 1410, 'armored'), k(3300, 1560, 'armored'), k(3620, 1240, 'armored'), k(3820, 1200, 'sniper'), k(3260, 1760, 'sniper'), { x: 3660, y: 1640 }, { x: 3340, y: 1260 }, { x: 3760, y: 1520 }], aggro: 450 },
+    // v0.9B.1 approach pickets: the A -> B trail, the south track to B's gap, the northern track B -> C
+    { tag: 'picket-b', points: [...FUEL_PICKETS.trailB.slice(0, 3), k(FUEL_PICKETS.trailB[3].x, FUEL_PICKETS.trailB[3].y, 'armored')], aggro: 420 },
+    { tag: 'picket-south', points: FUEL_PICKETS.southTrack, aggro: 400 },
+    { tag: 'picket-north', points: FUEL_PICKETS.northTrack, aggro: 420 },
   ],
   triggers: [],
   primaries: () => [
@@ -614,35 +628,53 @@ const FUEL_FOR_THE_FIRE: MissionScript = {
   ],
   optionals: () => [new FuelKillsOptional('fuel-kills', 'Take out 5 enemies with fuel explosions', 5)],
   hint: 'Fuel tanks explode and hurt everyone nearby: tap one to have the squad shoot it while enemies stand beside it.',
-  mechanics: () => [new FuelDepot({ tanks: FUEL_TANKS, warnCue: 'cue:fuel', warnRadius: 560 })],
-  extraction: { zone: FUEL_EXTRACTION, countdown: () => 12 },
-  story: { 'cue:fuel': 'm17-fuel', 'start:installations': 'm17-depot', 'start:response': 'm17-response', victory: 'm17-extract' },
+  mechanics: () => [
+    new FuelDepot({ tanks: FUEL_TANKS, warnCue: 'cue:fuel', warnRadius: 560 }),
+    new InstallationCounterattack(FUEL_COUNTERATTACK),
+  ],
+  extraction: { zone: FUEL_EXTRACTION, countdown: () => 15, pressure: { tier: 'light', points: FUEL_PRESSURE } }, // v0.9B.1 light: the 12-strong response was the big fight
+  story: { 'cue:fuel': 'm17-fuel', 'start:installations': 'm17-depot', 'cue:counter': 'm17-counter', 'start:response': 'm17-response', victory: 'm17-extract' },
 };
 
 // ---- Mission 18: Ambush Alley (Urban Ambush, 6 soldiers) ----
-// 20 placed enemies + 23 from six scripted ambushes (AmbushDirector, each once) = 43: 30 Riflemen, 8 Armored Troopers,
-// 5 Snipers (4 of them on rooftops); no other waves, no extraction pressure. Three optional supply caches.
-//  Entry: the quiet western outskirts (Overwatch: "suspiciously empty") -> the first ambush, four riflemen down and
-//  up the column-1 alley, while the Main Street post (3) holds its barricade. The crossfire at V2: two groups walk to
-//  posts north and south of the intersection and hold them. Past V2 the rooftops: Overwatch's warning, then three
-//  snipers on the Main Street perches (each first shot telegraphed for aimTime + 1 s), with the street barricade
-//  before V3 (3) still holding; once they fall and the squad pushes east, a rear group (5) comes from the streets
-//  behind, 600+ px from every soldier and off screen. The courtyard (8) behind its walls: west alley, north gate,
-//  south gate. The final intersection: six behind the sandbags at V4, a rooftop sniper over them, and 12 s into the
-//  assault a last group of four from the plaza's side streets. Then the helicopter in the plaza.
+// v0.9B.1: 20 placed enemies + 45 from twelve scripted ambushes (AmbushDirector, each once) = 65 (49 Riflemen,
+// 9 Armored Troopers, 7 Snipers, 5 of them concealed on rooftops), then intense extraction pressure (13, never
+// required). Three optional supply caches. Each stretch is a swarm of riflemen arriving in staggered groups:
+//  Entry: the quiet western outskirts (Overwatch: "suspiciously empty") -> the first ambush (12): six riflemen down
+//  and up the column-1 alley, the Main Street post (3) holding its barricade and, 5 s later, three flankers down V1
+//  behind the squad. The crossfire at V2 (13): two groups of four walk to posts north and south of the intersection
+//  and hold them, then a third group (5, with a sniper) comes down Main Street from the east. Past V2 the rooftops
+//  (6): Overwatch's warning, three CONCEALED snipers on the Main Street roofs (each shows itself only when it has a
+//  shot: laser, sprite and HP bar at once, first shot 2.8 s later), with the street barricade before V3 (3) holding;
+//  once they fall and the squad pushes east, the rear ambush (8: five from the streets behind, then three more down
+//  the avenues; 600+ px away, off screen). The courtyard (12) behind its walls: eight inside, a concealed sniper on the
+//  roof across Main Street, and 10 s in three riflemen from North Avenue. The final intersection (14): six behind
+//  the sandbags at V4, a concealed rooftop sniper over them, 10 s into the assault four riflemen from the plaza's side
+//  streets and 14 s later three more. Then the helicopter in the plaza (20 s, intense pressure).
 const R3: EnemyKind[] = ['rifleman', 'rifleman', 'rifleman'];
 export const ALLEY_AMBUSHES: StreetAmbushDef[] = [
   { id: 'first', zone: ALLEY_ZONES.first, delay: 1.5, cue: 'cue:first', banner: 'AMBUSH!', minDist: 420,
-    groups: [{ kinds: ['rifleman', 'rifleman'], from: [ALLEY_POINTS.firstFrom[0]] }, { kinds: ['rifleman', 'rifleman'], from: [ALLEY_POINTS.firstFrom[1]] }] },
+    groups: [{ kinds: R3, from: [ALLEY_POINTS.firstFrom[0]] }, { kinds: R3, from: [ALLEY_POINTS.firstFrom[1]] }] },
+  { id: 'first-flank', zone: ALLEY_ZONES.first, delay: 6.5, banner: 'FLANKERS BEHIND YOU', minDist: 420,
+    groups: [{ kinds: ['rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.firstFlank }] },
   { id: 'crossfire', zone: ALLEY_ZONES.cross, delay: 1.5, cue: 'cue:crossfire', banner: 'CROSSFIRE!', minDist: 420,
-    groups: [{ kinds: ['rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.crossNorth, posts: ALLEY_POINTS.crossNorthPosts }, { kinds: R3, from: ALLEY_POINTS.crossSouth, posts: ALLEY_POINTS.crossSouthPosts }] },
-  { id: 'rooftops', zone: ALLEY_ZONES.rooftops, after: ['crossfire'], delay: 2.5, cue: 'cue:rooftops', banner: 'ROOFTOP SNIPERS',
+    groups: [{ kinds: ['rifleman', 'rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.crossNorth, posts: ALLEY_POINTS.crossNorthPosts }, { kinds: R4, from: ALLEY_POINTS.crossSouth, posts: ALLEY_POINTS.crossSouthPosts }] },
+  { id: 'crossfire-late', zone: ALLEY_ZONES.cross, delay: 8, banner: 'MORE ENEMIES ON MAIN STREET', minDist: 420,
+    groups: [{ kinds: ['rifleman', 'rifleman', 'rifleman', 'armored', 'sniper'], from: ALLEY_POINTS.crossLate }] },
+  { id: 'rooftops', zone: ALLEY_ZONES.rooftops, after: ['crossfire', 'crossfire-late'], delay: 2.5, cue: 'cue:rooftops', banner: 'ROOFTOP SNIPERS',
     groups: [{ kinds: ['sniper', 'sniper', 'sniper'], roof: [ALLEY_ROOFS.north, ALLEY_ROOFS.south, ALLEY_ROOFS.corner] }] },
   { id: 'rear', zone: ALLEY_ZONES.rear, after: ['rooftops'], delay: 2, cue: 'cue:rear', banner: 'ENEMIES BEHIND YOU', minDist: 600,
     groups: [{ kinds: ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.rear }] },
+  { id: 'rear-2', zone: ALLEY_ZONES.rear, after: ['rooftops'], delay: 7, banner: 'MORE OF THEM FROM THE AVENUES', minDist: 600,
+    groups: [{ kinds: R3, from: ALLEY_POINTS.rear2 }] },
+  { id: 'courtyard-roof', onObjective: 'courtyard', delay: 0.5, groups: [{ kinds: ['sniper'], roof: [ALLEY_ROOFS.court] }] },
+  { id: 'courtyard-wave', onObjective: 'courtyard', delay: 10, banner: 'REINFORCEMENTS AT THE NORTH GATE', minDist: 520,
+    groups: [{ kinds: R3, from: ALLEY_POINTS.courtFrom }] },
   { id: 'final-roof', onObjective: 'final', delay: 1, groups: [{ kinds: ['sniper'], roof: [ALLEY_ROOFS.final] }] },
-  { id: 'final-wave', onObjective: 'final', delay: 12, banner: 'ENEMY REINFORCEMENTS', minDist: 560,
-    groups: [{ kinds: ['rifleman', 'rifleman', 'rifleman', 'armored'], from: ALLEY_POINTS.finalFrom }] },
+  { id: 'final-wave', onObjective: 'final', delay: 10, banner: 'ENEMY REINFORCEMENTS', minDist: 560,
+    groups: [{ kinds: R4, from: ALLEY_POINTS.finalFrom }] },
+  { id: 'final-wave-2', onObjective: 'final', delay: 24, banner: 'MORE REINFORCEMENTS', minDist: 560,
+    groups: [{ kinds: R3, from: ALLEY_POINTS.finalFrom }] },
 ];
 export const ALLEY_CACHE_LOOT: CacheDef[] = [
   { pos: ALLEY_CACHES[0], loot: ['medkit', 'rapidfire'] }, { pos: ALLEY_CACHES[1], loot: ['medkit', 'medkit'] }, { pos: ALLEY_CACHES[2], loot: ['medkit', 'rapidfire'] },
@@ -662,15 +694,15 @@ const AMBUSH_ALLEY: MissionScript = {
   triggers: [],
   primaries: () => [
     new ReachObjective('district', 'Enter the district', ALLEY_ZONES.district, 'DISTRICT'),
-    new AmbushObjective('street', 'Fight through Main Street', ['first', 'crossfire'], ['street-post']),
-    new AmbushObjective('rooftops', 'Clear the rooftops and the side streets', ['rooftops', 'rear'], ['sniper-street']),
-    new ClearGroupsObjective('courtyard', 'Storm the courtyard', ['courtyard'], 'COURTYARD'),
-    new AmbushObjective('final', 'Break the final intersection', ['final-roof', 'final-wave'], ['final'], 'INTERSECTION'),
+    new AmbushObjective('street', 'Fight through Main Street', ['first', 'first-flank', 'crossfire', 'crossfire-late'], ['street-post']),
+    new AmbushObjective('rooftops', 'Clear the rooftops and the side streets', ['rooftops', 'rear', 'rear-2'], ['sniper-street']),
+    new AmbushObjective('courtyard', 'Storm the courtyard', ['courtyard-roof', 'courtyard-wave'], ['courtyard'], 'COURTYARD'),
+    new AmbushObjective('final', 'Break the final intersection', ['final-roof', 'final-wave', 'final-wave-2'], ['final'], 'INTERSECTION'),
   ],
   optionals: () => [new CachesOptional('caches', 'Recover 2 supply caches', 2)],
-  hint: 'Ambushes come from the side streets: use corners and cars as cover. A red laser from a rooftop means a sniper: step out of its line.',
-  mechanics: () => [new AmbushDirector(ALLEY_AMBUSHES), new SupplyCaches(ALLEY_CACHE_LOOT)],
-  extraction: { zone: ALLEY_EXTRACTION, countdown: () => 12 },
+  hint: 'Ambushes come from the side streets: use corners and cars as cover. Rooftop snipers hide until a red laser gives them away: shoot back or get behind cover.',
+  mechanics: () => [new AmbushDirector(ALLEY_AMBUSHES, 1.2, { decoys: ALLEY_ROOF_DECOYS, revealAfter: 30 }), new SupplyCaches(ALLEY_CACHE_LOOT)],
+  extraction: { zone: ALLEY_EXTRACTION, countdown: () => 20, pressure: { tier: 'intense', points: ALLEY_PRESSURE } }, // v0.9B.1 intense
   story: {
     'start:street': 'm18-quiet', 'cue:first': 'm18-first', 'cue:crossfire': 'm18-crossfire', 'cue:rooftops': 'm18-rooftops', 'cue:rear': 'm18-rear',
     'start:courtyard': 'm18-courtyard', 'start:final': 'm18-final', victory: 'm18-extract',

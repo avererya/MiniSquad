@@ -719,8 +719,11 @@ export const JUNGLE_MINES: Vec[] = [
 ];
 export const JUNGLE_CHECKPOINT: Rect = { x: 3860, y: 940, w: 380, h: 420 };
 export const JUNGLE_EXTRACTION: Rect = { x: 4330, y: 300, w: 260, h: 240 };
-/** Extraction pressure walks in along the edge trails. */
-export const JUNGLE_PRESSURE: Vec[] = [{ x: 3950, y: 40 }, { x: 4760, y: 1780 }, { x: 4760, y: 300 }, { x: 3000, y: 2560 }];
+/**
+ * Extraction pressure walks in along the edge trails. v0.9B.1: plus the checkpoint trail and clearing (500-850 px from
+ * the pad, off screen there), so the staggered groups reach the pad before the helicopter does.
+ */
+export const JUNGLE_PRESSURE: Vec[] = [{ x: 3950, y: 40 }, { x: 4760, y: 1780 }, { x: 4760, y: 300 }, { x: 3000, y: 2560 }, { x: 4250, y: 900 }, { x: 4100, y: 1150 }];
 const JUNGLE_COVER: Obstacle[] = [
   // natural cover in the clearings: tree clumps, rocks, fallen logs (crates)
   Tr(900, 2000, 70, 60, 40), R(1120, 2200, 90, 50, 30), C(860, 2230), Tr(1300, 1300, 70, 70, 40), R(1140, 1120, 80, 50, 30),
@@ -795,6 +798,24 @@ export const FUEL_APPROACH: Rect = { x: 1080, y: 1520, w: 200, h: 280 };
 export const FUEL_EXTRACTION: Rect = { x: 4120, y: 330, w: 260, h: 240 };
 /** Where the enemy response walks in (edge stubs): east, north of C, south of C, north of B. */
 export const FUEL_RESPONSE: Vec[] = [{ x: 4560, y: 1520 }, { x: 3450, y: 40 }, { x: 3500, y: 2560 }, { x: 2300, y: 40 }];
+/**
+ * v0.9B.1 extraction pressure (light) toward the helicopter clearing: the northern track from B, the trail up from C
+ * and the eastern stub (600-1100 px from the pad, so each group is on the squad within a few seconds).
+ */
+export const FUEL_PRESSURE: Vec[] = [{ x: 3450, y: 470 }, { x: 3720, y: 1040 }, { x: 4560, y: 1520 }, { x: 3450, y: 40 }];
+/**
+ * v0.9B.1 Mission 17 pacing: approach pickets (placed groups on the trails between the installations).
+ */
+export const FUEL_PICKETS = {
+  /** the trail A -> B, short of the rock at (1880, 1040) */
+  trailB: [{ x: 1700, y: 1180 }, { x: 1760, y: 1120 }, { x: 1660, y: 1120 }, { x: 1800, y: 1180 }],
+  /** the track from patrol clearing 2 up to B's south gap */
+  southTrack: [{ x: 2400, y: 1300 }, { x: 2370, y: 1220 }, { x: 2440, y: 1380 }],
+  /** the northern track B -> C */
+  northTrack: [{ x: 2950, y: 900 }, { x: 3020, y: 940 }, { x: 2890, y: 860 }, { x: 3060, y: 990 }],
+};
+/** v0.9B.1 where the counterattack (chapter4.ts InstallationCounterattack) comes from: the edge stubs and the trail behind A. */
+export const FUEL_COUNTER_FROM: Vec[] = [{ x: 4560, y: 1520 }, { x: 3450, y: 40 }, { x: 3500, y: 2560 }, { x: 2300, y: 40 }, { x: 900, y: 1900 }];
 const FUEL_COVER: Obstacle[] = [
   // patrol clearing 1 and the approach
   Tr(820, 1780, 70, 60, 40), R(960, 1990, 90, 50, 30), C(1120, 1660),
@@ -841,8 +862,18 @@ export const FUEL_OPEN_SHAPES = FUEL_OPEN;
 // Three supply caches sit off the route: a backyard in the outskirts (off South Avenue), a courtyard off North
 // Avenue between V2 and V3, and a dead-end alley off Main Street between V3 and V4.
 const Rf = (x: number, y: number, w: number, h: number): Obstacle => ({ x, y, w, h, kind: 'roof', height: 0 });
-/** Rooftop perches (Rf) and the sniper positions on them. */
-export const ALLEY_ROOFS = { north: { x: 2670, y: 1285 }, south: { x: 2670, y: 1506 }, corner: { x: 2915, y: 1284 }, final: { x: 4270, y: 1284 } };
+/**
+ * Rooftop perches (Rf) and the sniper positions on them. v0.9B.1: each perch is the street edge of a building (a 14 px
+ * strip at its foot; the sniper stands 7 px out from the wall, so its own building never blocks its line) and the
+ * sniper is drawn on that building's roof (urban.ts roofPerch / drawAbove): north / corner / final on the front parapet
+ * of a block north of Main Street, south / court on the back parapet of a block south of it.
+ */
+export const ALLEY_ROOFS = {
+  north: { x: 2670, y: 1267 }, south: { x: 2670, y: 1523 }, corner: { x: 2905, y: 1267 }, final: { x: 4270, y: 1267 },
+  court: { x: 3640, y: 1523 },
+};
+/** v0.9B.1 empty sandbag nests on other roofs over Main Street (scenery: a nest alone never gives a sniper away). */
+export const ALLEY_ROOF_DECOYS: Vec[] = [{ x: 1720, y: 1267 }, { x: 2300, y: 1523 }, { x: 3240, y: 1523 }];
 const ALLEY_BUILDINGS: Obstacle[] = [
   // column 0, the outskirts (x 0-900): low buildings with open lots between them
   B(60, 80, 380, 440), B(500, 120, 340, 400), B(80, 860, 320, 360), B(480, 880, 330, 340),
@@ -862,7 +893,7 @@ const ALLEY_BUILDINGS: Obstacle[] = [
 const ALLEY_COVER: Obstacle[] = [
   // rooftop perches: both sides of Main Street between V2 and V3 (a crossfire from above), the corner before V3, and
   // the plaza's north-west building
-  Rf(2600, 1262, 140, 46), Rf(2600, 1484, 140, 44), Rf(2860, 1262, 110, 46), Rf(4200, 1262, 140, 46),
+  Rf(2630, 1260, 80, 14), Rf(2630, 1516, 80, 14), Rf(2870, 1260, 70, 14), Rf(4230, 1260, 80, 14), Rf(3600, 1516, 80, 14),
   // the courtyard's south wall (gate x 3420-3500) and its inner cover
   K(3180, 1262, 240, 30), K(3500, 1262, 440, 30), S(3450, 1000, 120, 16), S(3620, 1110, 16, 100), C(3400, 1150), C(3740, 990), K(3550, 1190, 60, 30, 26),
   // barricades across Main Street (gaps y 1380-1440): the post before V2 and the one before V3
@@ -880,14 +911,24 @@ const ALLEY_COVER: Obstacle[] = [
 export const ALLEY_POINTS = {
   /** the first ambush: down the column-1 alley from North Avenue and up it from South Avenue */
   firstFrom: [{ x: 1500, y: 690 }, { x: 1500, y: 2110 }],
+  /** v0.9B.1 the first ambush's flankers: down / up V1 behind the squad */
+  firstFlank: [{ x: 980, y: 690 }, { x: 980, y: 2110 }],
   /** the crossfire: down V2 from the north and up it from the south, to posts either side of the intersection */
-  crossNorth: [{ x: 2020, y: 340 }], crossNorthPosts: [{ x: 1990, y: 1150 }, { x: 2050, y: 1170 }, { x: 2020, y: 1110 }],
-  crossSouth: [{ x: 2020, y: 2460 }], crossSouthPosts: [{ x: 1990, y: 1650 }, { x: 2050, y: 1630 }, { x: 2020, y: 1690 }],
+  crossNorth: [{ x: 2020, y: 340 }], crossNorthPosts: [{ x: 1990, y: 1150 }, { x: 2050, y: 1170 }, { x: 2020, y: 1110 }, { x: 1960, y: 1090 }],
+  crossSouth: [{ x: 2020, y: 2460 }], crossSouthPosts: [{ x: 1990, y: 1650 }, { x: 2050, y: 1630 }, { x: 2020, y: 1690 }, { x: 2070, y: 1710 }],
+  /** v0.9B.1 the crossfire's last group: down Main Street from the east or V2's far ends */
+  crossLate: [{ x: 2760, y: 1400 }, { x: 2020, y: 300 }, { x: 2020, y: 2500 }],
   /** the rear ambush: back where the squad came from */
   rear: [{ x: 1500, y: 1400 }, { x: 1000, y: 1400 }, { x: 2020, y: 690 }, { x: 2020, y: 2110 }, { x: 1000, y: 690 }],
+  /** v0.9B.1 the rear ambush's second group: the avenues behind the squad */
+  rear2: [{ x: 2540, y: 690 }, { x: 2540, y: 2110 }, { x: 2020, y: 690 }, { x: 2020, y: 2110 }],
+  /** v0.9B.1 the courtyard's reinforcements: North Avenue either side of the north gate */
+  courtFrom: [{ x: 3060, y: 690 }, { x: 4060, y: 690 }, { x: 3060, y: 300 }],
   /** the final wave: the plaza's north and south streets */
   finalFrom: [{ x: 4600, y: 690 }, { x: 4600, y: 2110 }, { x: 4060, y: 300 }, { x: 4060, y: 2500 }],
 };
+/** v0.9B.1 extraction pressure (intense) on the plaza: its north / south streets and V4's far ends. */
+export const ALLEY_PRESSURE: Vec[] = [{ x: 4600, y: 690 }, { x: 4600, y: 2110 }, { x: 4060, y: 690 }, { x: 4060, y: 2110 }, { x: 4060, y: 300 }];
 export const ALLEY_CACHES: Vec[] = [{ x: 640, y: 1930 }, { x: 2540, y: 440 }, { x: 3520, y: 1880 }];
 export const ALLEY_ZONES = {
   district: { x: 640, y: 1300, w: 200, h: 200 } as Rect,
@@ -901,7 +942,7 @@ export const ALLEY_MAP: MapDef = {
   id: 'ambush-alley', w: 4800, h: 2800, theme: 'urban',
   obstacles: [...ALLEY_BUILDINGS, ...ALLEY_COVER],
   start: { x: 210, y: 1400 }, startZone: { x: 80, y: 1290, w: 260, h: 220 },
-  medkits: [{ x: 1500, y: 1250 }, { x: 2540, y: 1700 }, { x: 3060, y: 700 }, { x: 4060, y: 2110 }],
+  medkits: [{ x: 1500, y: 1250 }, { x: 2540, y: 1700 }, { x: 3060, y: 700 }, { x: 4060, y: 2110 }, { x: 3880, y: 1460 }], // v0.9B.1 + one before V4
   rapidFire: [{ x: 1500, y: 1700 }],
   roads: [
     [{ x: 0, y: 1400 }, { x: 4800, y: 1400 }], [{ x: 0, y: 690 }, { x: 4800, y: 690 }], [{ x: 0, y: 2110 }, { x: 4800, y: 2110 }],

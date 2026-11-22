@@ -99,18 +99,26 @@ export interface TriggerSpec {
   /** v0.6.2: enemy kinds of the wave in order (missing = rifleman). */
   kinds?: EnemyKind[];
 }
-/** v0.8A extraction pressure tiers (sizes in CFG.extractionPressure; see pressureGroups). */
-export type PressureTier = 'light' | 'small' | 'moderate' | 'restrained' | 'strong';
-export interface PressureGroup { size: number; delay: number; kinds?: EnemyKind[] }
-/** Reinforcement groups of a tier: sizes / delays read live from CFG.extractionPressure. */
+/**
+ * Extraction pressure tiers (sizes and timing in CFG.extractionPressure; see pressureGroups). v0.9B.1: 'light' /
+ * 'standard' / 'intense' are staggered over the countdown; 'intro' (M2) and 'restrained' (M11) keep their v0.8A shape.
+ */
+export type PressureTier = 'intro' | 'light' | 'standard' | 'intense' | 'restrained';
+/** `delay` s after the countdown starts (intro / restrained), or `at` x the countdown length (v0.9B.1 tiers). */
+export interface PressureGroup { size: number; delay: number; at?: number; kinds?: EnemyKind[] }
+const lead = (n: number, k: EnemyKind, size: number): EnemyKind[] => Array.from({ length: Math.min(n, size) }, () => k);
+/** Reinforcement groups of a tier: sizes / timing read live from CFG.extractionPressure. */
 export function pressureGroups(tier: PressureTier): PressureGroup[] {
   const P = CFG.extractionPressure;
   switch (tier) {
-    case 'light': return [{ size: P.light, delay: 0 }];
-    case 'small': return [{ size: P.small, delay: 0 }];
-    case 'moderate': return [{ size: P.moderateA, delay: 0 }, { size: P.moderateB, delay: P.moderateDelay }];
+    case 'intro': return [{ size: P.intro, delay: 0 }];
+    case 'light': return [{ size: P.lightA, delay: 0, at: P.lightAAt }, { size: P.lightB, delay: 0, at: P.lightBAt }];
+    case 'standard': return [{ size: P.standardA, delay: 0, at: P.standardAAt }, { size: P.standardB, delay: 0, at: P.standardBAt },
+      { size: P.standardC, delay: 0, at: P.standardCAt, kinds: lead(P.standardArmored, 'armored', P.standardC) }];
+    case 'intense': return [{ size: P.intenseA, delay: 0, at: P.intenseAAt },
+      { size: P.intenseB, delay: 0, at: P.intenseBAt, kinds: [...Array.from({ length: Math.max(0, P.intenseB - P.intenseSnipers) }, () => 'rifleman' as const), ...lead(P.intenseSnipers, 'sniper', P.intenseB)] },
+      { size: P.intenseC, delay: 0, at: P.intenseCAt, kinds: lead(P.intenseArmored, 'armored', P.intenseC) }];
     case 'restrained': return [{ size: P.restrained, delay: P.restrainedDelay }];
-    case 'strong': return [{ size: P.strongA, delay: 0 }, { size: P.strongB, delay: P.strongDelay, kinds: Array.from({ length: P.strongArmored }, () => 'armored' as const) }];
   }
 }
 export interface ExtractionSpec {
@@ -195,6 +203,11 @@ export interface MissionMechanic {
    * once, before the strike's damage pass; explosives inside it (mines, fuel tanks) arm to go off on the next step.
    */
   supportStrike?(m: Mission, g: Game, at: Vec | null, radius: number): void;
+  /**
+   * v0.9B.1 drawn after the depth-sorted scene (on top of the buildings): rooftop details and the units standing on
+   * them. `drawUnit` is the renderer's character drawing (render.ts), so a mechanic can draw a unit lifted onto a roof.
+   */
+  drawAbove?(ctx: CanvasRenderingContext2D, m: Mission, g: Game, drawUnit: (u: Unit) => void): void;
 }
 
 export type Phase = string; // current primary's phase, then 'toExtraction' | 'countdown' | 'available' | 'done'
@@ -522,9 +535,11 @@ export class Mission {
     const P = this.script.extraction.pressure;
     if (!P || this.pressureT < 0) return;
     this.pressureT += dt;
-    const groups = pressureGroups(P.tier);
-    while (this.pressureGroupsFired < groups.length && groups[this.pressureGroupsFired].delay <= this.pressureT) {
+    const groups = pressureGroups(P.tier), len = this.extraction.total();
+    const due = (g: PressureGroup) => (g.at !== undefined ? g.at * len : g.delay) <= this.pressureT + 1e-9;
+    while (this.pressureGroupsFired < groups.length && due(groups[this.pressureGroupsFired])) {
       const g = groups[this.pressureGroupsFired++];
+      const last = this.pressureGroupsFired === groups.length && groups.length >= 3;
       if (g.size <= 0) continue;
       const pt = this.pressurePoint(game, P.points);
       if (!pt) continue;
@@ -536,7 +551,8 @@ export class Mission {
       this.pressureUsed.push(pt);
       this.incoming.push({ pos: { ...pt }, life: 5 });
       const dir = compass(squadCentre(game.soldiers) ?? game.cam, pt);
-      game.banner(this.pressureGroupsFired === 1 ? `ENEMY REINFORCEMENTS INBOUND FROM THE ${dir} — HOLD UNTIL EXTRACTION` : `MORE ENEMIES INBOUND FROM THE ${dir}`, '#ffb347', 3);
+      game.banner(this.pressureGroupsFired === 1 ? `ENEMY REINFORCEMENTS INBOUND FROM THE ${dir} — HOLD UNTIL EXTRACTION`
+        : last ? `FINAL ASSAULT FROM THE ${dir} — THE HELICOPTER IS ALMOST HERE` : `MORE ENEMIES INBOUND FROM THE ${dir}`, last ? '#ff7a5a' : '#ffb347', 3);
       sfx('alarm');
     }
   }
@@ -674,6 +690,10 @@ export class Mission {
     for (const w of this.wrecks) drawWreck(ctx, w.pos, w.kind);
     this.artillery?.drawGround(ctx, game);
     for (const x of this.mechanics) x.draw?.(ctx, this, game);
+  }
+  /** v0.9B.1 drawing on top of the depth-sorted scene (MissionMechanic.drawAbove). */
+  drawAbove(ctx: CanvasRenderingContext2D, game: Game, drawUnit: (u: Unit) => void) {
+    for (const x of this.mechanics) x.drawAbove?.(ctx, this, game, drawUnit);
   }
 }
 

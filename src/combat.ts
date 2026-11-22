@@ -28,6 +28,9 @@ export interface Projectile {
   from?: Vec;
   /** v0.8B: a round of the escort truck's machine gun (fixed stats: no Elite / class on-hit effects). */
   mounted?: boolean;
+  /** v0.9B.1 render only: a rooftop sniper's round starts `lift` px up (its roof) and comes down over `liftDist` px. */
+  lift?: number;
+  liftDist?: number;
   /** v0.8C: a Demolitions Expert rocket: explodes on the first enemy, wall or at the end of its flight (rocketImpact). */
   rocket?: boolean;
 }
@@ -267,8 +270,9 @@ export function updateEnemySniper(u: Unit, game: Game, dt: number, victims: Unit
   if (u.lockAim === null) u.aim = turnToward(u.aim, desired, C.turnRate * dt);
   if (u.fireCooldown > 0) return;
   u.aimHeld += dt;
-  if (u.lockAim === null && u.aimHeld >= C.aimTime - C.lockTime) { u.lockAim = u.aim; sfx('lock'); }
-  if (u.aimHeld < C.aimTime || u.lockAim === null) return;
+  const aimT = C.aimTime + u.aimBonus; // v0.9B.1 a revealed rooftop sniper's first telegraph is longer (aimBonus)
+  if (u.lockAim === null && u.aimHeld >= aimT - C.lockTime) { u.lockAim = u.aim; sfx('lock'); }
+  if (u.aimHeld < aimT || u.lockAim === null) return;
   const half = (C.accuracy * DEG) / 2;
   const a = u.lockAim + rand(-half, half);
   const dx = Math.cos(a), dy = Math.sin(a);
@@ -276,7 +280,9 @@ export function updateEnemySniper(u: Unit, game: Game, dt: number, victims: Unit
     pos: { x: u.pos.x + dx * 8, y: u.pos.y + dy * 8 }, vel: { x: dx * C.projectileSpeed, y: dy * C.projectileSpeed },
     team: 'enemy', damage: u.rallyUntil > game.time ? C.damage * (1 + CFG.general.rallyBonus) : C.damage, life: (C.range * 1.3) / C.projectileSpeed, trail: { x: u.pos.x, y: u.pos.y }, owner: u,
     width: 4, len: 44, precise: true,
+    ...(u.roofLift ? { lift: u.roofLift, liftDist: Math.max(1, dist(u.pos, u.target.pos)) } : {}),
   });
+  u.aimBonus = 0;
   u.shots++;
   u.muzzle = CFG.feel.muzzleFlash * 2;
   u.fireCooldown = 1 / C.fireRate;

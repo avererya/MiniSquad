@@ -8,7 +8,7 @@ import { isLowObstacle, type MapDef, type Obstacle } from './map';
 import { grenadePos } from './abilities';
 import { VIEW_W, VIEW_H } from './view';
 import { DEG, clamp, dist, type Rect } from './util';
-import { aimTimeOf } from './combat';
+import { aimTimeOf, type Projectile } from './combat';
 import { drawFuelTank } from './fuel';
 import { CLASSES, type ClassVisual, type SoldierClassId } from './classes';
 import { adrenalineActive, eliteSpec, type EliteSpecId } from './elite';
@@ -181,6 +181,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   for (const u of [...game.soldiers, ...game.allies, ...game.npcs, ...game.enemies]) {
     if (u.mount) continue; // v0.8B the truck's gunner is drawn on the truck (drawEscortTruck)
     if (u.structure === 'mine') continue; // v0.9A revealed mines are drawn by their MineField (ground level)
+    if (u.rooftop) continue; // v0.9B.1 rooftop snipers stand on a roof: drawn after the scene (Mission.drawAbove)
     if (u.structure) items.push({ y: u.pos.y, draw: () => drawStructure(ctx, u, game) });
     else if (u.npc) items.push({ y: u.pos.y, draw: () => drawCaptive(ctx, u, game) });
     else if (u.vehicle) items.push({ y: u.pos.y, draw: () => drawTruck(ctx, u, game) });
@@ -195,6 +196,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
   }
   items.sort((a, b) => a.y - b.y);
   for (const it of items) it.draw();
+  game.mission.drawAbove(ctx, game, (u) => drawUnit(ctx, u, game)); // v0.9B.1 rooftops (over the buildings)
 
   // squad silhouettes so soldiers behind buildings stay visible
   ctx.save();
@@ -265,15 +267,16 @@ function drawZones(ctx: CanvasRenderingContext2D, game: Game) {
   ctx.fillText('H', z.x + z.w / 2, z.y + z.h / 2 + 2);
 }
 
-/** v0.9B a rooftop perch drawn into the ground: a flat tar roof with a parapet, gravel and a vent (Mission 18). */
+/**
+ * v0.9B a rooftop perch ('roof' low obstacle). v0.9B.1: the perch is the narrow strip at the foot of a building the sniper
+ * stands above (it blocks walking only); the sniper and its nest are drawn on the building's roof (urban.ts
+ * drawAbove), so on the ground this is just a strip of rubble and broken kerb along the wall.
+ */
 function drawRoofPerch(g: CanvasRenderingContext2D, o: Obstacle) {
-  g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(o.x + 5, o.y + 6, o.w, o.h);
-  g.fillStyle = '#56524c'; g.fillRect(o.x, o.y, o.w, o.h);
-  g.fillStyle = '#6e6a62';
-  for (let k = 0; k < (o.w * o.h) / 90; k++) { const px = o.x + 4 + ((k * 37) % Math.max(1, o.w - 8)), py = o.y + 4 + ((k * 53) % Math.max(1, o.h - 8)); g.fillRect(px, py, 2, 2); }
-  g.strokeStyle = '#38352f'; g.lineWidth = 5; g.strokeRect(o.x + 2.5, o.y + 2.5, o.w - 5, o.h - 5);
-  g.strokeStyle = '#8a857b'; g.lineWidth = 1.5; g.strokeRect(o.x + 6, o.y + 6, o.w - 12, o.h - 12);
-  g.fillStyle = '#8f8a80'; g.fillRect(o.x + o.w - 26, o.y + 10, 16, 12); g.strokeStyle = '#4a463f'; g.lineWidth = 1; g.strokeRect(o.x + o.w - 26, o.y + 10, 16, 12);
+  g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(o.x, o.y, o.w, o.h);
+  g.fillStyle = '#6a655c';
+  for (let k = 0; k < o.w / 7; k++) { const px = o.x + 2 + ((k * 37) % Math.max(1, o.w - 6)), py = o.y + 2 + ((k * 53) % Math.max(1, o.h - 5)); g.fillRect(px, py, 4, 3); }
+  g.strokeStyle = '#4a463f'; g.lineWidth = 2; g.beginPath(); g.moveTo(o.x, o.y + o.h - 1); g.lineTo(o.x + o.w, o.y + o.h - 1); g.stroke();
 }
 
 function drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle, clock: number) {
@@ -1009,18 +1012,20 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game) {
     const sq = p.team === 'squad';
     const sp = Math.hypot(p.vel.x, p.vel.y) || 1;
     const L = p.len ?? (sq ? 20 : 16);
-    const tx = p.pos.x - (p.vel.x / sp) * L, ty = p.pos.y - (p.vel.y / sp) * L;
+    const lift = projectileLift(p);
+    const tx = p.pos.x - (p.vel.x / sp) * L, ty = p.pos.y - (p.vel.y / sp) * L - lift;
+    const py = p.pos.y - lift;
     if (p.precise) {
       // precision round: long bright streak with a dark outline (readable on small screens)
       ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = (p.width ?? 3) + 2.5;
-      ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, py - 18); ctx.stroke();
       ctx.strokeStyle = p.charged ? '#8ff4ff' : sq ? '#e6f7ff' : '#ff3b2b'; ctx.lineWidth = (p.width ?? 3) + (p.charged ? 1.5 : 0); // v0.7A Perfect Aim: thicker cyan
-      ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, py - 18); ctx.stroke();
       continue;
     }
     if (p.rocket) {
       // v0.8C rocket: dark body, red tip, flame and smoke tail (one short path set per rocket)
-      const ux = p.vel.x / sp, uy = p.vel.y / sp, rl = CFG.rocket.length, x0 = p.pos.x, y0 = p.pos.y - 18;
+      const ux = p.vel.x / sp, uy = p.vel.y / sp, rl = CFG.rocket.length, x0 = p.pos.x, y0 = py - 18;
       ctx.strokeStyle = 'rgba(200,200,200,0.35)'; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(x0 - ux * (rl + 26), y0 - uy * (rl + 26)); ctx.lineTo(x0 - ux * rl, y0 - uy * rl); ctx.stroke();
       ctx.strokeStyle = '#ffb030'; ctx.lineWidth = 4;
@@ -1033,15 +1038,27 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game) {
     if (p.mounted) {
       // v0.8B truck machine gun: heavy orange tracer with a dark outline (one stroke pair per round, no extra objects)
       ctx.strokeStyle = 'rgba(60,30,0,0.5)'; ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(tx, ty - 22); ctx.lineTo(p.pos.x, p.pos.y - 22); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx, ty - 22); ctx.lineTo(p.pos.x, py - 22); ctx.stroke();
       ctx.strokeStyle = '#ffb040'; ctx.lineWidth = 3.5;
-      ctx.beginPath(); ctx.moveTo(tx, ty - 22); ctx.lineTo(p.pos.x, p.pos.y - 22); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx, ty - 22); ctx.lineTo(p.pos.x, py - 22); ctx.stroke();
       continue;
     }
     ctx.strokeStyle = sq ? (p.hot ? '#ffc070' : COL.squadBullet) : COL.enemyBullet;
     ctx.lineWidth = (p.width ?? (sq ? 3.5 : 4)) + (p.hot ? 0.5 : 0);
-    ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, p.pos.y - 18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx, ty - 18); ctx.lineTo(p.pos.x, py - 18); ctx.stroke();
   }
+}
+
+/**
+ * v0.9B.1 render-only height of a round over the street: a rooftop sniper's round starts at its roof (`lift`) and comes
+ * down to the street over `liftDist`; a squad round aimed at a rooftop sniper climbs to its roof on the way.
+ */
+function projectileLift(p: Projectile): number {
+  if (p.lift && p.owner) return p.lift * clamp(1 - dist(p.pos, p.owner.pos) / (p.liftDist ?? 1), 0, 1);
+  const t = p.team === 'squad' ? p.owner?.target : null;
+  if (!t || !t.roofLift || !p.owner) return 0;
+  const d0 = dist(p.owner.pos, t.pos);
+  return d0 > 1 ? t.roofLift * clamp(1 - dist(p.pos, t.pos) / d0, 0, 1) : 0;
 }
 
 function drawFx(ctx: CanvasRenderingContext2D, game: Game) {
@@ -1094,7 +1111,7 @@ function drawOverheads(ctx: CanvasRenderingContext2D, game: Game) {
     if (!e.active || isBoss(e) || e.structure === 'mine') continue; // the boss has the big HUD bar; a mine has no HP bar
     const big = e.structure || e.vehicle;
     const w = big ? 64 : e.kind === 'armored' ? 30 : 24, f = clamp(e.hp / e.maxHp, 0, 1);
-    const bx = e.pos.x - w / 2, byy = e.pos.y - (e.vehicle ? 58 : e.structure ? 62 : e.kind === 'tower' ? 118 : 60);
+    const bx = e.pos.x - w / 2, byy = e.pos.y - e.roofLift - (e.vehicle ? 58 : e.structure ? 62 : e.kind === 'tower' ? 118 : 60);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx - 1, byy - 1, w + 2, big ? 7 : 5);
     ctx.fillStyle = e.vehicle ? (f > 0.66 ? '#ffd84a' : f > 0.33 ? '#ffa03a' : '#ff5a3a') : f > 0.5 ? '#ff5a4a' : '#ff9a3a'; ctx.fillRect(bx, byy, w * f, big ? 5 : 3);
     if (e.vehicle) { ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#000'; ctx.fillText(e.label, e.pos.x + 1, byy - 8 + 1); ctx.fillStyle = '#ffd84a'; ctx.fillText(e.label, e.pos.x, byy - 8); }
@@ -1809,8 +1826,9 @@ function drawTelegraphs(ctx: CanvasRenderingContext2D, game: Game) {
     const locked = e.lockAim !== null;
     const a = locked ? e.lockAim! : e.aim;
     const L = Math.min(C.range, dist(e.pos, e.target.pos) + 40);
-    const x1 = e.pos.x, y1 = e.pos.y - 18, x2 = x1 + Math.cos(a) * L, y2 = y1 + Math.sin(a) * L;
-    const k = clamp(e.aimHeld / C.aimTime, 0, 1);
+    // v0.9B.1 a rooftop sniper's laser starts at its rifle up on the roof and ends on the street (roofLift)
+    const x1 = e.pos.x, y1 = e.pos.y - 18 - e.roofLift, x2 = x1 + Math.cos(a) * L, y2 = e.pos.y - 18 + Math.sin(a) * L;
+    const k = clamp(e.aimHeld / (C.aimTime + e.aimBonus), 0, 1);
     const blink = locked && Math.sin(game.clock * 40) > 0;
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = locked ? 7 : 5;
@@ -1820,7 +1838,7 @@ function drawTelegraphs(ctx: CanvasRenderingContext2D, game: Game) {
     // reticle on the end + "!" over the sniper
     ctx.strokeStyle = locked ? '#ff2a1a' : 'rgba(255,60,50,0.8)'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(x2, y2, locked ? 12 : 16 - 6 * k, 0, Math.PI * 2); ctx.stroke();
-    bigText(ctx, '!', e.pos.x, e.pos.y - 74, 22, locked ? '#ff3a2a' : '#ffb347');
+    bigText(ctx, '!', e.pos.x, e.pos.y - 74 - e.roofLift, 22, locked ? '#ff3a2a' : '#ffb347');
   }
   for (const s of game.soldiers) {
     if (!s.active || s.classDef?.id !== 'sniper' || !s.target) continue;

@@ -19,7 +19,7 @@
 //  K. Phones (iPhone SE / 14 / Pixel 7 landscape): the mine tap area is at least 44 CSS px; a real touch tap orders
 // Usage: npm test -- v09a   (or: npx vite preview --port 4173 & BASE=<v0.8C.1 url> node tools/v09a.cjs)
 const fs = require('fs');
-const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot } = require('./lib.cjs');
+const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot, V09B1 } = require('./lib.cjs');
 
 /** Page-side: Mission 16 helpers on top of window.T (tools/lib.cjs). */
 function installMineHelpers() {
@@ -571,9 +571,10 @@ runSuite(async () => {
     const np = await openPage(browser, URL, { seed: 4242 });
     const now = await np.evaluate(missionSnapshot);
     await np.context().close();
-    const cfgDiff = Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k]);
+    const cfgDiff = V09B1.cfgDiff(Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k])); // v0.9B.1: extraction pressure set aside
     check('J1 every CFG group identical to v0.8C.1 except the new `mine` group (v0.9B: and the new `fuel` group)', cfgDiff.sort().join() === 'fuel,mine', cfgDiff.join() || 'none');
-    const norm = (s, id) => { if (!s) return s; if (id !== 'last-stand') return s; const o = JSON.parse(s), d = JSON.parse(o.def); d.unlocks.missions = []; o.def = JSON.stringify(d); return JSON.stringify(o); };
+    // v0.9B.1: the countdowns it changed are set aside (V09B1.normCd)
+    const norm = (s, id) => { if (!s) return s; if (id !== 'last-stand') return V09B1.normCd(id, s); const o = JSON.parse(s), d = JSON.parse(o.def); d.unlocks.missions = []; o.def = JSON.stringify(d); return JSON.stringify(o); };
     const ids = Object.keys(before.missions);
     const misDiff = ids.filter((id) => norm(before.missions[id], id) !== norm(now.missions[id], id));
     const m15 = JSON.parse(JSON.parse(now.missions['last-stand']).def).unlocks.missions.join();

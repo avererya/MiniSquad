@@ -22,7 +22,7 @@
 //  H. Phones (iPhone SE / 14 / Pixel 7 landscape): the tank tap area is at least 44 CSS px; a touch tap orders a tank
 // Usage: npm test -- v09b   (or: npx vite preview --port 4173 & BASE=<v0.9A url> node tools/v09b.cjs)
 const fs = require('fs');
-const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot, installPageHelpers } = require('./lib.cjs');
+const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot, installPageHelpers, V09B1 } = require('./lib.cjs');
 
 /** Page-side helpers on top of window.T (tools/lib.cjs). */
 function installHelpers() {
@@ -49,6 +49,8 @@ function installHelpers() {
         return { g, m, A: m.mechanic('ambush'), C: m.mechanic('caches') };
       },
       centre(z) { return { x: z.x + z.w / 2, y: z.y + z.h / 2 }; },
+      /** v0.9B.1 show every concealed rooftop sniper now (so a scripted check can kill it). */
+      reveal() { const g = window.game, A = g.mission.mechanic('ambush'); if (A) for (const u of [...A.hidden]) A.reveal(g, u, 'timer'); },
       /** Stand the squad at `p` for `sec` s (pinned there, story lines skipped). */
       hold(p, sec, each) { const g = window.game; this.at(p); this.step(sec, (i) => { this.pinAt(p); if (g.modal === 'story' && g.story) g.story.skip(g); if (each) each(i); }); },
       /** Replace this attempt's depot with tanks at `points` (same class, so the same rules); old tank units removed. */
@@ -454,8 +456,8 @@ runSuite(async () => {
     g.invuln = false;
     return out;
   });
-  check('D1 Mission 17 objectives: approach -> installations -> response (then extraction); the "fuel" mechanic; radio cues', flow.prim === 'approach,installations,response' && flow.mech === 'fuel' && /cue:fuel/.test(flow.story) && /start:response/.test(flow.story), `${flow.prim} / ${flow.mech} / ${flow.story}`);
-  check('D2 existing enemy kinds only (Riflemen, Armored Troopers, Snipers; no Scout), 34 placed', /^\{("(armored|rifleman|sniper)":\d+,?){3}\}$/.test(flow.kinds) && flow.placed === 34, `${flow.placed}: ${flow.kinds}`);
+  check('D1 Mission 17 objectives: approach -> installations -> response (then extraction); the "fuel" mechanic (v0.9B.1: + "counterattack"); radio cues', flow.prim === 'approach,installations,response' && flow.mech === 'fuel,counterattack' && /cue:fuel/.test(flow.story) && /start:response/.test(flow.story), `${flow.prim} / ${flow.mech} / ${flow.story}`);
+  check('D2 existing enemy kinds only (Riflemen, Armored Troopers, Snipers; no Scout), 45 placed (v0.9B.1: 34 + 11 on the approaches)', /^\{("(armored|rifleman|sniper)":\d+,?){3}\}$/.test(flow.kinds) && flow.placed === 45, `${flow.placed}: ${flow.kinds}`);
   check('D3 installations destroyed out of order and indirectly (C before the approach, B, then a support strike on A) never softlock: each is counted, the objective completes', flow.cur0 === 'approach' && flow.cur1 === 'installations' && /C:done/.test(flow.chips1) && /A:live/.test(flow.chips1) && flow.cur2 === 'installations' && flow.cur3 === 'response', JSON.stringify({ c0: flow.cur0, c1: flow.cur1, chips: flow.chips1, c2: flow.cur2, c3: flow.cur3 }));
   check('D4 the enemy response is finite: 3 waves, 12 enemies, all spawned off screen and 520+ px from every soldier', flow.resp.fired === 3 && flow.resp.n === 12 && flow.resp.total === 12 && flow.resp.onScreen === 0 && flow.resp.minD >= 520 && flow.resp.kinds === 'armored,rifleman,sniper', JSON.stringify(flow.resp));
   check('D5 once the response is down: extraction opens, nothing else spawns, the helicopter extracts the squad', flow.cur4 === 'toExtraction' && flow.more === 0 && flow.extra === 0 && flow.phase === 'won', JSON.stringify({ phase: flow.cur4, more: flow.more, extra: flow.extra, end: flow.phase }));
@@ -519,53 +521,64 @@ runSuite(async () => {
     out.first.after = A.sprung('first'); out.first.n = A.state('first').units.length;
     T.kill((e) => e.tag === 'first' || e.tag === 'street-post');
     out.c2 = m.currentObjective.id;
-    // the crossfire: two groups to posts either side of V2, holding them
+    // v0.9B.1 the flankers: 6.5 s after the first ambush armed, from V1 behind the squad
+    T.hold(T.centre(Z.first), 5); out.flank = { sprung: A.sprung('first-flank'), n: A.state('first-flank').units.length };
+    T.kill((e) => e.tag === 'first-flank');
+    // the crossfire: two groups to posts either side of V2, holding them; v0.9B.1 a late group 8 s in
     T.hold(T.centre(Z.cross), 2.5);
     const cf = A.state('crossfire');
-    out.cross = { sprung: A.sprung('crossfire'), n: cf.units.length, held: cf.units.filter((u) => u.holdPos).length, north: cf.units.filter((u) => u.holdPos && u.holdPos.y < 1310).length, south: cf.units.filter((u) => u.holdPos && u.holdPos.y > 1490).length };
+    out.cross = { sprung: A.sprung('crossfire'), n: cf.units.length, held: cf.units.filter((u) => u.holdPos).length, north: cf.units.filter((u) => u.holdPos && u.holdPos.y < 1310).length, south: cf.units.filter((u) => u.holdPos && u.holdPos.y > 1490).length, late: A.sprung('crossfire-late') };
     const hp = cf.units.map((u) => u.maxHp); for (const u of cf.units) u.setMaxHp(1e6); // they survive the walk to their posts
     T.hold(T.centre(Z.cross), 20);
     out.cross.atPosts = cf.units.filter((u) => u.active && u.holdPos && Math.hypot(u.pos.x - u.holdPos.x, u.pos.y - u.holdPos.y) < 90).length;
+    out.cross.lateN = A.state('crossfire-late').units.length;
     out.c3 = m.currentObjective.id;
     cf.units.forEach((u, i) => u.setMaxHp(hp[i]));
-    T.kill((e) => e.tag === 'crossfire'); T.step(0.2);
+    T.kill((e) => e.tag === 'crossfire' || e.tag === 'crossfire-late'); T.step(0.2);
     out.c4 = m.currentObjective.id;
-    // the rooftops: the warning first, the snipers 2.5 s later, each on a roof perch
+    // the rooftops: the warning first, the snipers 2.5 s later, each on a roof perch (v0.9B.1: concealed until they have a shot)
     g.story.log.length = 0;
     const rz = T.centre(Z.rooftops); let cueAt = -1, sprungAt = -1; const t0 = g.time;
     T.hold(rz, 5, () => { if (cueAt < 0 && /m18-rooftops/.test(g.story.log.join())) cueAt = g.time; if (sprungAt < 0 && A.sprung('rooftops')) sprungAt = g.time; });
     const roofs = g.map.obstacles.filter((o) => o.kind === 'roof');
     const ru = A.state('rooftops').units;
-    out.roof = { cue: +(cueAt - t0).toFixed(2), lead: +(sprungAt - cueAt).toFixed(2), n: ru.length, kinds: [...new Set(ru.map((u) => u.kind))].join(), onPerch: ru.filter((u) => roofs.some((o) => u.pos.x > o.x && u.pos.x < o.x + o.w && u.pos.y > o.y && u.pos.y < o.y + o.h)).length, fixed: ru.filter((u) => u.fixed && u.rooftop).length };
-    T.kill((e) => e.tag === 'rooftops' || e.tag === 'sniper-street');
+    out.roof = { cue: +(cueAt - t0).toFixed(2), lead: +(sprungAt - cueAt).toFixed(2), n: ru.length, kinds: [...new Set(ru.map((u) => u.kind))].join(), onPerch: ru.filter((u) => roofs.some((o) => u.pos.x > o.x && u.pos.x < o.x + o.w && u.pos.y > o.y && u.pos.y < o.y + o.h)).length, fixed: ru.filter((u) => u.fixed && u.rooftop).length, hidden: ru.filter((u) => A.isHidden(u) && !g.enemies.includes(u)).length, shown: ru.filter((u) => !A.isHidden(u) && g.enemies.includes(u)).length, sighted: A.log.reveals.filter((r) => r.id === 'rooftops' && r.why === 'sight' && r.aimed).length };
+    T.reveal(); T.kill((e) => e.tag === 'rooftops' || e.tag === 'sniper-street');
     out.c5 = m.currentObjective.id; out.rearEarly = A.sprung('rear');
-    // the rear ambush: once the squad pushes east, from behind, far and off screen
+    // the rear ambush: once the squad pushes east, from behind, far and off screen (v0.9B.1: a second group 5 s later)
     T.hold({ x: 2800, y: 1400 }, 3);
-    out.rear = { sprung: A.sprung('rear'), n: A.state('rear').units.length };
+    out.rear = { sprung: A.sprung('rear'), n: A.state('rear').units.length, second: A.sprung('rear-2') };
     T.kill((e) => e.tag === 'rear');
+    T.hold({ x: 2800, y: 1400 }, 5); out.rear.n2 = A.state('rear-2').units.length;
+    T.kill((e) => e.tag === 'rear-2');
     out.c6 = m.currentObjective.id;
-    T.kill((e) => e.tag === 'courtyard');
+    // v0.9B.1 the courtyard: its garrison, a concealed sniper across Main Street and three from North Avenue 10 s in
+    T.hold({ x: 3060, y: 1400 }, 11);
+    out.court = { roof: A.sprung('courtyard-roof'), wave: A.state('courtyard-wave').units.length };
+    T.reveal(); T.kill((e) => e.tag === 'courtyard' || e.tag === 'courtyard-roof' || e.tag === 'courtyard-wave');
     out.c7 = m.currentObjective.id; out.finalCue = /m18-final/.test(g.story.log.join());
     T.hold({ x: 3700, y: 1400 }, 2);
     out.fin = { roof: A.sprung('final-roof'), wave: A.sprung('final-wave') };
-    T.hold({ x: 3700, y: 1400 }, 11);
+    T.hold({ x: 3700, y: 1400 }, 9);
     out.fin.wave2 = A.sprung('final-wave'); out.fin.n = A.state('final-wave').units.length;
-    T.kill((e) => e.tag === 'final' || e.tag === 'final-roof' || e.tag === 'final-wave');
+    T.hold({ x: 3700, y: 1400 }, 14); out.fin.n2 = A.state('final-wave-2').units.length;
+    T.reveal(); T.kill((e) => /^final/.test(e.tag || ''));
     out.c8 = m.phase;
     T.step(20); out.extra = g.enemies.filter((e) => e.active).length;
-    out.spawns = A.log.spawns.filter((x) => x.id !== 'rooftops' && x.id !== 'final-roof').map((x) => ({ id: x.id, d: x.minSoldierDist, on: x.onScreen }));
+    out.spawns = A.log.spawns.filter((x) => !/roof/.test(x.id)).map((x) => ({ id: x.id, d: x.minSoldierDist, on: x.onScreen }));
     out.ext = T.extract(60); out.phase = g.phase;
     return out;
   });
   const minFor = (id) => Math.min(...f18.spawns.filter((x) => x.id === id).map((x) => x.d));
   check('E1 Mission 18 objectives: district -> street -> rooftops -> courtyard -> final (then extraction); "ambush" + "caches" mechanics; radio lines', f18.prim === 'district,street,rooftops,courtyard,final' && f18.mech === 'ambush,caches' && ['start:street', 'cue:first', 'cue:crossfire', 'cue:rooftops', 'cue:rear', 'start:courtyard', 'start:final', 'victory'].every((k) => f18.story.includes(`"${k}"`)), `${f18.prim} / ${f18.mech} / ${f18.story}`);
-  check('E2 existing enemy kinds only (Riflemen, Armored Troopers, Snipers): 20 placed + 23 from ambushes = 43, finite', f18.kinds === '{"armored":8,"rifleman":30,"sniper":5}' && f18.placed === 20 && f18.ambushTotal === 23, `${f18.placed} + ${f18.ambushTotal}: ${f18.kinds}`);
+  // v0.9B.1 (on purpose): 65 enemies in staggered groups (rifleman swarms), concealed rooftop snipers; see v09b1 for the rest
+  check('E2 existing enemy kinds only (Riflemen, Armored Troopers, Snipers): 20 placed + 45 from ambushes = 65 (v0.9B.1; was 43), finite', f18.kinds === '{"armored":9,"rifleman":49,"sniper":7}' && f18.placed === 20 && f18.ambushTotal === 45, `${f18.placed} + ${f18.ambushTotal}: ${f18.kinds}`);
   check('E3 a quiet entry: no ambush unit at the start; reaching the district plays Overwatch\'s warning; nothing springs there', f18.start.sprung === 0 && f18.start.units === 0 && f18.c1 === 'street' && /m18-quiet/.test(f18.quiet) && f18.sprung1 === '', JSON.stringify({ start: f18.start, c1: f18.c1, log: f18.quiet, sprung: f18.sprung1 }));
-  check('E4 the first ambush: its radio line as it arms, its 4 riflemen 1.5 s later, off screen and 420+ px from every soldier', f18.first.armed && !f18.first.sprung && f18.first.cue && f18.first.after && f18.first.n === 4 && minFor('first') >= 420 && f18.spawns.filter((x) => x.id === 'first').every((x) => !x.on), JSON.stringify({ ...f18.first, min: minFor('first') }));
-  check('E5 the crossfire: 6 enemies, 3 posted north and 3 south of the intersection, they reach their posts and hold; off screen, 420+ px', f18.cross.sprung && f18.cross.n === 6 && f18.cross.north === 3 && f18.cross.south === 3 && f18.cross.atPosts === 6 && minFor('crossfire') >= 420 && f18.spawns.filter((x) => x.id === 'crossfire').every((x) => !x.on) && f18.c3 === 'street' && f18.c4 === 'rooftops', JSON.stringify({ ...f18.cross, min: minFor('crossfire'), c3: f18.c3, c4: f18.c4 }));
-  check('E6 the rooftops: Overwatch warns first, the 3 snipers appear 2.5 s later, fixed on roof perches', f18.roof.cue >= 0 && Math.abs(f18.roof.lead - 2.5) < 0.05 && f18.roof.n === 3 && f18.roof.kinds === 'sniper' && f18.roof.onPerch === 3 && f18.roof.fixed === 3, JSON.stringify(f18.roof));
-  check('E7 the rear ambush springs only after the rooftops, once the squad pushes east: 5 enemies off screen, 600+ px from every soldier', !f18.rearEarly && f18.rear.sprung && f18.rear.n === 5 && minFor('rear') >= 600 && f18.spawns.filter((x) => x.id === 'rear').every((x) => !x.on) && f18.c5 === 'rooftops' && f18.c6 === 'courtyard', JSON.stringify({ ...f18.rear, early: f18.rearEarly, min: minFor('rear'), c5: f18.c5, c6: f18.c6 }));
-  check('E8 the final intersection: its line, a rooftop sniper at once, a last group of 4 12 s in (off screen, 560+ px); then extraction, nothing more, the helicopter', f18.c7 === 'final' && f18.finalCue && f18.fin.roof && !f18.fin.wave && f18.fin.wave2 && f18.fin.n === 4 && minFor('final-wave') >= 560 && f18.c8 === 'toExtraction' && f18.extra === 0 && f18.phase === 'won', JSON.stringify({ c7: f18.c7, cue: f18.finalCue, ...f18.fin, min: minFor('final-wave'), c8: f18.c8, extra: f18.extra, end: f18.phase }));
+  check('E4 the first ambush: its radio line as it arms, its 6 riflemen 1.5 s later, then 3 flankers; off screen and 420+ px from every soldier', f18.first.armed && !f18.first.sprung && f18.first.cue && f18.first.after && f18.first.n === 6 && f18.flank.sprung && f18.flank.n === 3 && minFor('first') >= 420 && minFor('first-flank') >= 420 && f18.spawns.filter((x) => /^first/.test(x.id)).every((x) => !x.on), JSON.stringify({ ...f18.first, flank: f18.flank, min: minFor('first'), minF: minFor('first-flank') }));
+  check('E5 the crossfire: 8 enemies, 4 posted north and 4 south of the intersection, they reach their posts and hold, then 5 more 8 s in; off screen, 420+ px', f18.cross.sprung && f18.cross.n === 8 && f18.cross.north === 4 && f18.cross.south === 4 && f18.cross.atPosts === 8 && !f18.cross.late && f18.cross.lateN === 5 && minFor('crossfire') >= 420 && minFor('crossfire-late') >= 420 && f18.spawns.filter((x) => /^crossfire/.test(x.id)).every((x) => !x.on) && f18.c3 === 'street' && f18.c4 === 'rooftops', JSON.stringify({ ...f18.cross, min: minFor('crossfire'), c3: f18.c3, c4: f18.c4 }));
+  check('E6 the rooftops: Overwatch warns first, 2.5 s later the 3 snipers take their roof perches (fixed), concealed: not in the enemy list unless one already has a shot (revealed on sight, aiming)', f18.roof.cue >= 0 && Math.abs(f18.roof.lead - 2.5) < 0.05 && f18.roof.n === 3 && f18.roof.kinds === 'sniper' && f18.roof.onPerch === 3 && f18.roof.fixed === 3 && f18.roof.hidden >= 1 && 3 - f18.roof.hidden === f18.roof.sighted, JSON.stringify(f18.roof));
+  check('E7 the rear ambush springs only after the rooftops, once the squad pushes east: 5 enemies, then 3 more, off screen, 600+ px from every soldier', !f18.rearEarly && f18.rear.sprung && f18.rear.n === 5 && !f18.rear.second && f18.rear.n2 === 3 && minFor('rear') >= 600 && minFor('rear-2') >= 600 && f18.spawns.filter((x) => /^rear/.test(x.id)).every((x) => !x.on) && f18.c5 === 'rooftops' && f18.c6 === 'courtyard', JSON.stringify({ ...f18.rear, early: f18.rearEarly, min: minFor('rear'), c5: f18.c5, c6: f18.c6 }));
+  check('E8 the courtyard (a rooftop sniper, 3 more 10 s in), then the final intersection: its line, a rooftop sniper at once, 4 more 10 s in and 3 more 24 s in (off screen, 560+ px); then extraction, nothing more, the helicopter', f18.court.roof && f18.court.wave === 3 && f18.c7 === 'final' && f18.finalCue && f18.fin.roof && !f18.fin.wave && f18.fin.wave2 && f18.fin.n === 4 && f18.fin.n2 === 3 && minFor('final-wave') >= 560 && minFor('final-wave-2') >= 560 && f18.c8 === 'toExtraction' && f18.extra === 0 && f18.phase === 'won', JSON.stringify({ court: f18.court, c7: f18.c7, cue: f18.finalCue, ...f18.fin, min: minFor('final-wave'), c8: f18.c8, extra: f18.extra, end: f18.phase }));
 
   // rooftop snipers: a readable first shot, killable from the street, never reachable on foot
   const roofT = await ev(() => {
@@ -590,8 +603,8 @@ runSuite(async () => {
     }
     return { aim: C.aimTime, glint: A.glint, waits, glints: A.log.glints, walk, sight, lanes: lanes.filter(Boolean).length, dead: us.filter((u) => !u.active).length, tK, n: us.length };
   });
-  check('E9 a rooftop sniper\'s first shot comes at least aimTime + 1 s after it takes aim (a laser and "ROOFTOP SNIPER!" first)', roofT.waits.length === roofT.n && roofT.waits.every((w) => w >= roofT.aim + roofT.glint - 0.02) && roofT.glints === roofT.n, JSON.stringify(roofT));
-  check('E10 rooftop snipers are shot down from the street (clear line, normal HP) and stand where no soldier can walk', roofT.sight === roofT.n && roofT.lanes === roofT.n && roofT.dead === roofT.n && roofT.walk === 0, JSON.stringify(roofT));
+  check('E9 a rooftop sniper\'s first shot comes at least aimTime + glint (v0.9B.1: 1.2 s) after it takes aim (its laser shows the whole time)', roofT.waits.length === roofT.n && roofT.waits.every((w) => w >= roofT.aim + roofT.glint - 0.02) && roofT.glints === roofT.n, JSON.stringify(roofT));
+  check('E10 rooftop snipers are shot down from the street (each from a Main Street spot with a clear line, normal HP; v0.9B.1: the corner perch is past the one fixed spot) and stand where no soldier can walk', roofT.sight >= 1 && roofT.lanes === roofT.n && roofT.dead === roofT.n && roofT.walk === 0, JSON.stringify(roofT));
 
   const caches = await ev(() => {
     const { g, m, C } = T.m18(['infantry', 'heavy', 'medic']); g.invuln = true;
@@ -617,7 +630,7 @@ runSuite(async () => {
     const alt = T.fill(W, st, block);
     const bld = g.map.obstacles.find((o) => o.kind === 'building' && o.x === 2140 && o.y === 820);
     return {
-      unreach: g.enemies.filter((e) => !ok(e.pos)).map((e) => e.tag), ground: ground.filter((p) => !ok(p)).length, zones: zones.filter((p) => !ok(p)).length,
+      unreach: g.enemies.filter((e) => !ok(e.pos)).map((e) => e.tag), ground: ground.filter((p) => !ok(p)).length, groundBad: ground.filter((p) => !ok(p)), zones: zones.filter((p) => !ok(p)).length,
       caches: C.caches.filter((c) => !ok({ x: c.pos.x, y: c.pos.y + 30 })).length, ext: ok(T.centre(z)), alt: !!alt[W.idx(z.x + z.w / 2, z.y + z.h / 2)],
       wall: { sight: W.clear({ x: bld.x - 40, y: bld.y + 200 }, { x: bld.x + bld.w + 40, y: bld.y + 200 }), walk: W.isOpen(bld.x + bld.w / 2, bld.y + bld.h / 2) },
       theme: g.map.theme, mainStreetDist: Math.min(...C.caches.map((c) => Math.abs(c.pos.y - 1400))),
@@ -667,9 +680,10 @@ runSuite(async () => {
     const np = await openPage(browser, URL, { seed: 4242 });
     const now = await np.evaluate(missionSnapshot);
     await np.context().close();
-    const cfgDiff = Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k]);
+    const cfgDiff = V09B1.cfgDiff(Object.keys({ ...before.cfg, ...now.cfg }).filter((k) => before.cfg[k] !== now.cfg[k])); // v0.9B.1: extraction pressure set aside
     check('G1 every CFG group identical to v0.9A except the new `fuel` group', cfgDiff.join() === 'fuel', cfgDiff.join() || 'none');
-    const norm = (s, id) => { if (!s || id !== 'jungle-sweep') return s; const o = JSON.parse(s), d = JSON.parse(o.def); d.unlocks = {}; o.def = JSON.stringify(d); return JSON.stringify(o); };
+    // v0.9B.1: the countdowns it changed are set aside (V09B1.normCd)
+    const norm = (s, id) => { s = V09B1.normCd(id, s); if (!s || id !== 'jungle-sweep') return s; const o = JSON.parse(s), d = JSON.parse(o.def); d.unlocks = {}; o.def = JSON.stringify(d); return JSON.stringify(o); };
     const ids = Object.keys(before.missions);
     const misDiff = ids.filter((id) => norm(before.missions[id], id) !== norm(now.missions[id], id));
     const m16 = JSON.parse(JSON.parse(now.missions['jungle-sweep']).def).unlocks.missions.join();

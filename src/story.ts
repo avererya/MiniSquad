@@ -128,7 +128,13 @@ export const SCENES: Record<string, StoryScene> = {
       { speaker: O, text: 'They are sending everything they have left. Hold together and finish them.' },
     ],
   },
-  'm17-extract': { id: 'm17-extract', mode: 'radio', lines: [{ speaker: O, text: 'The depot is burning. Helicopter inbound, north-east clearing.' }] },
+  'm17-counter': {
+    id: 'm17-counter', mode: 'radio', lines: [
+      { speaker: O, text: 'They are pulling troops back to the last installation. Expect a counterattack.' },
+      { speaker: O, text: 'If they bunch up around the tanks, you know what to do.' },
+    ],
+  },
+  'm17-extract': { id: 'm17-extract', mode: 'radio', lines: [{ speaker: O, text: 'The depot is burning. Helicopter inbound, north-east clearing. They will try to stop you: hold the clearing.' }] },
   // v0.9B Mission 18: Ambush Alley
   'm18-quiet': {
     id: 'm18-quiet', mode: 'radio', lines: [
@@ -145,8 +151,8 @@ export const SCENES: Record<string, StoryScene> = {
   },
   'm18-rooftops': {
     id: 'm18-rooftops', mode: 'radio', lines: [
-      { speaker: O, text: 'Glint on the rooftops! Snipers above Main Street.' },
-      { speaker: O, text: 'Watch for the red laser and step out of its line. Your rounds reach them from the street.' },
+      { speaker: O, text: 'Snipers on the rooftops above Main Street. They stay hidden until they have a shot.' },
+      { speaker: O, text: 'A red laser gives one away: shoot back or get that soldier behind cover.' },
     ],
   },
   'm18-rear': { id: 'm18-rear', mode: 'radio', lines: [{ speaker: O, text: 'Behind you! A squad has circled round through the back streets.' }] },
@@ -162,7 +168,7 @@ export const SCENES: Record<string, StoryScene> = {
       { speaker: O, text: 'Break them and the plaza is yours. Expect company.' },
     ],
   },
-  'm18-extract': { id: 'm18-extract', mode: 'radio', lines: [{ speaker: O, text: 'The street is ours. Helicopter inbound to the plaza.' }] },
+  'm18-extract': { id: 'm18-extract', mode: 'radio', lines: [{ speaker: O, text: 'The street is ours. Helicopter inbound to the plaza. Every patrol in the district heard that: hold until it lands.' }] },
 };
 
 export function speakerOf(line: StoryLine): StorySpeaker { return SPEAKERS[line.speaker]; }

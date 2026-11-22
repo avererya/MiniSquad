@@ -8,7 +8,7 @@
 //  D. BASE (v0.8C.1, 924dc13): every CFG group and Missions 1-15 identical as data; a seeded firefight with grenades
 //     and Demolitions rockets (splash on Riflemen and Armored Troopers) hashes identically every 0.5 s
 // Usage: npm test -- arch   (or: npx vite preview --port 4173 & BASE=<v0.8C.1 url> node tools/arch.cjs)
-const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot } = require('./lib.cjs');
+const { chromium, URL, BASE, createChecks, runSuite, openPage, missionSnapshot, V09B1 } = require('./lib.cjs');
 
 /** Page-side: the seeded firefight of D2 (works on any build since v0.8C: only Game APIs). Hash every 0.5 s. */
 function firefight() {
@@ -72,7 +72,7 @@ runSuite(async () => {
   });
   // v0.9A: Mission 16 (jungle-sweep) is the first script with a mechanic (its mine field); Missions 1-15 still declare none
   check('A1 no Mission 1-15 script declares mechanics (v0.9A: only Mission 16, its mine field; v0.9B: Mission 17 fuel depot, Mission 18 ambushes + caches)', a.declared.join() === 'jungle-sweep,fuel-for-the-fire,ambush-alley', a.declared.join(','));
-  check('A1 every Mission 1-15 attempt starts with an empty mechanic list (Mission 16: one; v0.9B Mission 17: one, Mission 18: two)', a.started.length === 18 && a.started.slice(0, 15).every((x) => x.endsWith(':0')) && a.started[15] === 'jungle-sweep:1' && a.started[16] === 'fuel-for-the-fire:1' && a.started[17] === 'ambush-alley:2', a.started.join(' '));
+  check('A1 every Mission 1-15 attempt starts with an empty mechanic list (Mission 16: one; Mission 17: two since v0.9B.1 (fuel depot + counterattack), Mission 18: two)', a.started.length === 18 && a.started.slice(0, 15).every((x) => x.endsWith(':0')) && a.started[15] === 'jungle-sweep:1' && a.started[16] === 'fuel-for-the-fire:2' && a.started[17] === 'ambush-alley:2', a.started.join(' '));
   const s0 = a.startLog[0] || {};
   check('A2 start runs once, after the groups spawned and before the first objective / optionals activate', a.startLog.length === 1 && s0.enemies > 0 && s0.primary === 'pending' && s0.optionals.every((x) => x === 'pending'), JSON.stringify(a.startLog));
   check('A2 a unit spawned in start is in game.enemies', a.spawnedListed);
@@ -144,11 +144,11 @@ runSuite(async () => {
   if (BASE) {
     const pb = await openPage(browser, BASE, { seed: 4242 }), pc = await openPage(browser, URL, { seed: 4242 });
     const [sb, sc] = [await pb.evaluate(missionSnapshot), await pc.evaluate(missionSnapshot)];
-    const cfgDiff = Object.keys({ ...sb.cfg, ...sc.cfg }).filter((k) => sb.cfg[k] !== sc.cfg[k]);
+    const cfgDiff = V09B1.cfgDiff(Object.keys({ ...sb.cfg, ...sc.cfg }).filter((k) => sb.cfg[k] !== sc.cfg[k])); // v0.9B.1: extraction pressure set aside
     // v0.9A (on purpose): a new `mine` CFG group, Mission 16, and Mission 15's first clear also unlocks Mission 16. Every
     // other group and every Mission 1-15 field (Mission 15's row with its unlock list set aside) must still match.
     const m15 = (x) => { if (!x) return x; const o = JSON.parse(x), d = JSON.parse(o.def); d.unlocks.missions = []; o.def = JSON.stringify(d); return JSON.stringify(o); };
-    const misDiff = Object.keys(sb.missions).filter((k) => (k === 'last-stand' ? m15(sb.missions[k]) !== m15(sc.missions[k]) : sb.missions[k] !== sc.missions[k]));
+    const misDiff = Object.keys(sb.missions).filter((k) => (k === 'last-stand' ? m15(sb.missions[k]) !== m15(sc.missions[k]) : V09B1.normCd(k, sb.missions[k]) !== V09B1.normCd(k, sc.missions[k]))); // v0.9B.1 countdowns set aside
     const m15unl = JSON.parse(JSON.parse(sc.missions['last-stand']).def).unlocks.missions.join();
     check('D1 every CFG group identical to v0.8C.1 (v0.9A adds only `mine`, v0.9B only `fuel`)', cfgDiff.sort().join() === 'fuel,mine', cfgDiff.join(',') || `${Object.keys(sc.cfg).length} groups`);
     check('D1 Missions 1-15 identical to v0.8C.1 (map, enemies, objectives, extraction, story, campaign row; Mission 15 now also unlocks Mission 16)', misDiff.length === 0 && Object.keys(sb.missions).length === 15 && Object.keys(sc.missions).length === 18 && m15unl === 'jungle-sweep', misDiff.join(',') || `${Object.keys(sb.missions).length} + ${Object.keys(sc.missions).length - Object.keys(sb.missions).length} (v0.9A-v0.9B), M15 unlocks ${m15unl}`);

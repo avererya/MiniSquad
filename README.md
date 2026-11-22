@@ -15,7 +15,7 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 
 ## Status
 
-Current release: **v0.9B, Chapter 4: Missions 17-18** (package `0.9.1`, save v9), on v0.9A Chapter 4: Jungle Sweep. Missions 1-18 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines, Mission 17 adds exploding fuel tanks and Mission 18 an urban ambush. Missions 19-20 are not built yet. Chapter 2 is now called "Hostile Territory". The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.9B.1, Combat Pacing & Extraction Pressure** (package `0.9.2`, save v9), on v0.9B Chapter 4: Missions 17-18 and v0.9A Chapter 4: Jungle Sweep. Missions 1-18 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines, Mission 17 adds exploding fuel tanks and Mission 18 an urban ambush (v0.9B.1: longer Missions 17-18, concealed rooftop snipers, staggered extraction pressure). Missions 19-20 are not built yet. Chapter 2 is now called "Hostile Territory". The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -60,7 +60,7 @@ The sections below are the player-facing rules and numbers, grouped by system. H
 - [Training rebalance](#progression--training-rebalance-v07b1) · [Squad Training](#squad-training-expansion--mobile-polish-v07d) · [Accuracy soft floor](#accuracy-soft-floor--hud-touch-areas-v07d1)
 - [Elite Promotions](#elite-promotions-v07a) · [Elite Progression](#elite-progression-v07b) · [Tactical Support](#tactical-support-v07c)
 - [Chapter 2](#chapter-2-hostile-territory-v062) · [Chapter 3A](#chapter-3a-the-resistance-begins-v08a) · [Chapter 3B](#chapter-3b-hold-the-line--supply-line-sabotage-v08b) · [Difficulty, Extended Escort & Ability Capacity](#difficulty-extended-escort--ability-capacity-v08b1)
-- [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a) · [Missions 17-18: fuel tanks and urban ambushes](#chapter-4-missions-17-18-v09b)
+- [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a) · [Missions 17-18: fuel tanks and urban ambushes](#chapter-4-missions-17-18-v09b) · [v0.9B.1 combat pacing, rooftop snipers, extraction pressure](#combat-pacing--extraction-pressure-v09b1)
 - [Performance](#performance-v063)
 
 ## Campaign
@@ -383,15 +383,17 @@ Chapter 3 ("The Resistance") opens with Missions 11 and 12; Mission 13 shows as 
 
 **Extraction pressure** (`src/mission.ts` → `pressureGroups`, sizes in `CFG.extractionPressure`, ⚙ → "Extraction pressure (v0.8A)"). When the squad reaches the extraction zone and the helicopter countdown starts, a finite number of reinforcement groups enter from map-edge points that are off screen and at least 500 px from every soldier and ally (unused points first, nearest first). An edge arrow ("ENEMIES") and a banner with the compass direction announce each group. They are never required kills, give nothing extra when killed (no per-kill XP or Credits), and the helicopter countdown is unchanged. A mission uses either its scripted final wave or pressure, never both.
 
-| Tier | Groups | Missions |
+| Tier | Groups (fraction of the countdown when each enters) | Missions |
 |---|---|---|
-| none | - | 1 First Contact |
-| light | 3 at once | 2 Heavy Support |
+| none | - | 1 First Contact, 13 Hold the Line, 14 Supply Line, 15 General's Last Stand |
+| intro | 3 at once (12 s countdown) | 2 Heavy Support |
 | scripted (unchanged) | 8 (Mission 3), 2 (Mission 10) | 3 Field Medicine, 10 Iron Fist |
-| small | 4 at once | 4 Red Canyon, 5 Bring Them Home |
-| moderate | 3 at once, 2 more after 6 s | 6 Bridgehead, 7 Prison Break, 8 Convoy Crusher, 9 Blackout |
+| light (v0.9B.1) | 3 at 15%, 2 at 55% from another edge (5) | 4 Red Canyon, 5 Bring Them Home, 7 Prison Break (12 s); 17 Fuel for the Fire (15 s) |
+| standard (v0.9B.1) | 3 at 15%, 3 at 45%, 2 led by an Armored Trooper at 75% (8) | 6 Bridgehead, 8 Convoy Crusher, 9 Blackout, 16 Jungle Sweep (15 s) |
 | restrained | 3 after 2 s | 11 Resistance Rising |
-| strong | 4 at once, then 3 (one Armored) after 7 s | 12 Artillery Hunt |
+| intense (v0.9B.1) | 4 at 20%, 4 with a Sniper at 45%, 5 with 2 Armored Troopers at 75% (13) | 12 Artillery Hunt, 18 Ambush Alley (20 s) |
+
+v0.9B.1: the light / standard / intense groups are staggered through the countdown and each comes from the unused edge point nearest the squad (so a later group usually arrives from a different direction); the last group of a three-group tier is announced as the **FINAL ASSAULT**. The helicopter still takes off the moment the countdown ends with every standing soldier in the zone: there is no boarding timer and nobody has to kill the reinforcements. The defence (13), the truck escort (14) and the boss finale (15) have none, the scripted-wave missions (3, 10) keep their own wave and never get pressure on top, and the captive-escort missions (5, 7) use the light tier.
 
 **Mission 11: Resistance Rising** (Liberation & Defense, farm village map 3000 x 1800; `src/chapter3.ts`, `RESISTANCE_RISING` in `src/missions.ts`):
 - Liberate the farm, church and market zones in **any order**. A zone is liberated once its defenders (6 each) are dead and a standing soldier has spent 3 s inside it (progress is kept). HUD: "Zones liberated: x/3" with a chip per zone. After the first and second liberations a garrison group (3, then 4) comes in from the map edge.
@@ -405,7 +407,7 @@ Chapter 3 ("The Resistance") opens with Missions 11 and 12; Mission 13 shows as 
 - While alerted: a red danger circle is placed on the **last detected position** (it never follows anyone) and the shell lands **2.5 s** later. **40 damage** at the centre, falling to half at the 105 px rim, **-60% behind solid cover**, soldiers and allies only (no friendly fire). A new shell every **10-12 s** (alternating), at most **2 circles** at once. The alert clears after **20 s** without detection.
 - **Only searchlights** raise the alert. Enemy awareness, guards spotting the squad and firefights never touch it.
 - Destroying all three guns disables the artillery for good: pending circles are cancelled and nothing fires again.
-- Optional: **no artillery alert**. Extraction pressure: strong. Countdown 15 s. The **first successful clear unlocks the Commando class** (no free soldier; a failed attempt or a replay unlocks nothing).
+- Optional: **no artillery alert**. Extraction pressure: intense (v0.9B.1; was strong). Countdown 20 s (was 15 s). The **first successful clear unlocks the Commando class** (no free soldier; a failed attempt or a replay unlocks nothing).
 
 **Commando** (class `commando`, `CFG.commando`, recruited in the Recruitment Office after the Mission 12 clear; the one-time class introduction guarantees an offer in the next lineup):
 - **1,250 CR** (refund 300). **85 HP**, **7 damage and 2.5 shots/s per pistol** (two pistols: about 35 damage/s together), standing cone 10°, moving penalty +14°, **115% move speed** (172.5 px/s vs Infantry 150), **range 340 px** (Infantry / Heavy / Medic 420, Sniper 560), revive 10 s.
@@ -460,7 +462,7 @@ Chapter 4 **Behind Enemy Lines** opens with Mission 16; Missions 17-20 are not p
 1. **Advance through the jungle**: from the landing zone (south-west) along the trail to the ravine north of clearing B. Two patrols on the way; OVERWATCH warns about mines on the trails as you near the first one, which sits at the edge of clearing B.
 2. **Clear the enemy patrols and minefield approaches** (live count): the patrols of clearings A and B, the ravine / clearing C patrol behind a mine belt and the clearing D patrol behind three more mines; a northern detour and a ravine trail lead into C.
 3. **Eliminate the defenders at the fortified checkpoint** (live count): the front guard, two watchtowers, the inner garrison (holds its sandbagged compound) and a reserve behind the back wall with a long reaction range (650 px). OVERWATCH: the west road is mined, the south path is clean. The south (and the north) approach reach the compound without crossing a mine.
-4. **Reach helicopter extraction** in the north-east clearing (12 s countdown, moderate extraction pressure).
+4. **Reach helicopter extraction** in the north-east clearing (15 s countdown, standard extraction pressure since v0.9B.1; was 12 s, moderate).
 
 Optional (+25 XP / +150 CR): **Take out 3 enemies with mine blasts** (shoot a mine as a patrol walks past it, or let them walk into one). ★★ all optionals, ★★★ no KIA. Rewards follow the usual rules (Mission 16 XP by mission number, flat Credits, 75% XP on replays, no second first-clear bonus); a mine kill gives no soldier kill credit or Credits of its own.
 
@@ -474,13 +476,13 @@ Optional (+25 XP / +150 CR): **Take out 3 enemies with mine blasts** (shoot a mi
 
 ## Chapter 4: Missions 17-18 (v0.9B)
 
-Chapter 4 **Behind Enemy Lines** continues with Missions 17 and 18; Missions 19-20 are not playable yet. Save v9 unchanged; Missions 1-15 and every class, enemy, price and number are exactly v0.9A's (Mission 16 now unlocks Mission 17; one new `CFG.fuel` group). Chapter 2 is renamed **Hostile Territory**. Tactical Support now sets off mines: an airstrike detonates every armed mine in its circle, a Nuclear Strike every armed mine on the map (each once, its normal blast and chains, both teams); objective structures keep their 1 HP support floor.
+Chapter 4 **Behind Enemy Lines** continues with Missions 17 and 18; Missions 19-20 are not playable yet. (This section describes v0.9B; v0.9B.1 lengthened both missions and concealed the rooftop snipers, see [v0.9B.1](#combat-pacing--extraction-pressure-v09b1).) Save v9 unchanged; Missions 1-15 and every class, enemy, price and number are exactly v0.9A's (Mission 16 now unlocks Mission 17; one new `CFG.fuel` group). Chapter 2 is renamed **Hostile Territory**. Tactical Support now sets off mines: an airstrike detonates every armed mine in its circle, a Nuclear Strike every armed mine on the map (each once, its normal blast and chains, both teams); objective structures keep their 1 HP support floor.
 
 **Mission 17: Fuel for the Fire** (`fuel-for-the-fire`, Sabotage, squad cap 6, map `FUEL_MAP` 4,600 × 2,600 jungle supply depot; script in `src/missions.ts`, tanks in `src/fuel.ts`). Unlocked by the first clear of Mission 16. Riflemen, Armored Troopers and Snipers only: 34 placed plus a finite 12-strong response, nothing respawns. Target length 6-8 minutes on a phone.
 1. **Infiltrate the supply network**: along the trail from the south-west landing zone past a patrol. OVERWATCH explains the fuel tanks as you near the first installation.
 2. **Destroy the 3 fuel installations** (any order; chips A / B / C): **A exposed storage** (two tank pairs in the open, guards beside them), **B fortified depot** to the north (a sandbagged compound with gaps west, south and north; four defenders hold the sandbags; a five-tank cluster that chains end to end), **C central reserve** to the east (a five-tank ring with four guards holding inside it, two lone outer tanks, sandbag arcs at a safe distance). An installation counts once all of its tanks have exploded, however that happened (rounds, grenades, rockets, a chain, an airstrike or the nuke), so nothing can softlock.
 3. **Survive the enemy response**: once the last installation burns, three waves (4, then 4 with a trooper, then 4 with a trooper and a sniper; 12 in all) come from the jungle edges, off screen and at least 520 px from every soldier.
-4. **Reach helicopter extraction** in the north-east clearing (12 s countdown, no extraction pressure).
+4. **Reach helicopter extraction** in the north-east clearing (15 s countdown, light extraction pressure since v0.9B.1).
 
 Optional (+25 XP / +150 CR): **Take out 5 enemies with fuel explosions** (a tank blast, or the chain it starts). ★★ all optionals, ★★★ no KIA. The soldier whose round (or grenade, rocket or flames) set the tank off gets the kills of its blast and its chain.
 
@@ -498,11 +500,25 @@ Optional (+25 XP / +150 CR): **Take out 5 enemies with fuel explosions** (a tank
 3. **Clear the rooftops and the side streets**: OVERWATCH calls the glint, and 2.5 s later three **rooftop snipers** appear on perches over Main Street (they never move, you cannot climb up, but you can shoot them from the street). Each one's first shot shows the red laser for 1 s longer than a normal sniper's (2.6 s in all) with a "ROOFTOP SNIPER!" marker. A second barricade holds the corner. Once the snipers fall and you push east, a **rear ambush** (five) comes from the streets behind you, off screen and at least 600 px away.
 4. **Storm the courtyard**: eight defenders behind walls with three ways in (west alley, north gate, south gate).
 5. **Break the final intersection**: six dug in behind sandbags, a rooftop sniper over them and, 12 s in, a last group of four from the plaza's side streets. Not a boss.
-6. **Reach helicopter extraction** in the plaza (12 s countdown, no extraction pressure).
+6. **Reach helicopter extraction** in the plaza (20 s countdown, intense extraction pressure since v0.9B.1).
 
 Optional (+25 XP / +150 CR): **Recover 2 supply caches** of the three hidden off the main route (an outskirts backyard, a courtyard off North Avenue, a dead-end alley off Main Street). Walk up to a cache to open it: it drops existing pickups (medkits, Rapid Fire). No new currency or inventory; nothing is saved. ★★ all optionals, ★★★ no KIA.
 
 Fairness rules for ambushes: every ambush has a radio line or banner before its enemies appear, ground ambushes appear off screen at a minimum distance from every soldier (420-600 px), rooftop snipers give the long first telegraph, and every encounter is finite. Rewards follow the usual rules (XP by mission number, flat Credits, 75% XP on replays, no second first-clear bonus).
+
+## Combat Pacing & Extraction Pressure (v0.9B.1)
+
+Longer, busier Missions 17 and 18, concealed rooftop snipers and staggered extraction pressure. Save v9 unchanged; no new enemy classes, enemy HP or damage untouched; Missions 1, 3, 10, 11 and 13-15 play exactly as in v0.9B. Extraction tiers per mission: see the table under [Extraction pressure](#chapter-3a-the-resistance-begins-v08a).
+
+**Mission 17 Fuel for the Fire** (target 8-10 minutes on a phone; 45 placed + 7 + 12 + 5 = 69 enemies, nothing respawns):
+- Three new jungle pickets on the routes between the installations (3 Riflemen + 1 Armored Trooper on the trail to the fortified depot, 3 Riflemen on the southern track, 4 on the northern track).
+- **Counterattack**: once two installations are destroyed and one is still standing, OVERWATCH warns that the garrison is moving and 4 s later 6 Riflemen and an Armored Trooper come out of the jungle (off screen, at least 520 px from every soldier) and hunt the squad on its way to the last installation. Once, never required (the objective still counts tanks), and skipped if the last installations go up together (a chain, an airstrike or the nuke).
+- The 12-strong enemy response after the last installation is unchanged; extraction is now light pressure (5) over a 15 s countdown.
+- Installations still fall in any order, however the tanks explode; chains, friendly-fire risk and the fuel-kills optional are unchanged.
+
+**Mission 18 Ambush Alley** (target 9-11 minutes; 20 placed + 45 from twelve scripted ambushes = 65 enemies: 49 Riflemen, 9 Armored Troopers, 7 Snipers, 5 of them on rooftops; then intense extraction pressure, 13):
+- More, weaker groups, staggered so there is always someone coming: the first ambush (6) plus a flank group (3) 5 s later; the crossfire (8 on posts north and south) plus a late group (5); the rooftops (3 concealed snipers); the rear ambush (5) plus a second rear group (3); the courtyard (8 placed, a concealed sniper on the courtyard roof and 3 more 10 s in); the final intersection (6 placed, a concealed sniper, 4 at 10 s and 3 at 24 s). Every ground group still has a radio line or banner first and appears off screen at a minimum distance. A medkit near the courtyard.
+- **Concealed rooftop snipers**: a rooftop sniper is invisible (no sprite, HP bar or marker) and cannot be shot until it has a target. The moment it opens fire it becomes visible on the roof's parapet with a red chevron, starts its red laser and fires about 2.8 s later (its normal 1.6 s aim plus a 1.2 s first-shot warning), and it stays visible. At most one new sniper reveals every 1.5 s; a sniper that never gets a shot reveals itself after 30 s, and an airstrike over a perch reveals it. Sniper nests are drawn on several roofs (some of them empty), so the nest alone does not give them away. Rooftop snipers fire over their own building's edge, but other buildings, walls and cover still block them; their rounds are drawn dropping from the roof, yours climbing up.
 
 ## Story & Cinematic Presentation (v0.8C.1)
 

@@ -7,11 +7,18 @@
 //  - Ground groups appear at the safest of their `from` points (chapter4.ts safeSpawnPoint: off screen, at least
 //    minDist from every soldier, standing or downed) on open ground and either walk to their `posts` and hold them
 //    (crossfire positions: Unit.holdPos, they turn and fire but never advance) or pursue the squad.
-//  - Rooftop groups (`roof`) are stationary enemy Snipers placed exactly on 'roof' perches (low obstacles: they block
-//    walking, never sight or rounds), so they can be shot from the street and never reached on foot. Each one's first
-//    aim is a glint: `glint` s are added to its normal laser telegraph (CFG.enemySniper aimTime), so the first shot
-//    of a rooftop sniper always gives at least aimTime + glint to step out of the line. Global sniper numbers are
-//    untouched (the existing ExposedTargeting, laser, lock and round).
+//  - Rooftop groups (`roof`) are enemy Snipers posted on 'roof' perches: the narrow strip at the street-facing foot of
+//    a building (a low obstacle: blocks walking, never sight or rounds). v0.9B.1 CONCEALED ROOFTOP SNIPERS: when the
+//    ambush springs they stay hidden (out of Game.enemies: no sprite, HP bar, marker, never a target). A hidden sniper
+//    reveals itself the moment it has a firing opportunity (its own targeting picks a soldier: in range, clear line,
+//    its perch on screen): it joins Game.enemies already aiming at that soldier, so its red laser, its sprite and its
+//    HP bar appear together, and its first telegraph is `glint` s longer (Unit.aimBonus: aimTime 1.6 + 1.2 = 2.8 s
+//    before the first shot). Once revealed it stays revealed. A sniper that never gets a chance reveals `revealAfter`
+//    s after its ambush sprang, or as soon as the rest of its stretch is cleared (AmbushObjective), so it can never
+//    stall an objective; an airstrike over its perch (or the nuke) flushes it out before the strike lands. Rendering:
+//    its position is the street edge of the building, so sight and rounds use the normal rules (its own building is
+//    behind it, other buildings still block it); it is drawn `roofLift` px higher, on the roof, with a sandbag nest
+//    on the parapet (drawAbove, after the buildings). Global sniper numbers are untouched.
 //  - Units are tagged with the ambush id and counted in Mission.spawned, so ClearGroupsObjective / AmbushObjective
 //    can wait for them. Nothing respawns; every ambush is finite.
 // SupplyCaches (id 'caches'): optional crates off the main route; a standing soldier within openRadius opens one and
@@ -50,20 +57,43 @@ export interface StreetAmbushDef {
   minDist?: number;
 }
 export interface AmbushState { def: StreetAmbushDef; armedAt: number; sprungAt: number; units: Unit[] }
+/** v0.9B.1 a rooftop perch as drawn: the building it stands on and the side of the roof facing the street. */
+export interface RoofPerch { pos: Vec; lift: number; side: 'front' | 'back' | 'none'; edge: number; x0: number; x1: number }
 
 export class AmbushDirector implements MissionMechanic {
   readonly id = 'ambush';
   readonly states: AmbushState[];
-  /** Rooftop snipers whose first aim already got its glint. */
-  private glinted = new Set<Unit>();
-  log: { sprung: string[]; spawns: { id: string; at: Vec; minSoldierDist: number; onScreen: boolean }[]; glints: number } = { sprung: [], spawns: [], glints: 0 };
-  constructor(readonly defs: StreetAmbushDef[], readonly glint = 1.0) {
+  /** v0.9B.1 rooftop snipers not revealed yet (not in Game.enemies). */
+  readonly hidden: Unit[] = [];
+  /** v0.9B.1 every perch (sniper or decoy nest) as drawn on its roof (built at start). */
+  perches: RoofPerch[] = [];
+  readonly revealAfter: number;
+  /** v0.9B.1 seconds between two rooftop reveals on sight. */
+  readonly revealGap: number;
+  private lastReveal = -1e9;
+  readonly decoys: Vec[];
+  log: {
+    sprung: string[]; spawns: { id: string; at: Vec; minSoldierDist: number; onScreen: boolean }[]; glints: number;
+    reveals: { id: string; t: number; aimed: boolean; why: 'sight' | 'timer' | 'cleared' | 'support' }[];
+  } = { sprung: [], spawns: [], glints: 0, reveals: [] };
+  constructor(readonly defs: StreetAmbushDef[], readonly glint = 1.2, opts: { decoys?: Vec[]; revealAfter?: number; revealGap?: number } = {}) {
     this.states = defs.map((def) => ({ def, armedAt: -1, sprungAt: -1, units: [] }));
+    this.decoys = opts.decoys ?? [];
+    this.revealAfter = opts.revealAfter ?? 30;
+    this.revealGap = opts.revealGap ?? 1.5;
   }
   state(id: string) { return this.states.find((s) => s.def.id === id) ?? null; }
   sprung(id: string) { return (this.state(id)?.sprungAt ?? -1) >= 0; }
   cleared(id: string) { const s = this.state(id); return !!s && s.sprungAt >= 0 && s.units.every((u) => !u.active); }
   get rooftop() { return this.states.flatMap((s) => s.units.filter((u) => u.rooftop)); }
+  isHidden(u: Unit) { return this.hidden.includes(u); }
+  /** Hidden rooftop snipers of these ambushes. */
+  hiddenOf(ids: string[]) { return this.hidden.filter((u) => !!u.tag && ids.includes(u.tag)); }
+
+  start(_m: Mission, g: Game) {
+    const spots = [...this.defs.flatMap((d) => d.groups.flatMap((gr) => gr.roof ?? [])), ...this.decoys];
+    this.perches = spots.map((p) => roofPerch(g, p));
+  }
 
   private ready(m: Mission, g: Game, d: StreetAmbushDef) {
     if (d.zone) { const c = squadCentre(g.soldiers); if (!c || !pointInRect(c, d.zone)) return false; }
@@ -82,14 +112,38 @@ export class AmbushDirector implements MissionMechanic {
       }
       if (g.time - s.armedAt + 1e-9 >= (s.def.delay ?? 0)) this.spring(m, g, s);
     }
-    // the glint: a rooftop sniper's first aim holds longer (its laser shows for aimTime + glint before the first shot)
-    for (const s of this.states) for (const u of s.units) {
-      if (!u.rooftop || !u.active || !u.target || this.glinted.has(u)) continue;
-      this.glinted.add(u);
-      u.aimHeld -= this.glint;
-      this.log.glints++;
-      g.fx.texts.push({ pos: { x: u.pos.x, y: u.pos.y - 46 }, text: 'ROOFTOP SNIPER!', life: 1.4, color: '#ff5a4a' });
+    // v0.9B.1 concealed rooftop snipers: reveal on a firing opportunity (or once their time is up)
+    if (!this.hidden.length) return;
+    // (one at a time: a second sniper with a shot waits until revealGap s after the last reveal, so two lasers never
+    // start together)
+    const victims = g.enemyVictims();
+    for (const u of [...this.hidden]) {
+      const st = this.states.find((x) => x.units.includes(u));
+      const spaced = g.time - this.lastReveal + 1e-9 >= this.revealGap;
+      const t = spaced && g.isOnScreen(u.pos, -8) ? u.targeting.select(u, victims, g) : null;
+      if (t) this.reveal(g, u, 'sight', t);
+      else if (st && g.time - st.sprungAt + 1e-9 >= this.revealAfter) this.reveal(g, u, 'timer');
     }
+  }
+
+  /** A hidden rooftop sniper shows itself (once): into Game.enemies, aiming at `target` if it has one. */
+  reveal(g: Game, u: Unit, why: 'sight' | 'timer' | 'cleared' | 'support', target: Unit | null = null) {
+    const i = this.hidden.indexOf(u);
+    if (i < 0) return;
+    this.hidden.splice(i, 1);
+    g.enemies.push(u);
+    this.lastReveal = g.time;
+    u.aimBonus = this.glint; u.aimHeld = 0; u.lockAim = null;
+    if (target) { u.target = target; u.aim = Math.atan2(target.pos.y - u.pos.y, target.pos.x - u.pos.x); }
+    this.log.glints++;
+    this.log.reveals.push({ id: u.tag ?? '', t: g.time, aimed: !!target, why });
+    g.fx.texts.push({ pos: { x: u.pos.x, y: u.pos.y - u.roofLift - 62 }, text: 'ROOFTOP SNIPER!', life: 1.6, color: '#ff5a4a' });
+    if (target) sfx('lock');
+  }
+
+  /** v0.9B.1 a support strike flushes hidden rooftop snipers inside it out before the damage lands. */
+  supportStrike(_m: Mission, g: Game, at: Vec | null, radius: number) {
+    for (const u of [...this.hidden]) if (!at || dist(u.pos, at) <= radius) this.reveal(g, u, 'support');
   }
 
   spring(m: Mission, g: Game, s: AmbushState) {
@@ -100,7 +154,11 @@ export class AmbushDirector implements MissionMechanic {
         grp.kinds.forEach((k, i) => {
           const p = grp.roof![i % grp.roof!.length];
           const e = g.spawnEnemy({ x: p.x, y: p.y }, k);
-          e.fixed = true; e.rooftop = true; e.tag = d.id; e.guard = false; e.aim = Math.PI / 2;
+          e.fixed = true; e.rooftop = true; e.tag = d.id; e.guard = false;
+          const perch = roofPerch(g, p);
+          e.roofLift = perch.lift; e.aim = perch.side === 'back' ? -Math.PI / 2 : Math.PI / 2; // facing the street
+          g.enemies.splice(g.enemies.indexOf(e), 1); // v0.9B.1 concealed until it has a shot (reveal)
+          this.hidden.push(e);
           s.units.push(e);
           this.note(g, d.id, e.pos);
         });
@@ -126,19 +184,54 @@ export class AmbushDirector implements MissionMechanic {
     this.log.spawns.push({ id, at: { ...at }, minSoldierDist: Math.round(Math.min(Infinity, ...live.map((x) => dist(x.pos, at)))), onScreen: g.isOnScreen(at, 0) });
   }
 
-  /** Rooftop snipers: a sandbag nest under them and a red chevron over them (ground level, before the units). */
-  draw(ctx: CanvasRenderingContext2D, _m: Mission, g: Game) {
-    for (const u of this.rooftop) {
-      if (!u.active || Math.abs(u.pos.x - g.cam.x) > 700 || Math.abs(u.pos.y - g.cam.y) > 420) continue;
-      const { x, y } = u.pos;
-      ctx.fillStyle = '#9b8656'; ctx.strokeStyle = '#5b4a2a'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(x, y + 4, 22, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 14, 6, 0, 0, Math.PI * 2); ctx.fill();
-      const b = Math.sin(g.clock * 4) * 2;
-      ctx.fillStyle = '#ff5a4a'; ctx.strokeStyle = '#3a0d08'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(x - 7, y - 52 + b); ctx.lineTo(x + 7, y - 52 + b); ctx.lineTo(x, y - 43 + b); ctx.closePath(); ctx.fill(); ctx.stroke();
+  /**
+   * v0.9B.1 on top of the buildings: a sandbag nest on the parapet of every perch (decoys too, so a nest alone gives
+   * nothing away), the revealed snipers standing behind it, lifted onto the roof, and a red chevron over each.
+   */
+  drawAbove(ctx: CanvasRenderingContext2D, _m: Mission, g: Game, drawUnit: (u: Unit) => void) {
+    const near = (p: Vec) => Math.abs(p.x - g.cam.x) < 720 && Math.abs(p.y - g.cam.y) < 470;
+    const units = this.rooftop.filter((u) => u.active && !this.isHidden(u));
+    for (const p of this.perches) {
+      if (!near(p.pos)) continue;
+      if (p.side === 'back') drawNest(ctx, p); // the parapet is behind (north of) the sniper
+      const u = units.find((x) => Math.abs(x.pos.x - p.pos.x) < 2 && Math.abs(x.pos.y - p.pos.y) < 2);
+      if (u) { ctx.save(); ctx.translate(0, -u.roofLift); drawUnit(u); ctx.restore(); }
+      if (p.side !== 'back') drawNest(ctx, p); // the parapet in front of (south of) the sniper hides its legs
+      if (u) {
+        const x = u.pos.x, y = u.pos.y - u.roofLift, b = Math.sin(g.clock * 4) * 2;
+        ctx.fillStyle = '#ff5a4a'; ctx.strokeStyle = '#3a0d08'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x - 7, y - 76 + b); ctx.lineTo(x + 7, y - 76 + b); ctx.lineTo(x, y - 67 + b); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
     }
   }
+}
+
+/**
+ * v0.9B.1 where a perch sits on its building: a perch just below a building's footprint (the street south of it) is on
+ * that roof's front (south) parapet, one just above a footprint on its back (north) parapet. `lift` raises the sniper
+ * from the street edge to stand a step inside the roof edge as the building is drawn (its roof is `height` px up).
+ */
+export function roofPerch(g: Game, p: Vec): RoofPerch {
+  for (const o of g.map.obstacles) {
+    if (o.kind !== 'building' || p.x < o.x || p.x > o.x + o.w) continue;
+    const H = o.height;
+    if (Math.abs(p.y - (o.y + o.h)) <= 24) { const edge = o.y + o.h - H; return { pos: { ...p }, lift: p.y - (edge - 12), side: 'front', edge, x0: o.x, x1: o.x + o.w }; }
+    if (Math.abs(p.y - o.y) <= 24) { const edge = o.y - H; return { pos: { ...p }, lift: p.y - (edge + 16), side: 'back', edge, x0: o.x, x1: o.x + o.w }; }
+  }
+  return { pos: { ...p }, lift: 0, side: 'none', edge: p.y, x0: p.x - 30, x1: p.x + 30 };
+}
+
+/** A rooftop sandbag nest: a short arc of bags on the parapet over the perch (kept inside the roof). */
+function drawNest(ctx: CanvasRenderingContext2D, p: RoofPerch) {
+  const w = 58, x0 = Math.max(p.x0 + 2, p.pos.x - w / 2), x1 = Math.min(p.x1 - 2, p.pos.x + w / 2);
+  const y = p.side === 'front' ? p.edge - 9 : p.side === 'back' ? p.edge + 1 : p.pos.y - 6;
+  ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(x0, y + 2, x1 - x0, 9);
+  ctx.strokeStyle = '#5b4a2a'; ctx.lineWidth = 1.5;
+  for (let x = x0, i = 0; x < x1 - 4; x += 12, i++) {
+    ctx.fillStyle = i % 2 ? '#a48f5d' : '#9b8656';
+    ctx.beginPath(); ctx.ellipse(Math.min(x + 6, x1 - 6), y + 4, 6.5, 4.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+  ctx.fillStyle = '#8f8a80'; ctx.fillRect(x0 - 1, y - 1, 3, 9); ctx.fillRect(x1 - 2, y - 1, 3, 9); // parapet posts
 }
 
 /**
@@ -151,7 +244,13 @@ export class AmbushObjective extends Objective {
   dir(m: Mission) { return m.mechanic<AmbushDirector>('ambush'); }
   alive(g: Game) { const all = [...this.ambushes, ...this.tags]; return g.enemies.filter((e) => e.active && !!e.tag && all.includes(e.tag)); }
   pending(m: Mission) { const d = this.dir(m); return this.ambushes.filter((id) => !d?.sprung(id)); }
-  update(m: Mission, g: Game) { if (this.state === 'active' && this.pending(m).length === 0 && this.alive(g).length === 0) this.complete(m, g); }
+  update(m: Mission, g: Game) {
+    if (this.state !== 'active' || this.pending(m).length || this.alive(g).length) return;
+    // v0.9B.1 a concealed rooftop sniper never stalls the stretch: with everyone else down it shows itself
+    const d = this.dir(m), hid = d?.hiddenOf(this.ambushes) ?? [];
+    for (const u of hid) d!.reveal(g, u, 'cleared');
+    if (!hid.length) this.complete(m, g);
+  }
   hud(m: Mission, g: Game): HudLine {
     const n = this.alive(g).length;
     return { text: this.label, sub: n ? `Enemies in sight of the route: ${n}` : this.pending(m).length ? 'Advance carefully: watch the side streets and the rooftops' : undefined };

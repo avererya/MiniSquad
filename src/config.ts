@@ -334,15 +334,18 @@ function makeDefaults() {
     },
     // v0.8A extraction pressure (mission.ts): finite reinforcement groups once extraction is called. They come
     // from map-edge points off screen and at least minDist from every squad member, advance on the squad and are
-    // never required kills. Tier per mission (missions.ts): M1 none, M2 light, M3-5 small (M3 keeps its scripted
-    // wave), M6-10 moderate (M10 keeps its boss-fight wave), M11 restrained, M12 strong.
+    // never required kills. v0.9B.1 STAGGERED INTENSITIES: each group enters at a fraction of the mission's own
+    // countdown (`*At`, 0 = as it starts, 1 = as the helicopter lands), so pressure builds toward the helicopter at
+    // any countdown length. Tier per mission (missions.ts): M1 none (tutorial), M2 intro, M4-5 light, M6-9 standard,
+    // M11 restrained, M12 intense, M16 standard, M17 light (after its 12-strong response), M18 intense; M3 / M10 keep
+    // their scripted final wave, M13-15 none (defence, escort, boss + cinematic).
     extractionPressure: {
       minDist: 500,
-      light: 3, // one group
-      small: 4, // one group
-      moderateA: 3, moderateB: 2, moderateDelay: 6, // two groups, the second this many s later from another edge
+      intro: 3, // M2: one group as the countdown starts (tutorial pacing, unchanged since v0.8A)
+      lightA: 3, lightAAt: 0.15, lightB: 2, lightBAt: 0.55, // two groups from two edges
+      standardA: 3, standardAAt: 0.15, standardB: 3, standardBAt: 0.45, standardC: 2, standardCAt: 0.75, standardArmored: 1, // the last group led by an armored trooper
+      intenseA: 4, intenseAAt: 0.2, intenseB: 4, intenseBAt: 0.45, intenseSnipers: 1, intenseC: 5, intenseCAt: 0.75, intenseArmored: 2, // a sniper in the second group, troopers in the final assault
       restrained: 3, restrainedDelay: 2, // M11: one small group (the defence was the fight)
-      strongA: 4, strongB: 3, strongDelay: 7, strongArmored: 1, // M12: two groups, the second led by armored troopers
     },
     // v0.8B Chapter 3B (defense.ts / escort.ts). Friendly mission objects are team 'squad' units that are not
     // soldiers: no XP, no training, no casualty record, never counted toward the deployment cap.

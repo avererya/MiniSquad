@@ -246,11 +246,13 @@ function installHelpers() {
       g.invuln = false;
     }
     const P = T.C.extractionPressure;
-    out.expect = { light: P.light, small: P.small, moderate: P.moderateA + P.moderateB, restrained: P.restrained, strong: P.strongA + P.strongB, minDist: P.minDist };
+    // v0.9B.1 staggered tiers (light / standard / intense); intro = the v0.8A light group of Mission 2
+    out.expect = { intro: P.intro, light: P.lightA + P.lightB, standard: P.standardA + P.standardB + P.standardC, restrained: P.restrained, intense: P.intenseA + P.intenseB + P.intenseC, minDist: P.minDist };
     return out;
   });
-  const exp = { 'first-contact': null, 'heavy-support': 'light', 'field-medicine': null, 'red-canyon': 'small', 'bring-them-home': 'small', 'bridgehead': 'moderate', 'prison-break': 'moderate', 'convoy-crusher': 'moderate', 'blackout': 'moderate', 'iron-fist': null, 'resistance-rising': 'restrained', 'artillery-hunt': 'strong' };
-  check('B1 tiers: M1 none, M2 light, M4-5 small, M6-9 moderate, M11 restrained, M12 strong; M3 / M10 keep their scripted wave', Object.entries(exp).every(([id, t]) => ex.tiers[id] && ex.tiers[id].tier === t), Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.tier || (t.finalWave ? 'scripted' : '-')}`).join(' '));
+  // v0.9B.1 (on purpose): staggered tiers; M2 keeps its single v0.8A group (now named intro), M7 (captive escort) light
+  const exp = { 'first-contact': null, 'heavy-support': 'intro', 'field-medicine': null, 'red-canyon': 'light', 'bring-them-home': 'light', 'bridgehead': 'standard', 'prison-break': 'light', 'convoy-crusher': 'standard', 'blackout': 'standard', 'iron-fist': null, 'resistance-rising': 'restrained', 'artillery-hunt': 'intense' };
+  check('B1 tiers: M1 none, M2 intro, M4-5 light, M6 / M8 / M9 standard, M7 light (escort), M11 restrained, M12 intense; M3 / M10 keep their scripted wave', Object.entries(exp).every(([id, t]) => ex.tiers[id] && ex.tiers[id].tier === t), Object.entries(ex.tiers).map(([id, t]) => `${id}:${t.tier || (t.finalWave ? 'scripted' : '-')}`).join(' '));
   check('B2 never both: no mission has a scripted final wave AND pressure (no duplicated extraction events)', Object.values(ex.tiers).every((t) => !(t.tier && t.finalWave)) && ex.tiers['field-medicine'].finalWave && ex.tiers['iron-fist'].finalWave && !ex.tiers['first-contact'].finalWave, '');
   const want = (id) => (ex.tiers[id].tier ? ex.expect[ex.tiers[id].tier] : null);
   check('B3 finite: each mission spawns exactly its preset (M1: nothing at all)', Object.keys(exp).every((id) => ex.runs[id].re === (want(id) ?? (ex.tiers[id].finalWave ? ex.runs[id].re : 0)) && (id !== 'first-contact' || ex.runs[id].all === 0)), Object.keys(exp).map((id) => `${id}:${ex.runs[id].re}/${want(id) ?? '-'}`).join(' '));

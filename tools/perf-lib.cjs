@@ -20,6 +20,10 @@ function setupMission({ missionId, level }) {
   // crossfire already beaten), so a short run covers the rooftop snipers, the rear ambush and the courtyard streets
   const rooftops = missionId === 'ambush-alley@rooftops';
   if (rooftops) missionId = 'ambush-alley';
+  // v0.9B.1 '<mission>@extract': every primary done, the field cleared and the squad in the extraction zone, so a short
+  // run covers the countdown, the staggered extraction pressure and the helicopter (no captive missions)
+  const extract = /@extract$/.test(missionId);
+  if (extract) missionId = missionId.replace(/@extract$/, '');
   const story = missionId === 'last-stand@story';
   const voss = missionId === 'last-stand@voss' || story;
   if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
@@ -62,7 +66,8 @@ function setupMission({ missionId, level }) {
   }
   if (rooftops && r.ok) {
     const m = g.mission, A = m.mechanic('ambush');
-    for (const id of ['first', 'crossfire']) { const st = A.state(id); st.armedAt = 0; st.sprungAt = 0; }
+    // v0.9B.1: the first ambush's flankers and the crossfire's late group count as beaten too
+    for (const id of ['first', 'first-flank', 'crossfire', 'crossfire-late']) { const st = A.state(id); if (st) { st.armedAt = 0; st.sprungAt = 0; } }
     for (const e of g.enemies) if (e.tag === 'street-post') e.state = 'dead';
     g.enemies = g.enemies.filter((e) => e.state !== 'dead');
     for (let i = 0; i < 2; i++) m.primaries[i].state = 'complete';
@@ -70,6 +75,17 @@ function setupMission({ missionId, level }) {
     g.soldiers.forEach((s, i) => { s.pos = { x: 2130 + (i % 3) * 30, y: 1380 + Math.floor(i / 3) * 30 }; s.vel = { x: 0, y: 0 }; });
     g.anchor = { x: 2160, y: 1395 }; g.cam = { x: 2160, y: 1395 };
     if (g.story) g.story.skip(g);
+  }
+  if (extract && r.ok) {
+    const m = g.mission;
+    if (g.story) g.story.skip(g);
+    for (const o of m.primaries) o.state = 'complete';
+    m.current = m.primaries.length; m.phase = 'toExtraction';
+    for (const e of g.enemies) if (!e.structure) e.state = 'dead';
+    g.enemies = g.enemies.filter((e) => e.state !== 'dead');
+    const z = m.extraction.zone, c = { x: z.x + z.w / 2, y: z.y + z.h / 2 };
+    g.soldiers.forEach((s, i) => { s.pos = { x: c.x - 45 + (i % 3) * 45, y: c.y - 25 + Math.floor(i / 3) * 50 }; s.vel = { x: 0, y: 0 }; });
+    g.anchor = { ...c }; g.cam = { ...c };
   }
   void a;
   return r.ok ? { ok: true, squad: g.soldiers.map((s) => s.name) } : { ok: false, reason: r.reason };

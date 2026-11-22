@@ -19,7 +19,7 @@ const { setupMission, installPilot } = require('./perf-lib.cjs');
 
 const URL = process.env.URL || 'http://localhost:4173/';
 const BASE = process.env.BASE || '';
-const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist,last-stand@voss,last-stand@story,jungle-sweep,jungle-sweep@field,fuel-for-the-fire,fuel-for-the-fire@reserve,ambush-alley,ambush-alley@rooftops').split(',');
+const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist,last-stand@voss,last-stand@story,jungle-sweep,jungle-sweep@field,fuel-for-the-fire,fuel-for-the-fire@reserve,ambush-alley,ambush-alley@rooftops,bridgehead@extract,artillery-hunt@extract,fuel-for-the-fire@extract,ambush-alley@extract').split(',');
 const SECS = +(process.env.SECS || 60);
 const SEED = +(process.env.SEED || 12345);
 
@@ -46,6 +46,8 @@ function hashState() {
     // v0.8C.1 (absent before): the story director (open panel, its timer, the radio line)
     g.story ? [g.modal, g.story.scene ? g.story.scene.id : '', g.story.index, r(g.story.t), g.story.radio ? r(g.story.radio.t) : -1, g.story.log.length] : 0,
     // v0.9A (absent before): Mission 16's mines (state, fuse, cause), the current order, the field's log
+    // v0.9B.1 (absent before): extraction pressure counters, concealed rooftop snipers (hidden count, reveals)
+    [m.pressureSpawned ?? 0, m.pressureGroupsFired ?? 0, m.mechanic && m.mechanic('ambush') && m.mechanic('ambush').hidden ? [m.mechanic('ambush').hidden.length, JSON.stringify(m.mechanic('ambush').log.reveals)] : 0],
     m.mechanic && m.mechanic('mines') ? (() => { const f = m.mechanic('mines'); return [f.mines.map((x) => [x.state, r(x.fuse), x.cause]), f.order ? [f.order.mine.id, r(f.order.until)] : 0, JSON.stringify(f.log), g.soldiers.map((s) => (s.order ? 1 : 0))]; })() : 0]);
   let h = 2166136261; for (let i = 0; i < st.length; i++) { h ^= st.charCodeAt(i); h = Math.imul(h, 16777619); }
   return (h >>> 0).toString(16);

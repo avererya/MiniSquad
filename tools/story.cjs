@@ -16,7 +16,7 @@
 //  G. Phones (iPhone SE / 14 / Pixel 7 landscape): panel, text and SKIP fit (SKIP >= 44 CSS px), touch advances
 //     and skips, enemy panel, radio strip clear of the HUD
 // Usage: npm test -- story   (or: npx vite preview --port 4173 & BASE=<v0.8C url> node tools/story.cjs)
-const { chromium, URL, BASE, OUT, createChecks, runSuite } = require('./lib.cjs');
+const { chromium, URL, BASE, OUT, createChecks, runSuite, V09B1 } = require('./lib.cjs');
 const fs = require('fs');
 
 function installHelpers() {
@@ -439,10 +439,10 @@ runSuite(async () => {
     await fresh(bp, BASE);
     await fresh();
     const a = await ev(snapshot), b = await bp.evaluate(snapshot);
-    const cfgDiff = [...new Set([...Object.keys(a.cfg), ...Object.keys(b.cfg)])].filter((k) => a.cfg[k] !== b.cfg[k]);
+    const cfgDiff = V09B1.cfgDiff([...new Set([...Object.keys(a.cfg), ...Object.keys(b.cfg)])].filter((k) => a.cfg[k] !== b.cfg[k])); // v0.9B.1: extraction pressure set aside
     // v0.9A (on purpose): a `mine` CFG group, Mission 16, and Mission 15's first clear also unlocks Mission 16 (its row's unlock list is set aside)
     const m15 = (x) => { if (!x) return x; const o = JSON.parse(x), d = JSON.parse(o.def); d.unlocks.missions = []; o.def = JSON.stringify(d); return JSON.stringify(o); };
-    const misDiff = Object.keys(b.missions).filter((k) => (k === 'last-stand' ? m15(a.missions[k]) !== m15(b.missions[k]) : a.missions[k] !== b.missions[k]));
+    const misDiff = Object.keys(b.missions).filter((k) => (k === 'last-stand' ? m15(a.missions[k]) !== m15(b.missions[k]) : V09B1.normCd(k, a.missions[k]) !== V09B1.normCd(k, b.missions[k]))); // v0.9B.1 countdowns set aside
     check('F1 every CFG group identical to v0.8C (Voss, enemies, classes, training, Elite, support; v0.9A adds only `mine`, v0.9B only `fuel`)', cfgDiff.sort().join() === 'fuel,mine' && Object.keys(b.cfg).length > 20, cfgDiff.length ? `changed: ${cfgDiff.join()}` : `${Object.keys(b.cfg).length} groups`);
     check('F2 Missions 1-15 identical to v0.8C (maps, enemy groups, objectives, optionals, gates, Voss, extraction, campaign rows; v0.9A: Mission 15 also unlocks Mission 16; v0.9B adds 17 / 18)', misDiff.length === 0 && Object.keys(b.missions).length === 15 && Object.keys(a.missions).length === 18, misDiff.length ? `changed: ${misDiff.join()}` : `${Object.keys(a.missions).length} missions`);
     await fresh(bp, BASE);

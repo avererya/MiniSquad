@@ -1,7 +1,8 @@
 // v0.9A Chapter 4 "Behind Enemy Lines" objectives (v0.9B: Missions 17-18 below). Mission 16 Jungle Sweep reuses ReachObjective and
 // ClearGroupsObjective (fortress.ts) for its primaries; the mines are the MineField mechanic (mines.ts).
 import type { Game } from './game';
-import type { Mission } from './mission';
+import type { Mission, MissionMechanic } from './mission';
+import type { StoryCue } from './story';
 import { Objective, type HudChip, type HudLine, type ObjPoint } from './objectives';
 import type { MineField } from './mines';
 import type { FuelDepot } from './fuel';
@@ -119,5 +120,49 @@ export class ResponseObjective extends Objective {
     const c = squadCentre(g.soldiers) ?? g.cam;
     const e = this.alive().sort((a, b) => dist(a.pos, c) - dist(b.pos, c))[0];
     return e ? { pos: e.pos, label: 'ENEMY', color: '#ff7a5a' } : null;
+  }
+}
+
+/**
+ * v0.9B.1 Mission 17 COUNTERATTACK (mechanic id 'counterattack'): once `after` installations of the
+ * FuelInstallationsObjective `objective` are destroyed while it is still running (one or more left), the garrison
+ * sends ONE finite group to the last one standing: a radio cue at once, then `delay` s later the group enters from
+ * the safe point of `from` nearest the squad (off screen, `minDist` from every soldier; safeSpawnPoint) and hunts the
+ * squad, which is on its way to that installation. Nothing respawns; the group is never required (the objective
+ * counts tanks). If the last installations fall together (a chain, a nuke) it is skipped: nothing left to defend.
+ */
+export interface CounterattackDef {
+  objective: string; after: number; kinds: EnemyKind[]; from: Vec[];
+  delay?: number; minDist?: number; cue?: StoryCue; banner?: string;
+}
+export class InstallationCounterattack implements MissionMechanic {
+  readonly id = 'counterattack';
+  armedAt = -1;
+  sprungAt = -1;
+  site: string | null = null;
+  /** True when the installations were all gone before it could spring. */
+  skipped = false;
+  units: Unit[] = [];
+  constructor(readonly def: CounterattackDef) {}
+  step(m: Mission, g: Game) {
+    if (this.sprungAt >= 0) return;
+    const o = m.currentObjective;
+    if (this.armedAt < 0) {
+      if (!(o instanceof FuelInstallationsObjective) || o.id !== this.def.objective || o.state !== 'active') return;
+      const left = o.left(m);
+      if (!left.length || o.sites.length - left.length < this.def.after) return;
+      this.armedAt = g.time; this.site = left[0].group;
+      if (this.def.cue) m.cue(g, this.def.cue);
+    }
+    if (g.time - this.armedAt + 1e-9 < (this.def.delay ?? 0)) return;
+    this.sprungAt = g.time;
+    // the last installation fell during the warning: nothing left to defend (skipped, never sprung)
+    if (!(o instanceof FuelInstallationsObjective) || o.state !== 'active' || !o.left(m).length) { this.skipped = true; return; }
+    this.units = spawnSafe(g, this.def.from, this.def.kinds, this.def.minDist ?? 560, this.id);
+    for (const u of this.units) { u.guard = false; u.reinforcement = true; }
+    m.spawned.set(this.id, this.units.length);
+    if (this.units.length) m.incoming.push({ pos: { ...this.units[0].pos }, life: 4 });
+    if (this.def.banner) g.banner(this.def.banner, '#ff7a5a', 2.5);
+    sfx('alarm');
   }
 }
