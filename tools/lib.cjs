@@ -193,8 +193,8 @@ const V09B1 = {
  */
 const V09C = {
   cfgGroups: ['prison', 'prisonFlame', 'prisonRocket', 'prisonStar'],
-  /** CFG group names that differ, without the v0.9C groups. */
-  cfgDiff(keys) { return keys.filter((k) => !V09C.cfgGroups.includes(k)); },
+  /** CFG group names that differ, without the v0.9C groups (and the v0.9D ones, V09D: newer than every BASE before it). */
+  cfgDiff(keys) { return V09D.cfgDiff(keys.filter((k) => !V09C.cfgGroups.includes(k))); },
   /** A mission's snapshot string with Mission 7's name and Mission 18's unlock list set aside (other missions as is). */
   norm(id, s) {
     if (!s || (id !== 'prison-break' && id !== 'ambush-alley')) return s;
@@ -212,5 +212,26 @@ const V09C = {
   },
 };
 
-module.exports = { V09B1, V09C, RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
+/**
+ * v0.9D THE WARLORD, the intended changes to older content: three new CFG groups (the Mission 20 boss, his mortar and
+ * the headquarters timings) and Mission 19's unlock list (now Mission 20; its "future update" note moved to Mission 20).
+ * V09C.cfgDiff sets the groups aside too, so every older BASE comparison ignores them; `v09d` checks the new values and
+ * that nothing else moved since v0.9C.
+ */
+const V09D = {
+  cfgGroups: ['warlord', 'mortar', 'hq'],
+  /** CFG group names that differ, without the v0.9D groups. */
+  cfgDiff(keys) { return keys.filter((k) => !V09D.cfgGroups.includes(k)); },
+  /** A mission's snapshot string with Mission 19's unlock list set aside (other missions as is). */
+  norm(id, s) {
+    if (!s || id !== 'jungle-prison') return s;
+    try {
+      const o = JSON.parse(s);
+      if (o && typeof o.def === 'string') { const d = JSON.parse(o.def); d.unlocks = 'v0.9D'; o.def = JSON.stringify(d); return JSON.stringify(o); }
+    } catch { /* not a missionSnapshot string */ }
+    return s;
+  },
+};
+
+module.exports = { V09B1, V09C, V09D, RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
   seedRandom, installPageHelpers, missionSnapshot, openPage };

@@ -15,13 +15,13 @@
 //  - Stars (best kept, never lowered; not a currency): 0 defeat, 1 primary complete,
 //    2 = mission's 2-star rule, 3 = 2-star rule + mission's 3-star rule (see STAR RULES).
 
-export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort' | 'minefield' | 'urban' | 'breakout';
+export type MissionType = 'elimination' | 'sabotage' | 'capture' | 'survival' | 'rescue' | 'interception' | 'night' | 'assault' | 'liberation' | 'artillery' | 'defense' | 'escort' | 'minefield' | 'urban' | 'breakout' | 'warlord';
 export const MISSION_TYPE_LABEL: Record<MissionType, string> = {
   elimination: 'Elimination', sabotage: 'Sabotage', capture: 'Capture & Hold', survival: 'Survival / Extraction', rescue: 'Rescue / Escort',
   interception: 'Convoy Interception', night: 'Night Sabotage', assault: 'Assault / Boss',
   liberation: 'Liberation & Defense', artillery: 'Search & Destroy',
   defense: 'Defense / Waves', escort: 'Sabotage & Vehicle Escort',
-  minefield: 'Minefield Sweep', urban: 'Urban Ambush', breakout: 'Rescue / Last Stand',
+  minefield: 'Minefield Sweep', urban: 'Urban Ambush', breakout: 'Rescue / Last Stand', warlord: 'Assault / Boss / Escape',
 };
 
 /** v0.6.2 campaign chapters (by mission number; the campaign screen groups missions under them). */
@@ -29,8 +29,8 @@ export const CHAPTERS: { number: number; name: string; from: number; to: number 
   { number: 1, name: '', from: 1, to: 5 }, // (Chapter 1 was never given a name)
   { number: 2, name: 'Hostile Territory', from: 6, to: 10 }, // v0.9B renamed (was 'Behind Enemy Lines', now Chapter 4's name only)
   { number: 3, name: 'The Resistance', from: 11, to: 15 },
-  // v0.9A Chapter 4 (Missions 16-20 planned; v0.9B: Missions 16-18 exist)
-  { number: 4, name: 'Behind Enemy Lines', from: 16, to: Infinity },
+  // v0.9A Chapter 4 (Missions 16-20; v0.9D: Mission 20 The Warlord is its finale)
+  { number: 4, name: 'Behind Enemy Lines', from: 16, to: 20 },
 ];
 export const chapterOf = (missionNumber: number) => CHAPTERS.find((c) => missionNumber >= c.from && missionNumber <= c.to) ?? CHAPTERS[0];
 
@@ -85,6 +85,8 @@ export interface CampaignMission {
    */
   brief?: { story: string; objective: string; tip?: string; /** v0.8B: the primary objectives as a list (shown instead of `objective`). */ objectives?: string[] };
   playable: boolean;
+  /** v0.9D a chapter finale's closing lines, shown on the Results screen after every win (Mission 20). */
+  epilogue?: { title: string; lines: string[] };
   /**
    * v0.1-v0.3 mission id this campaign mission replaces (same map). A legacy first clear of it
    * means the one-time first-clear CREDIT bonus was already paid: it is not paid again here
@@ -368,7 +370,31 @@ export const CAMPAIGN: CampaignMission[] = [
       objectives: ['Infiltrate the prison compound', 'Free the three specialists (any order; each rescue brings more guards)', 'Reach the extraction clearing east of the camp', 'Survive the final assault until the helicopter lands'],
       tip: 'Stand by a cell door to free a prisoner. Shoot the alarm tower in the yard before the second rescue to weaken the camp\'s response. The flamethrower only reaches a few steps but burns everything in front of it: let enemies come to it.',
     },
-    unlocks: { missions: [], recruits: [], capacityNote: 'The specialists\' intel points to the Warlord\'s headquarters: Chapter 4 continues in a future update' },
+    unlocks: { missions: ['warlord-hq'], recruits: [] }, // v0.9D opens Mission 20
+  },
+  {
+    // v0.9D Mission 20 (warlord.ts WarlordHQ): the Chapter 4 finale. Two installations, the Warlord and his mortars,
+    // a scripted helicopter ambush at Extraction Alpha, a retreat to Extraction Bravo
+    id: 'warlord-hq', number: 20, name: 'The Warlord', type: 'warlord', playable: true,
+    briefing: 'The Warlord directing the enemy war effort hides in a fortified jungle headquarters. Cut off his escape, take him down and get out.',
+    primary: ['Destroy the Communications Array', 'Destroy the Vehicle Depot', 'Defeat the Warlord', 'Reach Extraction Alpha', 'Escape from Extraction Bravo'],
+    optional: [{ id: 'hazard-kills', label: 'Take out 4 enemies with mine or fuel blasts' }, { id: 'watchtowers', label: 'Destroy the 3 watchtowers' }],
+    stars: { two: 'optionals', three: 'noKia' },
+    teaches: 'Mortar strikes: when a red circle marks the squad\'s position, move out before the shell lands',
+    brief: {
+      story: 'The prison camp\'s maps led to the Warlord\'s headquarters. His Communications Array and Vehicle Depot are his way out: destroy both, then go in after him. Extraction Alpha is just north-east of his command area.',
+      objective: 'Destroy both installations in any order, defeat the Warlord in his command area, then extract.',
+      objectives: ['Destroy the Communications Array and the Vehicle Depot (any order)', 'Defeat the Warlord in the command area', 'Reach Extraction Alpha', 'Escape from Extraction Bravo'],
+      tip: 'Three ways in: the main gate is shortest but heavily defended, the jungle flank is mined and watched by snipers, the supply route has fuel tanks you can turn on his guards. In the fight a red circle on the ground is a mortar: move the whole squad out of it.',
+    },
+    unlocks: { missions: [], recruits: [], capacityNote: 'Chapter 4 complete. Chapter 5: Iron Territory is coming in a future update' },
+    epilogue: {
+      title: 'CHAPTER 4 COMPLETE: BEHIND ENEMY LINES',
+      lines: [
+        'The Warlord is dead, but his files point to something bigger: shipments of armored vehicles, advanced weapons and whole factories of military equipment moving to the front.',
+        'Next: Chapter 5, Iron Territory.',
+      ],
+    },
   },
 ];
 

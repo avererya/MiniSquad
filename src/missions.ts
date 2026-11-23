@@ -14,6 +14,8 @@ import {
   JUNGLE_EXTRACTION, JUNGLE_MAP, JUNGLE_MINES, JUNGLE_PRESSURE,
   FUEL_APPROACH, FUEL_COUNTER_FROM, FUEL_EXTRACTION, FUEL_INSTALLATIONS, FUEL_MAP, FUEL_PICKETS, FUEL_PRESSURE, FUEL_RESPONSE, FUEL_TANKS,
   CAMP_ALARM, CAMP_ASSAULT, CAMP_CELLS, CAMP_EXTRACTION, CAMP_INFILTRATE, CAMP_MAP, CAMP_STAGING,
+  HQ_ALPHA, HQ_ARENA, HQ_BRAVO, HQ_BRAVO_ROUTES, HQ_CALL_POINTS, HQ_CMD_GATE, HQ_COMMS, HQ_CRASH, HQ_DEPOT, HQ_FALL_FROM, HQ_FALL_ZONES,
+  HQ_HELI_FROM, HQ_LOCKED, HQ_MAP, HQ_MINES, HQ_RIDGE, HQ_TANKS, HQ_WARLORD_POSTS,
   ALLEY_ASSAULT, ALLEY_CACHES, ALLEY_EXTRACTION, ALLEY_MAP, ALLEY_POINTS, ALLEY_PRESSURE, ALLEY_ROOF_DECOYS, ALLEY_ROOFS, ALLEY_ZONES,
   CANYON_MAP, CAPTIVE_POS, DEFENDER_POINTS, DEPOT_POS, EXTRACTION_ZONE, FIELD_MAP, FINAL_WAVE_POINTS, OUTPOST_MAP,
   OUTPOST_TRIGGERS, OUTPOST_ZONE, VALLEY_MAP, VILLAGE_MAP,
@@ -35,6 +37,7 @@ import { FuelInstallationsObjective, FuelKillsOptional, InstallationCounterattac
 import { FuelDepot } from './fuel';
 import { AmbushDirector, AmbushObjective, CachesOptional, SupplyCaches, type CacheDef, type StreetAmbushDef } from './urban';
 import { AlarmTowerOptional, PrisonBreak, RescuePrisonersObjective, SpecialistsAliveOptional, type AssaultWave, type PrisonerDef, type RescueResponse } from './prison';
+import { AlphaObjective, HazardKillsOptional, HqInstallationsObjective, TowersOptional, WarlordHQ, WarlordObjective, type BravoWave, type InstallationDef } from './warlord';
 import type { Vec } from './util';
 import type { EnemyKind } from './unit';
 
@@ -777,7 +780,84 @@ const PRISON_CAMP: MissionScript = {
   },
 };
 
+// ---- v0.9D Mission 20: The Warlord (Assault / Boss / Escape, 6 soldiers; Chapter 4 finale) ----
+// Enemy budget (every one finite, nothing respawns):
+//  assault 50 placed + 3 watchtowers: the main gate 5 in front of the wall + 3 holding behind its sandbags (1 Armored)
+//  + 2 towers; the jungle flank's patrol (4) and sniper ridge (2 Snipers + 2); the supply yard (5 + 1 Armored, by the
+//  fuel tanks); the Communications Array (4 + 2 Armored + 1 Sniper, a tower); the Vehicle Depot (5 + 2 Armored); the
+//  yard (5 + 1 Armored); the command area behind its gate: the front (2 + 2 Armored, holding) and the Warlord's guard
+//  (3 + 1 Armored). The Warlord's calls (warlord.ts): 7 (5 R + 2 A) in phase 2, 5 (4 R + 1 A) in phase 3.
+//  When he falls everyone left routs. The retreat (AmbushDirector, after Alpha is lost): 5 Riflemen sent at once, 4 in
+//  the yard, 5 on whichever approach the squad takes (main road, supply route or flank), 4 near Bravo = 18 on any one
+//  route; then Bravo's final push: 4 + 3 + 3 Riflemen over the 12 s countdown. No Armored Troopers, Snipers or mortars
+//  after the boss. Mines (7) on the jungle flank only; fuel tanks (7) in the supply yard and at the depot.
+export const HQ_INSTALLATIONS: InstallationDef[] = [
+  { pos: HQ_COMMS, kind: 'relay', label: 'COMMUNICATIONS ARRAY', short: 'COMMS', cue: 'cue:comms' },
+  { pos: HQ_DEPOT, kind: 'vdepot', label: 'VEHICLE DEPOT', short: 'DEPOT', cue: 'cue:depot' },
+];
+const R5: EnemyKind[] = ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'rifleman'];
+/** The retreat to Bravo: interceptions sprung once each, only while "Fall back to Extraction Bravo" is the objective. */
+export const HQ_RETREAT: StreetAmbushDef[] = [
+  { id: 'fall-1', onObjective: 'bravo', delay: 5, cue: 'cue:fall', banner: 'ENEMY PATROL MOVING TO CUT YOU OFF', minDist: 560, groups: [{ kinds: R5, from: HQ_FALL_FROM.arena }] },
+  { id: 'fall-yard', onObjective: 'bravo', zone: HQ_FALL_ZONES.yard, delay: 1.5, banner: 'CONTACT IN THE YARD', minDist: 480, groups: [{ kinds: R4, from: HQ_FALL_FROM.yard }] },
+  { id: 'fall-road', onObjective: 'bravo', zone: HQ_FALL_ZONES.road, delay: 1, banner: 'ENEMIES ON THE MAIN ROAD', minDist: 480, groups: [{ kinds: R5, from: HQ_FALL_FROM.road }] },
+  { id: 'fall-supply', onObjective: 'bravo', zone: HQ_FALL_ZONES.supply, delay: 1, banner: 'ENEMIES ON THE SUPPLY ROUTE', minDist: 480, groups: [{ kinds: R5, from: HQ_FALL_FROM.supply }] },
+  { id: 'fall-flank', onObjective: 'bravo', zone: HQ_FALL_ZONES.flank, delay: 1, banner: 'ENEMIES ON THE JUNGLE TRAIL', minDist: 480, groups: [{ kinds: R5, from: HQ_FALL_FROM.flank }] },
+  { id: 'fall-landing', onObjective: 'bravo', zone: HQ_FALL_ZONES.landing, delay: 0.5, banner: 'THEY ARE WAITING AT BRAVO', minDist: 520, groups: [{ kinds: R4, from: HQ_FALL_FROM.landing }] },
+];
+/** Bravo's final push over the 12 s countdown (10 Riflemen); the helicopter lands at 12 s whatever is left. */
+export const HQ_BRAVO_WAVES: BravoWave[] = [
+  { at: 0.5, route: 'road', size: 4, banner: 'ENEMY PUSH ON BRAVO — HOLD UNTIL THE HELICOPTER LANDS' },
+  { at: 4, route: 'supply', size: 3, banner: 'MORE OF THEM ON THE SUPPLY TRAIL' },
+  { at: 7.5, route: 'flank', size: 3, banner: 'LAST PUSH — THE HELICOPTER IS ALMOST HERE' },
+];
+const WARLORD_HQ: MissionScript = {
+  id: 'warlord-hq', map: HQ_MAP,
+  groups: () => [
+    // the main gate: riflemen and a trooper in front of the wall, three holding behind the sandbags inside
+    { tag: 'gate', points: [{ x: 2100, y: 1640 }, { x: 2160, y: 1760 }, { x: 2040, y: 1820 }, { x: 2230, y: 1700 }, k(2200, 1590, 'armored')], aggro: 440 },
+    { tag: 'gate-posts', points: [{ x: 2500, y: 1560 }, { x: 2500, y: 1660 }, k(2530, 1615, 'armored')], aggro: 420, hold: true },
+    { tag: 'hq-tower', points: [k(2400, 1490, 'tower'), k(2410, 1700, 'tower'), k(3200, 600, 'tower')] },
+    // the jungle flank: a patrol in the clearing, two snipers and their spotters on the ridge
+    { tag: 'flank-patrol', points: [{ x: 830, y: 1330 }, { x: 900, y: 1360 }, { x: 870, y: 1410 }, { x: 790, y: 1360 }], aggro: 420 },
+    { tag: 'flank-ridge', points: [k(1700, 640, 'sniper'), k(1560, 780, 'sniper'), { x: 1650, y: 700 }, { x: 1720, y: 760 }], aggro: 460 },
+    // the supply yard: guards standing beside the fuel tanks
+    { tag: 'supply', points: [{ x: 2400, y: 2515 }, { x: 2480, y: 2465 }, { x: 2300, y: 2640 }, { x: 2180, y: 2610 }, { x: 2520, y: 2580 }, k(2350, 2480, 'armored')], aggro: 420 },
+    // the Communications Array (north) and the Vehicle Depot (south): each its own defensive fight
+    { tag: 'comms', points: [{ x: 2880, y: 600 }, { x: 3060, y: 700 }, { x: 2950, y: 790 }, { x: 2820, y: 660 }, k(2920, 520, 'armored'), k(3080, 620, 'armored'), k(3000, 440, 'sniper')], aggro: 420 },
+    { tag: 'depot', points: [{ x: 3380, y: 2300 }, { x: 3450, y: 2530 }, { x: 3600, y: 2420 }, { x: 3300, y: 2420 }, { x: 3520, y: 2340 }, k(3420, 2440, 'armored'), k(3620, 2470, 'armored')], aggro: 420 },
+    // the yard between them
+    { tag: 'yard', points: [{ x: 2750, y: 1480 }, { x: 2900, y: 1560 }, { x: 3000, y: 1380 }, { x: 3200, y: 1500 }, { x: 2650, y: 1600 }, k(3100, 1450, 'armored')], aggro: 400 },
+    // the command area (behind the lockdown gate): the front holds the entrance, the guard stands with the Warlord
+    { tag: 'cmd-front', points: [{ x: 4010, y: 1350 }, { x: 4010, y: 1480 }, k(4070, 1420, 'armored'), { x: 4060, y: 1250 }], aggro: 420, hold: true },
+    { tag: 'cmd-guard', points: [{ x: 4600, y: 1150 }, { x: 4700, y: 1260 }, { x: 4680, y: 1010 }, { x: 4770, y: 1230 }], aggro: 380 },
+  ],
+  triggers: [],
+  primaries: () => [
+    new HqInstallationsObjective('installations', 'Destroy the Communications Array and the Vehicle Depot', HQ_INSTALLATIONS),
+    new WarlordObjective('warlord', 'Defeat the Warlord'),
+    new AlphaObjective('alpha', 'Reach Extraction Alpha', HQ_ALPHA),
+    new ReachObjective('bravo', 'Fall back to Extraction Bravo', HQ_BRAVO, 'BRAVO'),
+  ],
+  optionals: () => [new HazardKillsOptional('hazard-kills', 'Take out 4 enemies with mine or fuel blasts', 4), new TowersOptional('watchtowers', 'Destroy the 3 watchtowers', 'hq-tower')],
+  hint: 'Three ways in: the main gate, the mined jungle flank (north) or the supply route (east). Destroy the array and the depot in any order.',
+  lockdown: { worlds: [HQ_LOCKED], gates: [HQ_CMD_GATE] },
+  mechanics: () => [
+    new WarlordHQ({ posts: HQ_WARLORD_POSTS, arena: HQ_ARENA, calls: HQ_CALL_POINTS, alpha: HQ_ALPHA, ridge: HQ_RIDGE, heliFrom: HQ_HELI_FROM, crash: HQ_CRASH, bravoRoutes: HQ_BRAVO_ROUTES, bravoWaves: HQ_BRAVO_WAVES }),
+    new MineField({ mines: HQ_MINES, warnCue: 'minesAhead', warnRadius: 520 }),
+    new FuelDepot({ tanks: HQ_TANKS, warnCue: 'cue:fuel', warnRadius: 560 }),
+    new AmbushDirector(HQ_RETREAT),
+  ],
+  // the real extraction is Bravo (the landing clearing): its own short final push (WarlordHQ), no generic pressure
+  extraction: { zone: HQ_BRAVO, countdown: () => CFG.hq.countdown },
+  story: {
+    'start:installations': 'm20-intro', minesAhead: 'm20-mines', 'cue:fuel': 'm20-fuel', 'cue:comms': 'm20-comms', 'cue:depot': 'm20-depot',
+    bossIntro: 'm20-boss', bossPhase2: 'm20-phase2', bossPhase3: 'm20-phase3', 'start:alpha': 'm20-down', 'cue:alpha': 'm20-alpha',
+    'start:bravo': 'm20-mayday', 'cue:fall': 'm20-fall', victory: 'm20-bravo', 'cue:intel': 'm20-intel',
+  },
+};
+
 export const MISSION_SCRIPTS: Record<string, MissionScript> = Object.fromEntries(
-  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP, FUEL_FOR_THE_FIRE, AMBUSH_ALLEY, PRISON_CAMP].map((s) => [s.id, s]),
+  [FIRST_CONTACT, HEAVY_SUPPORT, FIELD_MEDICINE, RED_CANYON, BRING_THEM_HOME, BRIDGEHEAD, PRISON_BREAK, CONVOY_CRUSHER, BLACKOUT, IRON_FIST, RESISTANCE_RISING, ARTILLERY_HUNT, HOLD_THE_LINE, SUPPLY_LINE, LAST_STAND, JUNGLE_SWEEP, FUEL_FOR_THE_FIRE, AMBUSH_ALLEY, PRISON_CAMP, WARLORD_HQ].map((s) => [s.id, s]),
 );
 export const scriptFor = (id: string): MissionScript | undefined => MISSION_SCRIPTS[id];

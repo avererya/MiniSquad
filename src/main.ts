@@ -24,6 +24,7 @@ import * as targeting from './targeting';
 import * as story from './story';
 import { MISSION_SCRIPTS } from './missions';
 import { FuelDepot } from './fuel';
+import * as HQ from './map';
 import { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES, CAMP_ALARM, CAMP_ASSAULT, CAMP_CELLS, CAMP_EXTRACTION, CAMP_INFILTRATE, CAMP_OPEN_SHAPES, CAMP_STAGING } from './map';
 import { blastDamage, explode } from './combat';
 
@@ -227,5 +228,8 @@ Object.assign(window as any, { __TRAITS: TRAITS, __effectiveStats: effectiveStat
   // v0.9B (tools/v09b.cjs): the fuel depot mechanic, to lay test tanks in any mission; Mission 18's zones and points
   __fuelDepot: FuelDepot, __alley: { ALLEY_POINTS, ALLEY_ROOFS, ALLEY_ZONES },
   // v0.9C (tools/v09c.cjs): Mission 19's camp geometry and the flame tick
-  __camp: { CAMP_CELLS, CAMP_ASSAULT, CAMP_EXTRACTION, CAMP_STAGING, CAMP_INFILTRATE, CAMP_ALARM, CAMP_OPEN_SHAPES } });
+  __camp: { CAMP_CELLS, CAMP_ASSAULT, CAMP_EXTRACTION, CAMP_STAGING, CAMP_INFILTRATE, CAMP_ALARM, CAMP_OPEN_SHAPES },
+  // v0.9D (tools/v09d.cjs): Mission 20's headquarters geometry
+  __hq: { HQ_ALPHA: HQ.HQ_ALPHA, HQ_BRAVO: HQ.HQ_BRAVO, HQ_ARENA: HQ.HQ_ARENA, HQ_WARLORD_POSTS: HQ.HQ_WARLORD_POSTS, HQ_CALL_POINTS: HQ.HQ_CALL_POINTS, HQ_COMMS: HQ.HQ_COMMS, HQ_DEPOT: HQ.HQ_DEPOT,
+    HQ_MINES: HQ.HQ_MINES, HQ_TANKS: HQ.HQ_TANKS, HQ_FALL_ZONES: HQ.HQ_FALL_ZONES, HQ_FALL_FROM: HQ.HQ_FALL_FROM, HQ_BRAVO_ROUTES: HQ.HQ_BRAVO_ROUTES, HQ_RIDGE: HQ.HQ_RIDGE, HQ_CRASH: HQ.HQ_CRASH, HQ_CMD_GATE: HQ.HQ_CMD_GATE, HQ_LOCKED: HQ.HQ_LOCKED } });
 game.resetRosterSave = resetRosterSave;

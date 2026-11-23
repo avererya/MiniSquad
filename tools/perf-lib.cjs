@@ -28,6 +28,12 @@ function setupMission({ missionId, level }) {
   // landing zone, so a short run covers the 30 s countdown, the four-wave last stand (60 Riflemen) and the helicopter
   const stand = missionId === 'jungle-prison@stand';
   if (stand) missionId = 'jungle-prison';
+  // v0.9D 'warlord-hq@boss': Mission 20 with both installations down (Game.damage), the command gate open, the field
+  // outside the command area cleared and the squad in the yard, so a short run covers the Warlord's three phases, his
+  // calls and the mortar; 'warlord-hq@retreat': the Warlord dead and Extraction Alpha lost, the squad on the Alpha pad,
+  // so a short run covers the retreat interceptions, Bravo's countdown and its push
+  const hq = /^warlord-hq@(boss|retreat)$/.test(missionId) ? missionId.split('@')[1] : null;
+  if (hq) missionId = 'warlord-hq';
   const story = missionId === 'last-stand@story';
   const voss = missionId === 'last-stand@voss' || story;
   if (voss) { missionId = 'last-stand'; level = Math.max(level, 20); }
@@ -105,6 +111,27 @@ function setupMission({ missionId, level }) {
     g.soldiers.forEach((s, i) => { s.pos = { x: c.x - 45 + (i % 3) * 45, y: c.y - 25 + Math.floor(i / 3) * 50 }; s.vel = { x: 0, y: 0 }; });
     g.anchor = { ...c }; g.cam = { ...c };
   }
+  if (hq && r.ok) {
+    const m = g.mission, W = m.mechanic('warlord'), skip = () => { if (g.modal === 'story') g.story.skip(g); };
+    skip();
+    for (const e of g.enemies) if (!e.structure && !/^cmd-/.test(e.tag || '') && e.kind !== 'tower') e.state = 'dead';
+    g.enemies = g.enemies.filter((e) => e.state !== 'dead');
+    for (const e of g.enemies.filter((x) => x.structure === 'relay' || x.structure === 'vdepot')) g.damage(e, 1e7, g.soldiers[0]);
+    g.update(1 / 60); skip();
+    let c = { x: 3350, y: 1450 };
+    if (hq === 'retreat') {
+      g.damage(W.fight.unit, 1e7, g.soldiers[0]);
+      g.update(1 / 60); skip();
+      for (const e of g.enemies) if (!e.structure && e.kind !== 'tower') e.state = 'dead';
+      g.enemies = g.enemies.filter((e) => e.state !== 'dead');
+      const z = window.__hq.HQ_ALPHA; c = { x: z.x + z.w / 2, y: z.y + z.h / 2 };
+      for (let i = 0; i < 60 * 12 && W.alpha !== 'done'; i++) { g.soldiers.forEach((s, k) => { s.pos = { x: c.x - 45 + (k % 3) * 45, y: c.y - 25 + Math.floor(k / 3) * 50 }; s.vel = { x: 0, y: 0 }; }); g.anchor = { ...c }; g.update(1 / 60); }
+      for (let i = 0; i < 3; i++) { skip(); g.update(1 / 60); }
+    }
+    g.soldiers.forEach((s, i) => { s.pos = { x: c.x - 45 + (i % 3) * 45, y: c.y - 25 + Math.floor(i / 3) * 50 }; s.vel = { x: 0, y: 0 }; });
+    g.anchor = { ...c }; g.cam = { ...c };
+    if (hq === 'boss') g.invuln = true; // the squad stands for the whole run, so it reaches the later phases and calls
+  }
   void a;
   return r.ok ? { ok: true, squad: g.soldiers.map((s) => s.name) } : { ok: false, reason: r.reason };
 }
@@ -167,6 +194,16 @@ function installPilot() {
       const dx = P.path[0].x - g.anchor.x, dy = P.path[0].y - g.anchor.y, d = Math.hypot(dx, dy);
       const hold = fighting && !downed && !m.convoy && n % 240 < 150;
       if (d > 8 && !hold) mv = { x: dx / d, y: dy / d };
+    }
+    // v0.9D the Warlord's mortar (Mission 20): while a red circle covers a soldier, walk the squad straight away from it
+    const wf = m.mechanic && m.mechanic('warlord') ? m.mechanic('warlord').fight : null;
+    if (wf && wf.mortar && !downed) {
+      const c = wf.mortar.pos, R = window.__CFG.mortar.radius + 25;
+      if (g.soldiers.some((s) => s.active && Math.hypot(s.pos.x - c.x, s.pos.y - c.y) < R)) {
+        let dx = g.anchor.x - c.x, dy = g.anchor.y - c.y, d = Math.hypot(dx, dy);
+        if (d < 1) { dx = 1; dy = 0; d = 1; }
+        mv = { x: dx / d, y: dy / d };
+      }
     }
     if (b && b.rocket) {
       const r = b.rocket, R = window.__CFG.boss.rocketRadius + 45;

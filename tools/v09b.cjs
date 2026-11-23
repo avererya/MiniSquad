@@ -149,12 +149,12 @@ runSuite(async () => {
       cap17: Cm.capacityOf('fuel-for-the-fire'), cap18: Cm.capacityOf('ambush-alley'),
     };
   });
-  check('A1 Chapter 2 is "Hostile Territory", Chapter 4 "Behind Enemy Lines"; no two chapters share a name', camp.ch.includes('2:Hostile Territory:6-10') && camp.ch.includes('4:Behind Enemy Lines:16-inf') && new Set(camp.names).size === camp.names.length && camp.ch7 === 'Hostile Territory', camp.ch.join(' | '));
-  check('A2 chapter numbers and mission ranges unchanged (1: 1-5, 2: 6-10, 3: 11-15, 4: from 16)', camp.ch.map((c) => c.replace(/:[^:]*:/, ':')).join() === '1:1-5,2:6-10,3:11-15,4:16-inf', camp.ch.join(' | '));
+  check('A1 Chapter 2 is "Hostile Territory", Chapter 4 "Behind Enemy Lines"; no two chapters share a name', camp.ch.includes('2:Hostile Territory:6-10') && (camp.ch.includes('4:Behind Enemy Lines:16-inf') || camp.ch.includes('4:Behind Enemy Lines:16-20')) && new Set(camp.names).size === camp.names.length && camp.ch7 === 'Hostile Territory', camp.ch.join(' | '));
+  check('A2 chapter numbers and mission ranges unchanged (1: 1-5, 2: 6-10, 3: 11-15, 4: from 16; v0.9D: 16-20, Chapter 4 complete)', ['1:1-5,2:6-10,3:11-15,4:16-inf', '1:1-5,2:6-10,3:11-15,4:16-20'].includes(camp.ch.map((c) => c.replace(/:[^:]*:/, ':')).join()), camp.ch.join(' | '));
   check('A3 Mission 17 "fuel-for-the-fire": number 17, playable, Sabotage, Chapter 4, six soldiers, the fuel-kills optional, briefing', camp.r17 && camp.r17.n === 17 && camp.r17.playable && camp.r17.type === 'sabotage' && camp.ch17 === 4 && camp.cap17 === 6 && camp.r17.opt === 'fuel-kills' && camp.r17.brief, JSON.stringify(camp.r17));
   const HAS18 = !!camp.r18; // checkpoint 1 (Mission 17 only) runs the Mission 17 checks alone
   check('A4 Mission 18 "ambush-alley": number 18, playable, Urban Ambush, Chapter 4, six soldiers, optional caches, briefing', camp.r18 && camp.r18.n === 18 && camp.r18.playable && camp.r18.type === 'urban' && camp.ch18 === 4 && camp.cap18 === 6 && camp.r18.opt === 'caches' && camp.r18.brief, JSON.stringify(camp.r18));
-  check('A5 unlock chain: Mission 16 unlocks 17, 17 unlocks 18 (v0.9C: 18 unlocks Mission 19, the last playable; Mission 20 not playable)', camp.m16unl === 'fuel-for-the-fire' && (HAS18 ? camp.r17.unl === 'ambush-alley' && camp.r18.unl === 'jungle-prison' && camp.maxPlayable === 19 : camp.r17.unl === '' && camp.maxPlayable === 17) && camp.after.every((x) => x.endsWith(x.startsWith('jungle-prison:') ? ':true' : ':false')), JSON.stringify({ m16: camp.m16unl, m17: camp.r17.unl, m18: camp.r18 && camp.r18.unl, max: camp.maxPlayable, after: camp.after }));
+  check('A5 unlock chain: Mission 16 unlocks 17, 17 unlocks 18 (v0.9C: 18 unlocks Mission 19; v0.9D: 19 unlocks Mission 20, the last playable)', camp.m16unl === 'fuel-for-the-fire' && (HAS18 ? camp.r17.unl === 'ambush-alley' && camp.r18.unl === 'jungle-prison' && camp.maxPlayable === 20 : camp.r17.unl === '' && camp.maxPlayable === 17) && camp.after.every((x) => x.endsWith(x.startsWith('jungle-prison:') || x.startsWith('warlord-hq:') ? ':true' : ':false')), JSON.stringify({ m16: camp.m16unl, m17: camp.r17.unl, m18: camp.r18 && camp.r18.unl, max: camp.maxPlayable, after: camp.after }));
 
   // unlocks through real settlements: a failure unlocks nothing, the first win unlocks the next, a replay adds nothing
   await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForFunction(() => !!window.game && !!window.T);
@@ -690,7 +690,7 @@ runSuite(async () => {
     const misDiff = ids.filter((id) => norm(before.missions[id], id) !== norm(now.missions[id], id));
     const m16 = JSON.parse(JSON.parse(now.missions['jungle-sweep']).def).unlocks.missions.join();
     check('G2 Missions 1-16 identical to v0.9A (maps, enemies, objectives, extraction, story, campaign rows; v0.9C: Mission 7 renamed)', ids.length === 16 && misDiff.length === 0, misDiff.length ? `changed: ${misDiff.join()}` : `${ids.length} missions`);
-    check('G3 Mission 16\'s only change: its unlock list names Mission 17; two new missions (v0.9C: and Mission 19)', m16 === 'fuel-for-the-fire' && Object.keys(now.missions).length === (HAS18 ? 19 : 17), `${m16}, ${Object.keys(now.missions).length} missions`);
+    check('G3 Mission 16\'s only change: its unlock list names Mission 17; two new missions (v0.9C: and Mission 19; v0.9D: and Mission 20)', m16 === 'fuel-for-the-fire' && Object.keys(now.missions).length === (HAS18 ? 20 : 17), `${m16}, ${Object.keys(now.missions).length} missions`);
   } else check('G BASE build available', false, 'BASE not set (npm test serves v0.9A)');
 
   // ================= H. PHONES =================

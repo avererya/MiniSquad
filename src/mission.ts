@@ -321,6 +321,11 @@ export class Mission {
    * downed is KIA). Nothing can repeat it, pay for it or damage the truck again.
    */
   aftermath: { t: number } | null = null;
+  /**
+   * v0.9D presentation: a point the camera leans halfway toward (Game.update camera step) while a mechanic stages
+   * something off the squad (Mission 20's helicopter ambush); null = follow the squad as always.
+   */
+  camFocus: Vec | null = null;
 
   constructor(readonly script: MissionScript) {
     this.id = script.id;
@@ -738,6 +743,12 @@ function compass(from: Vec, to: Vec): string {
 }
 
 function drawWreck(ctx: CanvasRenderingContext2D, p: Vec, kind = '') {
+  if (kind === 'warlord') { // v0.9D where the Warlord fell: his red beret on a scorched patch
+    ctx.fillStyle = 'rgba(30,25,20,0.5)'; ctx.beginPath(); ctx.ellipse(p.x, p.y, 36, 17, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9a1c16'; ctx.beginPath(); ctx.ellipse(p.x + 6, p.y - 2, 11, 6, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e0b83c'; ctx.fillRect(p.x + 4, p.y - 4, 4, 3);
+    return;
+  }
   if (kind === 'voss') { // v0.8C where General Voss fell: his cap on a scorched patch
     ctx.fillStyle = 'rgba(30,25,20,0.5)'; ctx.beginPath(); ctx.ellipse(p.x, p.y, 34, 16, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#3b3f33'; ctx.beginPath(); ctx.ellipse(p.x + 6, p.y - 2, 10, 5, 0.3, 0, Math.PI * 2); ctx.fill();

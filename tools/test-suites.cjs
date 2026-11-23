@@ -31,6 +31,7 @@ const V09B = { ref: '2d09342', label: 'v0.9B' };
 const V09B1 = { ref: 'f4cf5e0', label: 'v0.9B.1' };
 // v0.9C's suite compares against v0.9B.2 (only Mission 19 is new; Mission 7's name and Mission 18's unlock change).
 const V09B2 = { ref: '4199686', label: 'v0.9B.2' };
+const V09C = { ref: '82e10ca', label: 'v0.9C' };
 
 const SUITES = [
   // ---- rule suites (PASS / FAIL per check) ----
@@ -78,6 +79,8 @@ const SUITES = [
   { name: 'chapter2-sim', kind: 'report', about: 'Chapter 2 autopilot simulations (SCEN, RUNS)' },
   { name: 'chapter3b-sim', kind: 'report', about: 'Missions 13-14 autopilot simulations (SCEN, RUNS, LEVEL)' },
   { name: 'v09c', kind: 'rules', base: V09B2, out: true, about: 'v0.9C Mission 19 Prison Break: map, rescue in any order, the three specialist allies (weapons, follow, downs, no permadeath / XP / save), escalation and the alarm tower, the 30 s last stand (60 Riflemen, timing, safety, scaling, engagement), stars; everything else identical to v0.9B.2 but Mission 7\'s name and Mission 18\'s unlock' },
+  { name: 'v09d', kind: 'rules', base: V09C, out: true, about: 'v0.9D Mission 20 The Warlord: campaign row + Chapter 4 epilogue, map and the three approaches, installations in any order, the Warlord (HP, phases, relocation, calls, arena), the telegraphed mortar (fixed circle, warning, cadence, fairness, none after death), the scripted Extraction Alpha ambush (no damage / failure / victory / support / stars), the retreat (Riflemen, groups, bypass), Bravo (12 s, push, immediate extraction), stars; everything else identical to v0.9C' },
+  { name: 'v09d-sim', kind: 'report', about: 'v0.9D Mission 20 (MODE=boss|full, SCEN=strong,weak,four,worn, DODGE=0 stationary, BYPASS=1, ROUTE=gate|flank|supply)' },
   { name: 'v09c-sim', kind: 'report', about: 'v0.9C Mission 19 last stand (MODE=stand SCEN=strong,weak,four,worn,nospec,fourone) or the whole mission with the autopilot (MODE=full)' },
   { name: 'v09b2-sim', kind: 'report', about: 'v0.9B.2 Mission 18 extraction effectiveness (SCEN=strong,weak,four RUNS): reached range, fired, alive, damage, extracted' },
   { name: 'v081-sim', kind: 'report', about: 'v0.8B.1 Missions 13-14 balance simulations (SCEN, RUNS)' },
@@ -110,8 +113,8 @@ const GROUPS = {
   recruitment: { about: 'Recruitment Office, named recruits, roster', suites: ['recruitment', 'recruit-mobile', 'failure-recruit', 'failure-recruit-mobile', 'barracks', 'v08c'] },
   progression: { about: 'XP, training, Squad Training, Elite', suites: ['progression', 'training-rebalance', 'squad-training', 'accuracy', 'elite', 'elite-progression'] },
   permadeath: { about: 'KIA, resurrection, Memorial, failed missions', suites: ['permadeath', 'permadeath-mobile', 'failure-recruit'] },
-  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-19', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch', 'v09a', 'v09b', 'v09b1', 'v09b2', 'v09c'] },
-  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c', 'v09a', 'v09b', 'v09c'] },
+  missions: { about: 'maps, campaign rules, chapter suites, Missions 13-20', suites: ['maps', 'campaign-rules', 'chapter2', 'chapter3a', 'chapter3b', 'v081', 'v081-collision', 'v081-e2e', 'v082', 'v08c', 'story', 'arch', 'v09a', 'v09b', 'v09b1', 'v09b2', 'v09c', 'v09d'] },
+  persistence: { about: 'saves, fixtures, economy (SYSTEM_MAP "Saves / economy")', suites: ['barracks', 'progression', 'permadeath', 'recruitment', 'failure-recruit', 'elite', 'elite-progression', 'support', 'v081-e2e', 'v082', 'v08c', 'v09a', 'v09b', 'v09c', 'v09d'] },
   ui: { about: 'phone layouts and touch (HUD / menus)', suites: ['mobile', 'chapter2-mobile', 'permadeath-mobile', 'failure-recruit-mobile', 'recruit-mobile', 'story'] },
   fps: { about: '30 / 60 FPS parity and default frame cap', suites: ['fps-default', 'fps-parity'] },
   all: { about: 'full regression: every rule suite', suites: RULES },

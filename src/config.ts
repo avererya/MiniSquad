@@ -455,6 +455,46 @@ function makeDefaults() {
       waveMinDist: 520, // last-stand groups spawn off screen and at least this far from every soldier / specialist
       carryRadius: 1300, // hostiles this close to the landing zone at the countdown each take one attacker off the assault
     },
+    // v0.9D Mission 20 boss: THE WARLORD (warlord.ts WarlordFight). Battlefield control rather than a bullet sponge:
+    // an ordinary enemy rifle (same projectiles, walls and line of sight as every round, range <= the soldiers' 420),
+    // telegraphed mortar strikes (CFG.mortar), repositioning between fortified posts and a guard response per phase.
+    warlord: {
+      hp: 2400, damage: 12, accuracy: 10, movePenalty: 0, fireRate: 1.2, range: 400, moveSpeed: 105, projectileSpeed: 430,
+      turnRate: 3.2, aimTolerance: 10, radius: 18, speedVariance: 0, reactionMin: 0.4, reactionMax: 0.4, advanceChance: 0, advanceMinDist: 1, aggroRadius: 2000,
+      fireRate3: 1.5, // shots/s in phase 3
+      phase2: 0.7, // phase 2 (relocations, a reinforcement call) below this share of max HP
+      phase3: 0.35, // phase 3 (desperate: pursues, faster rifle, the final guard) below this share
+      callPause: 2, // s he holds fire while radioing a phase's call
+      relocateEvery: 15, // phase 2: s at one post before he moves to the next
+      relocateNear: 170, // phase 2: ...or sooner when a soldier comes this close
+      keepMin: 200, keepMax: 320, // phase 3: px he keeps from the nearest soldier (closes in without a clear shot)
+    },
+    // v0.9D the Warlord's mortar (warlord.ts): a red circle FIXED on the ground where the squad stands, `warn` s later
+    // a shell lands there (blastDamage: linear falloff, wall cover, Game.damage rules). One circle at a time, never
+    // after he falls, never on a spot without an escape route. Centre damage stays below the lowest class HP (75).
+    mortar: {
+      warn: 3, // s from the circle appearing to the impact
+      radius: 120, // px blast radius (the circle drawn)
+      damage: 40, edgeFrac: 0.3, // at the centre / share at the edge
+      first: 6, // s into the fight before the first strike
+      every1: 13, every2: 11, every3: 9.5, // s from one circle to the next (warning included) in phases 1 / 2 / 3
+      retry: 1.5, // s before trying again when no fair target exists
+      escapeDirs: 3, // a strike needs at least this many of 8 directions open just outside the ring
+      shake: 16,
+    },
+    // v0.9D Mission 20 "The Warlord" (warlord.ts WarlordHQ): Extraction Alpha's scripted ambush timeline (s after the
+    // squad reaches Alpha; presentation only, it deals no damage) and Extraction Bravo's final countdown.
+    hq: {
+      installationHp: 1000, // Communications Array and Vehicle Depot
+      heliTime: 7.2, // s the first helicopter would take from its entry point to the pad
+      shooterAt: 4.2, // the rocket soldier shows on the ridge
+      fireAt: 4.8, // ...and fires
+      hitAt: 6.0, // the rocket hits the helicopter
+      crashAt: 7.6, // the wreck hits the jungle
+      doneAt: 8.4, // Alpha is lost: the objective moves to Bravo
+      countdown: 12, // s from reaching Bravo to the replacement helicopter (immediate extraction)
+      pushMinDist: 520, // Bravo's final push spawns off screen and at least this far from every soldier
+    },
     feel: {
       cameraSmoothing: 6, // higher = snappier
       hitFlash: 0.1,

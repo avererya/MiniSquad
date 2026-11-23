@@ -38,6 +38,9 @@ export const SPEAKERS = {
   // v0.9C Mission 19: a freed specialist on the squad's channel, and the prison camp's intercepted radio
   specialist: { name: 'RESCUED SPECIALIST', role: 'FRIENDLY · ON YOUR CHANNEL', tone: 'command' },
   camp: { name: 'CAMP COMMAND', role: 'ENEMY RADIO · INTERCEPTED', tone: 'enemy' },
+  // v0.9D Mission 20: the Warlord on his own radio, and the extraction pilots
+  warlord: { name: 'THE WARLORD', role: 'ENEMY COMMANDER · INTERCEPTED', tone: 'enemy' },
+  pilot: { name: 'PILOT', role: 'EXTRACTION FLIGHT', tone: 'command' },
 } satisfies Record<string, StorySpeaker>;
 export type SpeakerId = keyof typeof SPEAKERS;
 
@@ -196,6 +199,44 @@ export const SCENES: Record<string, StoryScene> = {
     ],
   },
   'm19-intel': { id: 'm19-intel', mode: 'radio', lines: [{ speaker: 'specialist', text: "I grabbed their maps on the way out. These orders come straight from the Warlord's headquarters, and now we know where it is." }] },
+  // v0.9D Mission 20 "The Warlord" (Chapter 4 finale). Radio for the fights; two short cinematics: the Warlord's
+  // entrance and the MAYDAY after Alpha is lost (the mission state is already applied when it opens, so SKIP is safe).
+  // Installation lines are written so either order reads right.
+  'm20-intro': {
+    id: 'm20-intro', mode: 'radio', lines: [
+      { speaker: O, text: 'That is the Warlord\'s headquarters. Main gate, jungle flank or supply route: all three lead inside.' },
+      { speaker: O, text: 'Knock out his Communications Array and his Vehicle Depot and he has no way out.' },
+    ],
+  },
+  'm20-mines': { id: 'm20-mines', mode: 'radio', lines: [{ speaker: O, text: 'This jungle trail is mined, Squad. Spotted mines can be shot from range.' }] },
+  'm20-fuel': { id: 'm20-fuel', mode: 'radio', lines: [{ speaker: O, text: 'Fuel tanks in the supply yard. Catch his guards standing beside them.' }] },
+  'm20-comms': { id: 'm20-comms', mode: 'radio', lines: [{ speaker: O, text: 'Array down. He cannot call in his evacuation now.' }] },
+  'm20-depot': { id: 'm20-depot', mode: 'radio', lines: [{ speaker: O, text: 'Depot destroyed. His escape convoy is not going anywhere.' }] },
+  'm20-boss': {
+    id: 'm20-boss', mode: 'cinematic', lines: [
+      { speaker: O, text: 'Both installations are down. The command area is open. He is trapped in there.' },
+      { speaker: 'warlord', text: 'You burned my convoy and silenced my radios. Now this jungle will be your grave.' },
+      { speaker: O, text: 'He has mortars, Squad. When you see red on the ground, move.' },
+    ],
+  },
+  'm20-phase2': { id: 'm20-phase2', mode: 'radio', lines: [{ speaker: 'warlord', text: 'Fall back! Every unit to the command area!' }] },
+  'm20-phase3': { id: 'm20-phase3', mode: 'radio', lines: [{ speaker: 'warlord', text: 'I built this army. You will not take it from me!' }] },
+  'm20-down': { id: 'm20-down', mode: 'radio', lines: [{ speaker: O, text: 'The Warlord is down! Outstanding work. Extraction Alpha is north-east of the command area. Move!' }] },
+  'm20-alpha': {
+    id: 'm20-alpha', mode: 'radio', lines: [
+      { speaker: O, text: 'Extraction Alpha in sight. Stand by for pickup.', hold: 3.2 },
+      { speaker: 'pilot', text: 'Approaching landing zone. We have visual on your squad.', hold: 3.4 },
+    ],
+  },
+  'm20-mayday': {
+    id: 'm20-mayday', mode: 'cinematic', lines: [
+      { speaker: O, text: 'MAYDAY! MAYDAY! Bird One is down!' },
+      { speaker: O, text: 'Squad, fall back! We are redirecting extraction to Bravo, the clearing where you landed. Go!' },
+    ],
+  },
+  'm20-fall': { id: 'm20-fall', mode: 'radio', lines: [{ speaker: O, text: 'Hostiles moving to cut you off. You do not have to fight them all: keep moving to Bravo.' }] },
+  'm20-bravo': { id: 'm20-bravo', mode: 'radio', lines: [{ speaker: 'pilot', text: 'Bird Two inbound to Bravo. Twelve seconds, hold that clearing!' }] },
+  'm20-intel': { id: 'm20-intel', mode: 'radio', lines: [{ speaker: O, text: 'His files are coming through: armored vehicles, heavy weapons, whole factories. This was never just one warlord.' }] },
 };
 
 export function speakerOf(line: StoryLine): StorySpeaker { return SPEAKERS[line.speaker]; }

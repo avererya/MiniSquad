@@ -903,7 +903,9 @@ export class Game implements InputHandler {
     if (this.soldiers.length && this.soldiers.every((s) => !s.active)) { this.fail(); return; }
 
     // camera: squad centre with light smoothing
-    const c = squadCentre(this.soldiers);
+    const c0 = squadCentre(this.soldiers), f = this.mission.camFocus;
+    // v0.9D a mission can lean the camera halfway toward a staged moment (Mission 20's helicopter ambush)
+    const c = c0 && f ? { x: (c0.x + f.x) / 2, y: (c0.y + f.y) / 2 } : c0;
     if (c) {
       const k = 1 - Math.exp(-CFG.feel.cameraSmoothing * dt);
       this.cam.x += (c.x - this.cam.x) * k;

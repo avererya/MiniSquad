@@ -21,7 +21,7 @@ const SPECIAL_CFG: Record<SpecialistKind, () => EffectiveStats> = {
   star: () => CFG.prisonStar as EffectiveStats,
 };
 /** v0.6.2 enemy kinds; each reads its own CFG group (missing behaviour = rifleman). */
-export type EnemyKind = 'rifleman' | 'sniper' | 'armored' | 'tower' | 'boss' | 'truck' | 'general';
+export type EnemyKind = 'rifleman' | 'sniper' | 'armored' | 'tower' | 'boss' | 'truck' | 'general' | 'warlord';
 type EnemyStats = typeof CFG.enemy;
 export type StatBlock = EffectiveStats | EnemyStats;
 const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
@@ -32,10 +32,11 @@ const KIND_CFG: Record<EnemyKind, () => EnemyStats> = {
   boss: () => CFG.boss,
   truck: () => CFG.truck,
   general: () => CFG.general, // v0.8C General Voss (Mission 15)
+  warlord: () => CFG.warlord, // v0.9D the Warlord (Mission 20)
 };
 
-/** v0.8C: a boss-controlled unit (Iron Warden, General Voss): moved and fired by its controller, never pushed, boss floors and bars. */
-export const isBoss = (u: Pick<Unit, 'kind'>) => u.kind === 'boss' || u.kind === 'general';
+/** v0.8C: a boss-controlled unit (Iron Warden, General Voss; v0.9D the Warlord): moved and fired by its controller, never pushed, boss floors and bars. */
+export const isBoss = (u: Pick<Unit, 'kind'>) => u.kind === 'boss' || u.kind === 'general' || u.kind === 'warlord';
 /**
  * v0.9A a revealed land mine (mines.ts): a 'mine' structure in Game.enemies so rounds, grenades, rockets and flames can
  * set it off, but never an automatic target (Game.update leaves it out of the squad's candidates) and never an obstacle.

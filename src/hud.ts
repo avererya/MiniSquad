@@ -7,6 +7,7 @@
 import type { Game, GameUI } from './game';
 import type { Unit } from './unit';
 import { CFG } from './config';
+import type { WarlordHQ } from './warlord';
 import { isMuted, setMuted, unlockAudio } from './audio';
 import { Tuning } from './tuning';
 import { Menus } from './menus';
@@ -319,16 +320,19 @@ export class Hud implements GameUI {
     // v0.8C the same bar serves General Voss (Mission 15): his name, phase ticks at 70% / 35%, phase / Rally state
     const b = g.phase === 'playing' ? g.mission.boss : null;
     const v = g.phase === 'playing' ? g.mission.general : null;
-    const unit = b?.unit ?? v?.unit ?? null;
+    // v0.9D Mission 20: the Warlord (WarlordHQ mechanic) uses the same bar: phase ticks at 70% / 35%, MORTAR / phase state
+    const w = g.phase === 'playing' && !b && !v ? g.mission.mechanic<WarlordHQ>('warlord')?.fight ?? null : null;
+    const unit = b?.unit ?? v?.unit ?? w?.unit ?? null;
     const show = !!unit && unit.active;
     setStyle(this.objBoss, 'display', show ? '' : 'none');
     if (show && unit) {
-      setText(this.obName, v ? 'GENERAL VOSS' : 'IRON WARDEN');
-      setStyle(this.obT1, 'left', v ? `${CFG.general.phase2 * 100}%` : '65%');
-      setStyle(this.obT2, 'left', v ? `${CFG.general.phase3 * 100}%` : '30%');
+      setText(this.obName, w ? 'THE WARLORD' : v ? 'GENERAL VOSS' : 'IRON WARDEN');
+      setStyle(this.obT1, 'left', w ? `${CFG.warlord.phase2 * 100}%` : v ? `${CFG.general.phase2 * 100}%` : '65%');
+      setStyle(this.obT2, 'left', w ? `${CFG.warlord.phase3 * 100}%` : v ? `${CFG.general.phase3 * 100}%` : '30%');
       setStyle(this.obFill, 'width', `${Math.max(0, (unit.hp / unit.maxHp) * 100)}%`);
       const st = b ? (b.rocket ? 'ROCKET!' : b.phase === 'windup' ? 'MG WINDING UP' : b.phase === 'burst' ? 'FIRING' : '')
-        : v ? (v.rallyActive(g) ? 'RALLY!' : v.pendingCount > 0 ? 'REINFORCEMENTS' : `PHASE ${v.phase}`) : '';
+        : v ? (v.rallyActive(g) ? 'RALLY!' : v.pendingCount > 0 ? 'REINFORCEMENTS' : `PHASE ${v.phase}`)
+        : w ? (w.mortar ? 'MORTAR!' : w.pendingCount > 0 ? 'REINFORCEMENTS' : w.moving ? 'FALLING BACK' : `PHASE ${w.phase}`) : '';
       setText(this.obState, st);
     }
   }

@@ -1083,3 +1083,130 @@ export const CAMP_MAP: MapDef = {
   props: [{ kind: 'flag', x: 2560, y: 1210 }, { kind: 'tent', x: 3000, y: 1700 }, { kind: 'tent', x: 2360, y: 1720 }, { kind: 'radar', x: 3120, y: 1300 }],
 };
 export const CAMP_OPEN_SHAPES = CAMP_OPEN;
+
+// =====================================================================================
+// v0.9D Mission 20 "The Warlord": the Warlord's jungle headquarters (WarlordHQ, warlord.ts)
+// =====================================================================================
+// The squad lands in the far south-west and reaches the LANDING CLEARING (Extraction Bravo, the emergency pad, is
+// here). Three approaches leave it and reconnect inside the compound:
+//  - MAIN GATE (north-east, shortest): the road to the gate clearing, a wall with a 180 px gate, sandbags and two
+//    watchtowers, then the central yard (barracks);
+//  - JUNGLE FLANK (north, longest): a mined trail through a patrol clearing and a sniper ridge to the Communications
+//    Array's clearing north of the yard;
+//  - SUPPLY ROUTE (east, moderate): the supply yard (fuel tanks) and the Vehicle Depot south of the yard.
+// The Communications Array (north) and the Vehicle Depot (south) both open off the yard. The COMMAND AREA (the
+// Warlord's arena) lies east of the yard behind a lockdown gate that opens when both installations are down; the
+// trail north-east out of it reaches EXTRACTION ALPHA, a dead-end landing zone below a jungle ridge (the rocket
+// soldier's perch: canopy, never walkable). The retreat runs back through the arena, the gate and the yard, then down
+// any of the three approaches to Bravo. Every trail is 230+ px wide (six soldiers pass in formation).
+const HQ_OPEN: OpenShape[] = [
+  // start, landing clearing (Bravo), gate clearing, the yard (two circles)
+  { c: { x: 320, y: 2700 }, r: 260 }, { c: { x: 1000, y: 2450 }, r: 300 }, { c: { x: 1950, y: 1720 }, r: 270 },
+  { c: { x: 2850, y: 1500 }, r: 460 }, { c: { x: 3350, y: 1450 }, r: 330 },
+  // flank: patrol clearing, sniper ridge clearing; the Communications Array clearing
+  { c: { x: 850, y: 1350 }, r: 240 }, { c: { x: 1650, y: 720 }, r: 250 }, { c: { x: 2950, y: 640 }, r: 330 },
+  // supply yard, Vehicle Depot
+  { c: { x: 2350, y: 2560 }, r: 300 }, { c: { x: 3420, y: 2380 }, r: 340 },
+  // the command area (two circles), Extraction Alpha
+  { c: { x: 4320, y: 1380 }, r: 420 }, { c: { x: 4700, y: 1150 }, r: 330 }, { c: { x: 5020, y: 520 }, r: 270 },
+  // start -> landing; the main road landing -> gate clearing -> the main gate -> yard
+  { a: { x: 320, y: 2700 }, b: { x: 1000, y: 2450 }, r: 130 }, { a: { x: 1000, y: 2450 }, b: { x: 1950, y: 1720 }, r: 140 },
+  { a: { x: 1950, y: 1720 }, b: { x: 2500, y: 1560 }, r: 180 },
+  // the jungle flank: landing -> patrol clearing -> sniper ridge -> the Communications Array -> down into the yard
+  { a: { x: 900, y: 2200 }, b: { x: 850, y: 1550 }, r: 120 }, { a: { x: 950, y: 1150 }, b: { x: 1450, y: 800 }, r: 115 },
+  { a: { x: 1850, y: 680 }, b: { x: 2650, y: 640 }, r: 120 }, { a: { x: 2950, y: 900 }, b: { x: 2900, y: 1150 }, r: 130 },
+  // the supply route: landing -> supply yard -> Vehicle Depot -> up into the yard
+  { a: { x: 1150, y: 2550 }, b: { x: 2100, y: 2600 }, r: 130 }, { a: { x: 2600, y: 2500 }, b: { x: 3100, y: 2400 }, r: 130 },
+  { a: { x: 3300, y: 2050 }, b: { x: 3150, y: 1750 }, r: 130 },
+  // yard -> command area (the lockdown gate), command area -> Extraction Alpha
+  { a: { x: 3550, y: 1450 }, b: { x: 3950, y: 1400 }, r: 140 }, { a: { x: 4750, y: 950 }, b: { x: 4980, y: 620 }, r: 130 },
+];
+/** v0.9D the two installations (any order) and the Warlord's posts (P0 the fortified command post). */
+export const HQ_COMMS: Vec = { x: 3010, y: 560 };
+export const HQ_DEPOT: Vec = { x: 3500, y: 2440 };
+export const HQ_WARLORD_POSTS: Vec[] = [{ x: 4730, y: 1130 }, { x: 4330, y: 1660 }, { x: 4200, y: 1110 }, { x: 4560, y: 1450 }];
+/** The Warlord never leaves this rect (the command area). */
+export const HQ_ARENA: Rect = { x: 3960, y: 900, w: 1040, h: 920 };
+/** Where his radioed calls come in (the nearest off-screen ones): Alpha's trail, the arena's south edge, the yard. */
+export const HQ_CALL_POINTS: Vec[] = [{ x: 5020, y: 540 }, { x: 4320, y: 1700 }, { x: 4190, y: 1070 }, { x: 3330, y: 1450 }];
+/** The lockdown gate into the command area (blocks walking, never sight or rounds; Mission.openGate). */
+export const HQ_CMD_GATE: Obstacle = G(3728, 1262, 30, 352);
+/** Extraction Alpha (scripted ambush) and Extraction Bravo (the mission's real extraction, the landing clearing). */
+export const HQ_ALPHA: Rect = { x: 4900, y: 400, w: 240, h: 240 };
+export const HQ_BRAVO: Rect = { x: 880, y: 2330, w: 240, h: 240 };
+/** The rocket soldier's perch on the ridge above Alpha (canopy: unreachable), the first helicopter's entry and its crash site. */
+export const HQ_RIDGE: Vec = { x: 5390, y: 190 };
+export const HQ_HELI_FROM: Vec = { x: 4150, y: -160 };
+export const HQ_CRASH: Vec = { x: 4640, y: 290 };
+/** v0.9D the jungle flank's mines (MineField): its trails only; the main road and the supply route are clean. */
+export const HQ_MINES: Vec[] = [
+  { x: 880, y: 1930 }, { x: 860, y: 1700 }, { x: 790, y: 1430 }, { x: 1150, y: 1010 }, { x: 1340, y: 880 }, { x: 2150, y: 665 }, { x: 2420, y: 650 },
+];
+/** v0.9D fuel tanks (FuelDepot): the supply yard (S, two clusters) and the depot's fuel point (D). Never required. */
+export const HQ_TANKS: { x: number; y: number; group: string }[] = [
+  { x: 2430, y: 2470, group: 'S' }, { x: 2475, y: 2515, group: 'S' }, { x: 2440, y: 2565, group: 'S' },
+  { x: 2220, y: 2650, group: 'S' }, { x: 2265, y: 2690, group: 'S' },
+  { x: 3260, y: 2250, group: 'D' }, { x: 3305, y: 2285, group: 'D' },
+];
+/** Retreat interception zones (squad centre; AmbushDirector) and the groups' entry points (the safest is used). */
+export const HQ_FALL_ZONES = {
+  yard: { x: 2400, y: 1050, w: 1300, h: 900 },
+  road: { x: 1650, y: 1450, w: 700, h: 520 },
+  supply: { x: 2050, y: 2150, w: 1750, h: 600 },
+  flank: { x: 1300, y: 420, w: 1500, h: 520 },
+  landing: { x: 400, y: 1750, w: 1800, h: 1250 },
+};
+export const HQ_FALL_FROM = {
+  arena: [{ x: 2960, y: 940 }, { x: 3260, y: 1960 }, { x: 2700, y: 1500 }],
+  yard: [{ x: 2950, y: 640 }, { x: 3420, y: 2380 }, { x: 1950, y: 1720 }],
+  road: [{ x: 1350, y: 2180 }, { x: 2350, y: 2560 }, { x: 850, y: 1350 }],
+  supply: [{ x: 1500, y: 2560 }, { x: 3420, y: 2380 }, { x: 1950, y: 1720 }],
+  flank: [{ x: 850, y: 1350 }, { x: 2950, y: 640 }, { x: 1950, y: 1720 }],
+  landing: [{ x: 880, y: 1700 }, { x: 1700, y: 2590 }, { x: 1580, y: 2010 }, { x: 300, y: 2720 }],
+};
+/** Extraction Bravo's final push (nearest point of the route that is off screen and pushMinDist from everyone). */
+export const HQ_BRAVO_ROUTES: Record<string, Vec[]> = {
+  road: [{ x: 1580, y: 2010 }, { x: 1800, y: 1830 }],
+  supply: [{ x: 1760, y: 2600 }, { x: 2050, y: 2600 }],
+  flank: [{ x: 860, y: 1820 }, { x: 860, y: 1560 }],
+};
+const HQ_COVER: Obstacle[] = [
+  // start / landing clearing: logs, rocks, crates around the emergency pad (gaps everywhere)
+  R(620, 2620, 80, 40, 28), C(1180, 2300), C(1216, 2300), R(780, 2250, 70, 40, 28), Tr(1230, 2600, 60, 50, 40),
+  // the gate clearing: rocks and a sandbag line in front of the wall (the enemy side is behind the wall)
+  R(1820, 1560, 90, 50, 30), S(2080, 1820, 110, 16), C(1880, 1880),
+  // THE MAIN GATE: a wall across the road with a 180 px gate (1530-1710), sandbags inside, two watchtowers (units)
+  W(2330, 1360, 24, 170), W(2330, 1710, 24, 100), S(2440, 1500, 16, 90), S(2440, 1700, 90, 16),
+  // the yard: two barracks, a supply hut, crates, sandbags, concrete blocks
+  B(2560, 1220, 170, 90), B(2620, 1700, 180, 90), { x: 3080, y: 1240, w: 80, h: 70, kind: 'hut', height: 60 },
+  C(2780, 1400), C(2816, 1400), C(3060, 1600), S(2950, 1460, 110, 16), K(3250, 1300, 70, 40, 30), K(3250, 1580, 70, 40, 30), S(3480, 1380, 16, 120),
+  // flank: the patrol clearing and the sniper ridge (rocks to shoot from, trees)
+  R(760, 1260, 80, 40, 28), Tr(930, 1440, 60, 50, 40), R(1560, 600, 90, 40, 30), R(1740, 820, 80, 40, 28), C(1620, 820),
+  // the Communications Array: sandbag arcs, concrete blocks, an equipment hut (the array itself is a structure unit)
+  S(2860, 720, 120, 16), S(3120, 700, 16, 110), K(2790, 520, 70, 36, 32), { x: 3100, y: 430, w: 80, h: 60, kind: 'hut', height: 60 }, C(2900, 860),
+  // supply yard: stacked crates, a fuel shed (tanks are FuelDepot units)
+  C(2250, 2440), C(2286, 2440), { x: 2120, y: 2500, w: 80, h: 70, kind: 'hut', height: 60 }, S(2560, 2620, 16, 100),
+  // Vehicle Depot: a garage, concrete barriers, sandbags (the depot itself is a structure unit)
+  { x: 3560, y: 2230, w: 150, h: 90, kind: 'building', height: 56 }, K(3320, 2500, 90, 34, 30), S(3600, 2520, 110, 16), C(3200, 2400),
+  // the command area: the Warlord's command post (bunker behind him, sandbags in front), and three fall-back posts
+  { x: 4790, y: 1040, w: 90, h: 110, kind: 'building', height: 60 }, S(4630, 1060, 16, 70), S(4630, 1170, 16, 60),
+  S(4260, 1580, 140, 16), S(4130, 1190, 140, 16), K(4470, 1390, 30, 110, 30), K(4040, 1300, 50, 34, 30), R(4560, 1700, 80, 40, 28),
+  // Extraction Alpha: a few crates by the pad
+  C(4820, 640), C(5180, 420),
+];
+export const HQ_MAP: MapDef = {
+  id: 'warlord-hq', w: 5600, h: 3000, theme: 'jungle',
+  obstacles: [...jungleCanopy(5600, 3000, HQ_OPEN), ...HQ_COVER],
+  start: { x: 320, y: 2700 }, startZone: { x: 190, y: 2570, w: 260, h: 260 },
+  medkits: [{ x: 1250, y: 2420 }, { x: 1950, y: 1600 }, { x: 900, y: 1250 }, { x: 1700, y: 620 }, { x: 2700, y: 1580 }, { x: 2400, y: 2700 }, { x: 3400, y: 1500 }, { x: 4000, y: 1500 }],
+  rapidFire: [{ x: 3000, y: 800 }, { x: 3300, y: 2300 }],
+  roads: [
+    [{ x: 0, y: 2760 }, { x: 320, y: 2700 }, { x: 1000, y: 2450 }, { x: 1950, y: 1720 }, { x: 2500, y: 1560 }, { x: 2850, y: 1500 }, { x: 3350, y: 1450 }, { x: 3950, y: 1400 }, { x: 4320, y: 1380 }, { x: 4700, y: 1150 }, { x: 4980, y: 620 }],
+    [{ x: 1000, y: 2450 }, { x: 2100, y: 2600 }, { x: 2350, y: 2560 }, { x: 3100, y: 2400 }, { x: 3420, y: 2380 }, { x: 3300, y: 2050 }, { x: 3150, y: 1750 }],
+    [{ x: 2850, y: 1500 }, { x: 2900, y: 1150 }, { x: 2950, y: 640 }],
+  ],
+  props: [{ kind: 'flag', x: 2700, y: 1330 }, { kind: 'flag', x: 4700, y: 1000 }, { kind: 'radar', x: 2880, y: 470 }, { kind: 'tent', x: 3000, y: 1800 }, { kind: 'tent', x: 2240, y: 2380 }, { kind: 'tent', x: 3700, y: 2400 }],
+};
+/** Locked: the command-area gate shut (Mission.lockdown worlds[0]). */
+export const HQ_LOCKED: MapDef = { ...HQ_MAP, id: 'warlord-hq-locked', obstacles: [...HQ_MAP.obstacles, HQ_CMD_GATE] };
+export const HQ_OPEN_SHAPES = HQ_OPEN;

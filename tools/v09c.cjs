@@ -24,7 +24,7 @@
 // Usage: npm test -- v09c   (or: npx vite preview --port 4173 & BASE=<v0.9B.2 url> node tools/v09c.cjs)
 const fs = require('fs');
 const path = require('path');
-const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot } = require('./lib.cjs');
+const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot, V09D } = require('./lib.cjs');
 const { setup } = require('./v08c-sim.cjs');
 const { stand } = require('./v09c-sim.cjs');
 
@@ -95,7 +95,7 @@ runSuite(async () => {
   });
   check('A1 Mission 19 "Prison Break" (jungle-prison): number 19, playable, Chapter 4, six soldiers, optionals alarm-tower + specialists-alive, 2 stars = optionals / 3 = no KIA, briefing', camp.r19 && camp.r19.n === 19 && camp.r19.name === 'Prison Break' && camp.r19.playable && camp.r19.ch === 4 && camp.r19.cap === 6 && camp.r19.opt === 'alarm-tower,specialists-alive' && /"two":"optionals"/.test(camp.r19.stars) && /"three":"noKia"/.test(camp.r19.stars) && camp.r19.brief, JSON.stringify(camp.r19));
   check('A2 Mission 7 keeps its id and number, renamed "Operation Breakout"; no two missions share a name', camp.m7 && camp.m7.n === 7 && camp.m7.name === 'Operation Breakout' && new Set(camp.names).size === camp.names.length, JSON.stringify(camp.m7));
-  check('A3 Mission 18 unlocks Mission 19; Mission 19 unlocks nothing (Mission 20 not playable yet, the note says so)', camp.m18unl === 'jungle-prison' && camp.r19.unl === '' && camp.maxPlayable === 19 && camp.after.every((x) => x.endsWith(':false')) && /future update/i.test(camp.r19.note), JSON.stringify({ m18: camp.m18unl, m19: camp.r19.unl, max: camp.maxPlayable, after: camp.after }));
+  check('A3 Mission 18 unlocks Mission 19 (v0.9D: Mission 19 unlocks Mission 20, the note moved there; checked by v09d A2)', camp.m18unl === 'jungle-prison' && camp.r19.unl === 'warlord-hq' && camp.maxPlayable === 20 && camp.after.every((x) => x.endsWith(x.startsWith('warlord-hq:') ? ':true' : ':false')), JSON.stringify({ m18: camp.m18unl, m19: camp.r19.unl, max: camp.maxPlayable, after: camp.after }));
   const unl = await ev(() => {
     const g = window.game, a = window.__account(), R = g.roster, out = {};
     for (const id of ['ambush-alley']) if (!a.campaign.unlockedMissions.includes(id)) a.campaign.unlockedMissions.push(id);
@@ -111,7 +111,7 @@ runSuite(async () => {
     out.raw = localStorage.getItem('minisquad.save');
     return out;
   });
-  check('A4 the first Mission 18 win unlocks Mission 19 (once, not on a replay); winning Mission 19 unlocks nothing new; completions recorded', !unl.before && unl.win18 === 'won' && unl.after18 && unl.win18b === 'won' && unl.n === 1 && unl.win19 === 'won' && unl.rec === 1 && unl.list.split(',').pop() === 'jungle-prison', JSON.stringify({ ...unl, raw: undefined }));
+  check('A4 the first Mission 18 win unlocks Mission 19 (once, not on a replay); winning Mission 19 unlocks only Mission 20 (v0.9D); completions recorded', !unl.before && unl.win18 === 'won' && unl.after18 && unl.win18b === 'won' && unl.n === 1 && unl.win19 === 'won' && unl.rec === 1 && unl.list.split(',').slice(-2).join() === 'jungle-prison,warlord-hq', JSON.stringify({ ...unl, raw: undefined }));
   const load = await ev((raw) => {
     // a v0.9B.2-era save: Mission 18 cleared, Mission 19 not listed (it did not exist yet)
     const s = JSON.parse(raw), acc = s.account || s;
@@ -374,7 +374,7 @@ runSuite(async () => {
     const pb = await openPage(browser, BASE, { seed: 4242 }), pn = await openPage(browser, URL, { seed: 4242 });
     const before = await pb.evaluate(missionSnapshot), nowS = await pn.evaluate(missionSnapshot);
     await pb.context().close(); await pn.context().close();
-    const cfgDiff = Object.keys(nowS.cfg).filter((k) => nowS.cfg[k] !== before.cfg[k]);
+    const cfgDiff = V09D.cfgDiff(Object.keys(nowS.cfg).filter((k) => nowS.cfg[k] !== before.cfg[k])); // v0.9D: warlord / mortar / hq set aside
     const NEW = ['prison', 'prisonFlame', 'prisonRocket', 'prisonStar'];
     check('I1 every CFG group identical to v0.9B.2 but the four new prison* groups (no global class, enemy or economy number moved)', cfgDiff.sort().join() === NEW.join() && NEW.every((k) => before.cfg[k] === undefined), cfgDiff.join() || 'none');
     const ids = Object.keys(before.missions).filter((id) => id !== 'ambush-alley');
@@ -392,7 +392,7 @@ runSuite(async () => {
   // ================= J. VERSION, SAVE, PHONES =================
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const saveSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'save.ts'), 'utf8');
-  check('J1 package 0.9.4, label 0.9C; SAVE_VERSION 9 (nothing new is saved)', pkg.version === '0.9.4' && pkg.versionLabel === '0.9C' && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
+  check('J1 package 0.9.4 / label 0.9C or a later release (v0.9D: 0.9.5, checked by v09d L1); SAVE_VERSION 9 (nothing new is saved)', pkg.version >= '0.9.4' && /^0\.9[C-Z]/.test(pkg.versionLabel) && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
   {
     const p2 = await openPage(browser, URL, { seed: 1919, viewport: { width: 667, height: 375 }, context: { deviceScaleFactor: 2, isMobile: true, hasTouch: true } });
     await p2.evaluate(helpers);

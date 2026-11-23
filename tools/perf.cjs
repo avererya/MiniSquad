@@ -13,7 +13,8 @@
 //          seconds: canvas frames drawn per second, rAF callbacks, and main-thread busy time
 //          (CDP Performance metrics: TaskDuration, Script, Layout, RecalcStyle).
 //   menu   the Campaign screen idling for WIN seconds (same metrics).
-// Viewport: iPhone 14 landscape (844x390, DPR 3, touch). THROTTLE = CDP CPU slowdown factor.
+// Viewport: iPhone 14 landscape (844x390, DPR 3, touch); VIEW=se (iPhone SE 667x375, DPR 2) or VIEW=pixel7 (915x412,
+// DPR 2.625) for the other target phones (v0.9D). THROTTLE = CDP CPU slowdown factor.
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const fs = require('fs');
 const { setupMission, installPilot, counts, stats } = require('./perf-lib.cjs');
@@ -30,6 +31,8 @@ const WIN = +(process.env.WIN || 8);
 const LEVEL = +(process.env.LEVEL || 6);
 const FPS = process.env.FPS || ''; // optional ?fps= cap for the build under test
 const OUT = process.env.OUT || '';
+const VIEWS = { se: { width: 667, height: 375, dpr: 2 }, 14: { width: 844, height: 390, dpr: 3 }, pixel7: { width: 915, height: 412, dpr: 2.625 } };
+const VIEW = VIEWS[process.env.VIEW || '14'] || VIEWS[14];
 
 /** Init script: fake display refresh + frame counters (works on any build). */
 function displayShim(hz) {
@@ -61,7 +64,7 @@ function displayShim(hz) {
 }
 
 async function newPage(browser, hz) {
-  const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  const ctx = await browser.newContext({ viewport: { width: VIEW.width, height: VIEW.height }, deviceScaleFactor: VIEW.dpr, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   await page.addInitScript(displayShim, hz);
   const cdp = await ctx.newCDPSession(page);

@@ -188,6 +188,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game) {
     else if (u.team === 'enemy' && u.kind === 'tower') items.push({ y: u.pos.y + 10, draw: () => drawTower(ctx, u, game) });
     else if (u.team === 'enemy' && u.kind === 'boss') items.push({ y: u.pos.y, draw: () => drawBoss(ctx, u, game) });
     else if (u.team === 'enemy' && u.kind === 'general') items.push({ y: u.pos.y, draw: () => drawGeneral(ctx, u, game) });
+    else if (u.team === 'enemy' && u.kind === 'warlord') items.push({ y: u.pos.y, draw: () => drawWarlord(ctx, u, game) });
     else items.push({ y: u.pos.y, draw: () => drawUnit(ctx, u, game) });
   }
   for (const g of game.grenades) {
@@ -746,6 +747,7 @@ const ENEMY_VIS: Partial<Record<string, ClassVisual>> = {
   armored: { bodyW: 19, weapon: 'rifle', pack: 'ammo', helmet: 'heavy', tracerWidth: 3.5, tracerLen: 18 },
   tower: { bodyW: 14, weapon: 'rifle', pack: 'none', helmet: 'standard', tracerWidth: 3.5, tracerLen: 18 },
   general: { bodyW: 17, weapon: 'rifle', pack: 'vest', helmet: 'cap', tracerWidth: 4.5, tracerLen: 20 },
+  warlord: { bodyW: 19, weapon: 'rifle', pack: 'ammo', helmet: 'beret', tracerWidth: 4.5, tracerLen: 20 }, // v0.9D
 };
 
 /** v0.8A resistance fighter: rifle, no pack, soft cap. */
@@ -1262,6 +1264,7 @@ function drawStructure(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   if (u.structure === 'artillery') { drawArtilleryGun(ctx, u, game); return; }
   if (u.structure === 'generator') { drawGenerator(ctx, u, game); return; }
   if (u.structure === 'fuel') { drawFuelTank(ctx, u, game); return; } // v0.9B fuel.ts
+  if (u.structure === 'vdepot') { drawVehicleDepot(ctx, u, game); return; } // v0.9D Mission 20
   const { x, y } = u.pos;
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath(); ctx.ellipse(x, y + 4, 34, 14, 0, 0, Math.PI * 2); ctx.fill();
@@ -1556,6 +1559,48 @@ function drawGeneral(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
   ctx.restore();
   ctx.fillStyle = '#000'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('VOSS', x + 1, y - 62 + 1);
   ctx.fillStyle = '#ff7a5a'; ctx.fillText('VOSS', x, y - 62);
+}
+
+/**
+ * v0.9D Mission 20 THE WARLORD: bigger than Voss, a red beret and sash, a bandolier, a red ring under him that
+ * flashes while he radios a call; "WARLORD" over his head (the boss bar carries his HP).
+ */
+function drawWarlord(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos;
+  if (u.state !== 'active') return;
+  const f = (game.mission.mechanic('warlord') as { fight?: { phase: number; moving: boolean } | null } | null)?.fight;
+  const hot = f && f.phase >= 3, p = 0.5 + 0.5 * Math.sin(game.clock * (hot ? 10 : 4));
+  ctx.strokeStyle = `rgba(255,${hot ? 40 : 80},40,${0.5 + 0.4 * p})`; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(x, y, 27 + p * 3, 11 + p, 0, 0, Math.PI * 2); ctx.stroke();
+  const S = CHAR_SCALE * 1.4;
+  ctx.save(); ctx.translate(x, y); ctx.scale(S, S); ctx.translate(-x, -y);
+  drawStanding(ctx, u, x, y, '#9a1c16', '#3a3326', ENEMY_VIS.warlord, null);
+  const by = y - 10;
+  ctx.fillStyle = u.hitFlash > 0 ? '#fff' : '#b8231a'; // red sash across the chest
+  ctx.beginPath(); ctx.moveTo(x - 9, by - 14); ctx.lineTo(x - 5, by - 16); ctx.lineTo(x + 9, by - 2); ctx.lineTo(x + 5, by); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e0b83c'; ctx.fillRect(x - 3, by - 9, 3, 3); ctx.fillRect(x + 2, by - 5, 3, 3); // bandolier rounds
+  ctx.restore();
+  ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#000'; ctx.fillText('WARLORD', x + 1, y - 70 + 1);
+  ctx.fillStyle = '#ff5a4a'; ctx.fillText('WARLORD', x, y - 70);
+}
+
+/** v0.9D Mission 20 Vehicle Depot: a fuel pump and two parked escape trucks under a camouflage net. */
+function drawVehicleDepot(ctx: CanvasRenderingContext2D, u: Unit, game: Game) {
+  const { x, y } = u.pos, flash = u.hitFlash > 0, f = clamp(u.hp / u.maxHp, 0, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 6, 62, 20, 0, 0, Math.PI * 2); ctx.fill();
+  for (const dx of [-30, 28]) { // two trucks
+    ctx.fillStyle = flash ? '#fff' : '#4e5a36'; roundRect(ctx, x + dx - 24, y - 28, 46, 26, 4); ctx.fill();
+    ctx.fillStyle = flash ? '#eee' : '#3c4529'; ctx.fillRect(x + dx + 10, y - 36, 14, 16);
+    ctx.fillStyle = '#9fd3e6'; ctx.fillRect(x + dx + 13, y - 34, 8, 6);
+    ctx.fillStyle = '#1c1a18'; for (const wx of [-14, 12]) { ctx.beginPath(); ctx.arc(x + dx + wx, y - 2, 5, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.strokeStyle = '#5d6b3a'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); // camouflage net
+  ctx.beginPath(); ctx.moveTo(x - 60, y - 40); ctx.lineTo(x + 58, y - 40); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = flash ? '#fff' : '#a83a2a'; ctx.fillRect(x - 6, y - 48, 12, 22); // fuel pump
+  ctx.fillStyle = '#ffd84a'; ctx.fillRect(x - 4, y - 44, 8, 4);
+  if (f < 0.5) { const ph = (game.clock * 1.5) % 1; ctx.fillStyle = `rgba(60,60,60,${0.5 * (1 - ph)})`; ctx.beginPath(); ctx.arc(x + 10, y - 50 - ph * 40, 8 + ph * 12, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#ffd84a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(u.label, x, y - 62);
 }
 
 /**

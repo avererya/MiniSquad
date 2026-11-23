@@ -19,7 +19,7 @@ const { setupMission, installPilot } = require('./perf-lib.cjs');
 
 const URL = process.env.URL || 'http://localhost:4173/';
 const BASE = process.env.BASE || '';
-const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist,last-stand@voss,last-stand@story,jungle-sweep,jungle-sweep@field,fuel-for-the-fire,fuel-for-the-fire@reserve,ambush-alley,ambush-alley@rooftops,bridgehead@extract,artillery-hunt@extract,fuel-for-the-fire@extract,ambush-alley@extract,jungle-prison,jungle-prison@stand').split(',');
+const MISSIONS = (process.env.MISSIONS || 'prison-break,blackout,iron-fist,last-stand@voss,last-stand@story,jungle-sweep,jungle-sweep@field,fuel-for-the-fire,fuel-for-the-fire@reserve,ambush-alley,ambush-alley@rooftops,bridgehead@extract,artillery-hunt@extract,fuel-for-the-fire@extract,ambush-alley@extract,jungle-prison,jungle-prison@stand,warlord-hq,warlord-hq@boss,warlord-hq@retreat').split(',');
 const SECS = +(process.env.SECS || 60);
 const SEED = +(process.env.SEED || 12345);
 
@@ -50,6 +50,8 @@ function hashState() {
     [m.pressureSpawned ?? 0, m.pressureGroupsFired ?? 0, m.mechanic && m.mechanic('ambush') && m.mechanic('ambush').hidden ? [m.mechanic('ambush').hidden.length, JSON.stringify(m.mechanic('ambush').log.reveals)] : 0],
     // v0.9C (absent before): Mission 19's prisoners (release progress), the rescued specialists, responses, last stand
     m.mechanic && m.mechanic('prison') ? (() => { const x = m.mechanic('prison'); return [x.prisoners.map((p) => r(p.progress)), (g.allies || []).map(u), x.wavesFired, r(x.scale), x.carried, x.responseUnits.length, x.assaultUnits.length]; })() : 0,
+    // v0.9D (absent before): Mission 20's Warlord (stage, phase, post, shots, calls, the mortar circle and its log), Alpha, Bravo's push
+    m.mechanic && m.mechanic('warlord') ? (() => { const x = m.mechanic('warlord'), f = x.fight; return [f ? [f.stage, f.phase, f.post, f.shots, f.relocations, f.pendingCount, f.reinforcements.length, f.mortar ? [r(f.mortar.pos.x), r(f.mortar.pos.y), r(f.mortar.t)] : 0, r(f.mortarT), JSON.stringify(f.mortars.perStrike)] : 0, x.alpha, r(x.alphaT), x.pushFired, x.pushUnits.length]; })() : 0,
     m.mechanic && m.mechanic('mines') ? (() => { const f = m.mechanic('mines'); return [f.mines.map((x) => [x.state, r(x.fuse), x.cause]), f.order ? [f.order.mine.id, r(f.order.until)] : 0, JSON.stringify(f.log), g.soldiers.map((s) => (s.order ? 1 : 0))]; })() : 0]);
   let h = 2166136261; for (let i = 0; i < st.length; i++) { h ^= st.charCodeAt(i); h = Math.imul(h, 16777619); }
   return (h >>> 0).toString(16);

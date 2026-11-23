@@ -1328,6 +1328,8 @@ export class Menus {
       ...(rw.legacyFirstClearPaid ? ['<div class="r-unl dim">First-clear Credit bonus was already paid for this map in v0.3 (Comms Outpost)</div>'] : []),
       ...(rw.firstClear && m.def.unlocks.capacityNote ? [`<div class="r-unl">▲ ${esc(m.def.unlocks.capacityNote.toUpperCase())}</div>`] : []),
     ].join('') : '';
+    // v0.9D a chapter finale's closing lines (Mission 20) after every win, whatever the deployment
+    const epi = won && m.def.epilogue ? `<div class="r-unl r-epi"><b>★ ${esc(m.def.epilogue.title)}</b>${m.def.epilogue.lines.map((l) => `<br>${esc(l)}`).join('')}</div>` : '';
     let rewards: string;
     if (g.deployment.kind !== 'roster') rewards = `<div class="r-none">${g.deployment.kind === 'generic' ? 'Dev preset squad (generic soldiers)' : 'Temporary dev squad'}: no XP, Credits, stars or unlocks.</div>`;
     else if (!rw || !won) rewards = `<div class="r-none">${won ? 'No rewards: this mission was not unlocked yet.' : 'No XP or Credits for a failed mission.'}</div><div class="r-total">Credits <b class="r-cr">${cr(getAccount().credits)}</b></div>`;
@@ -1365,7 +1367,7 @@ export class Menus {
           <div class="r-sub">${why} · Mission time <b>${fmtTime(g.time)}</b></div>
           ${opts ? `<div class="r-opts"><b>OPTIONAL</b> ${opts}</div>` : ''}
           ${fallenHtml}
-          ${unlocks ? `<div class="r-unls">${unlocks}</div>` : ''}
+          ${unlocks || epi ? `<div class="r-unls">${epi}${unlocks}</div>` : ''}
           ${levelUps ? `<div class="r-lvls">${levelUps}</div>` : ''}
           <div class="r-body">
             <table class="r-table">
