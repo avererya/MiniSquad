@@ -24,7 +24,7 @@
 // Usage: npm test -- v09d   (or: npx vite preview --port 4173 & BASE=<v0.9C url> node tools/v09d.cjs)
 const fs = require('fs');
 const path = require('path');
-const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot } = require('./lib.cjs');
+const { chromium, URL, BASE, OUT, createChecks, runSuite, openPage, missionSnapshot, V09D1 } = require('./lib.cjs');
 
 /** Page-side helpers (window.X) on top of window.T. */
 function helpers() {
@@ -244,6 +244,8 @@ runSuite(async () => {
     T.stepUntil(() => !!F.mortar, 12, () => { X.at(c); X.skip(); });
     firstAt = g.time - t0; circleAt = F.mortar && { ...F.mortar.pos };
     banner = g.banners.map((b) => b.text).join('|');
+    // v0.9D.1 one compact warning: the boss bar's pulsing MORTAR state (the big banner is gone)
+    window.__render(); const obs = document.querySelector('#bossbar .ob-state'); out.hudWarn = obs ? `${obs.textContent}|${obs.classList.contains('alert')}` : '';
     out.centreOnSquad = circleAt ? Math.round(X.near(circleAt, c)) : -1;
     // walk the squad 300 px away: the circle stays where it was
     const away = { x: 4450, y: 1650 };
@@ -274,7 +276,7 @@ runSuite(async () => {
     F.shoot = shoot;
     return out;
   });
-  check('E1 a red circle appears on the squad (~6 s in) with an INCOMING MORTAR warning, stays fixed where it was placed, and lands ~3 s later', /INCOMING MORTAR/.test(mor.banner) && mor.firstAt >= C.m.first - 0.5 && mor.firstAt <= C.m.first + 2 && mor.centreOnSquad <= 40 && !mor.moved && Math.abs(mor.warn - C.m.warn) <= 0.1 && C.m.warn >= 2.5 && C.m.warn <= 3.5, JSON.stringify({ first: mor.firstAt, centre: mor.centreOnSquad, moved: mor.moved, warn: mor.warn }));
+  check('E1 a red circle appears on the squad (~6 s in) with one compact MORTAR warning on the boss bar (v0.9D.1: no big banner), stays fixed where it was placed, and lands ~3 s later', /MORTAR/.test(mor.hudWarn) && /\|true$/.test(mor.hudWarn) && !/MORTAR/.test(mor.banner) && mor.firstAt >= C.m.first - 0.5 && mor.firstAt <= C.m.first + 2 && mor.centreOnSquad <= 40 && !mor.moved && Math.abs(mor.warn - C.m.warn) <= 0.1 && C.m.warn >= 2.5 && C.m.warn <= 3.5, JSON.stringify({ first: mor.firstAt, centre: mor.centreOnSquad, moved: mor.moved, warn: mor.warn, hud: mor.hudWarn, banner: mor.banner }));
   check('E2 moving out of the circle avoids all damage; standing in it hurts (through Game.damage), less than the lowest class HP at the centre', mor.dodgeDmg === 0 && mor.viaDamage > 0 && /^[1-9]/.test(mor.per) && C.m.damage < 75, JSON.stringify({ dodge: mor.dodgeDmg, via: mor.viaDamage, per: mor.per, dmg: C.m.damage }));
   const inR = (xs, lo, hi) => xs.length > 0 && xs.every((x) => x >= lo - 0.05 && x <= hi + 0.05);
   check('E3 cadence: phase 1 every 12-15 s, phases 2-3 every 9-12 s (circle to circle), one circle at a time', inR(mor.gaps1, 12, 15) && inR(mor.gaps2, 9, 12) && inR(mor.gaps3, 9, 12), JSON.stringify({ g1: mor.gaps1, g2: mor.gaps2, g3: mor.gaps3, m3: mor.m3 }));
@@ -431,7 +433,7 @@ runSuite(async () => {
     await pb.context().close(); await pn.context().close();
     const cfgDiff = Object.keys(nowS.cfg).filter((k) => nowS.cfg[k] !== before.cfg[k]);
     const NEW = ['hq', 'mortar', 'warlord'];
-    check('K1 every CFG group identical to v0.9C but the three new groups (warlord, mortar, hq)', cfgDiff.sort().join() === NEW.join() && NEW.every((k) => before.cfg[k] === undefined), cfgDiff.join() || 'none');
+    check('K1 every CFG group identical to v0.9C but the three new groups (warlord, mortar, hq) and the v0.9D.1 groups (V09D1: formation, warlordResponse)', V09D1.cfgDiff(cfgDiff).sort().join() === NEW.join() && NEW.every((k) => before.cfg[k] === undefined), cfgDiff.join() || 'none');
     const ids = Object.keys(before.missions).filter((id) => id !== 'jungle-prison');
     const misDiff = ids.filter((id) => before.missions[id] !== nowS.missions[id]);
     const b19 = JSON.parse(before.missions['jungle-prison']), n19 = JSON.parse(nowS.missions['jungle-prison']);
@@ -445,7 +447,7 @@ runSuite(async () => {
   // ================= L. VERSION, SAVE, PHONES =================
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const saveSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'save.ts'), 'utf8');
-  check('L1 package 0.9.5, label 0.9D; SAVE_VERSION 9 (nothing new is saved)', pkg.version === '0.9.5' && pkg.versionLabel === '0.9D' && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
+  check('L1 package 0.9.5 / label 0.9D or a later release (v0.9D.1: 0.9.6, checked by v09d1); SAVE_VERSION 9 (nothing new is saved)', pkg.version >= '0.9.5' && /^0\.9D/.test(pkg.versionLabel) && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
   {
     const p2 = await openPage(browser, URL, { seed: 2020, viewport: { width: 667, height: 375 }, context: { deviceScaleFactor: 2, isMobile: true, hasTouch: true } });
     await p2.evaluate(helpers);

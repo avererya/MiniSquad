@@ -52,9 +52,11 @@ const SAVE = fs.readFileSync(path.join(__dirname, 'fixtures-v08b', 'v0.8B-m12-cl
     await page.evaluate((ids) => { const g = window.game; g.roster.trimTo(0); for (const x of ids) g.roster.select(x, undefined, 6); window.__persist(); }, IDS);
     await page.click(`[data-a="csel"][data-id="${id}"]`);
     await page.waitForTimeout(80);
+    // v0.9D.1 the briefing story lives in the Campaign screen's MISSION DETAILS; DEPLOY opens READY TO DEPLOY?
+    const story = await page.evaluate(() => { const b = document.querySelector('.c-more-body'); return b ? b.textContent.replace(/\s+/g, ' ') : ''; });
     await page.click('.c-btns [data-a="deploy"]');
     await page.waitForTimeout(100);
-    const brief = await page.evaluate(() => { const b = document.querySelector('.brief'); return b ? b.textContent.replace(/\s+/g, ' ') : ''; });
+    const brief = story + ' | ' + await page.evaluate(() => { const b = document.querySelector('.brief'); return b ? b.textContent.replace(/\s+/g, ' ') : ''; });
     await page.click('[data-a="brief-deploy"]');
     await page.waitForTimeout(100);
     return { brief, dep: await page.evaluate(() => ({ phase: window.game.phase, n: window.game.soldiers.length, mission: window.game.mission && window.game.mission.id, charges: window.game.soldiers.map((s) => `${s.ability.charges}/${s.ability.capacity}`).join() })) };

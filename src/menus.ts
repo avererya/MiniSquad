@@ -18,7 +18,7 @@ import { SQUAD_SLOTS, defaultRoster } from './roster';
 import { drawClassPortrait } from './render';
 import { sfx, unlockAudio } from './audio';
 import { VERSION_LABEL } from './version';
-import { CAMPAIGN, CAPACITY_TABLE, CHAPTERS, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
+import { CAMPAIGN, CAPACITY_TABLE, CHAPTERS, CLASS_UNLOCK_TEXT, MISSION_TYPE_LABEL, chapterOf, missionSummary, NAMED_RECRUITS, STAR_TEXT, campaignMission, capacityFor, namedRecruit, type CampaignMission } from './campaign';
 import {
   ABILITY_CAPACITY, ABILITY_CAPACITY_MAX, PROGRESSION, SQUAD_TRAINING, SQUAD_TRAINING_IDS, TRAINING, TRAINING_IDS, abilityUses, capacityRank, getAccount, levelProgress, maxRank, newTraining, nextCost, rankBonus, xpForLevel,
   type CandidateRecord, type SquadTrainingStat, type TrainingStat,
@@ -85,6 +85,12 @@ export class Menus {
   resetOpen = false;
   /** v0.8A: the pre-deployment briefing of the selected mission is open (Campaign screen). */
   briefOpen = false;
+  /** v0.9D.1 Campaign screen: the Mission Details expander is open (collapsed again whenever a mission is selected). */
+  detailsOpen = false;
+  /** v0.9D.1 EDIT SQUAD from READY TO DEPLOY?: the next return to the Campaign reopens the deploy check. */
+  deployReturn = false;
+  /** v0.9D.1 a second tap within this window can't launch a second deployment (performance.now ms). */
+  private deployLockUntil = 0;
   /** Mission highlighted on the Campaign screen. */
   campaignSel = '';
   /** Soldiers unlocked since the Barracks was last opened ("NEW" badge). */
@@ -148,12 +154,21 @@ export class Menus {
     if (this.screen === 'barracks') this.newSoldiers.clear();
     if (this.screen !== 'campaign') this.resetOpen = false;
     this.briefOpen = false;
+    this.detailsOpen = false;
     this.screen = 'campaign';
     this.root.className = 'campaign';
     const acc = getAccount();
     const sel = acc.campaign.selectedMission;
     this.game.selectMission(sel);
     this.campaignSel = this.game.missionId;
+    // v0.9D.1 back from EDIT SQUAD (READY TO DEPLOY?): the same mission's deploy check again, with the edited squad
+    // (only if that squad could deploy now; otherwise the Campaign screen says why)
+    if (this.deployReturn) {
+      this.deployReturn = false;
+      const why = this.game.deployBlock();
+      if (!why && !this.resetOpen) { this.briefOpen = true; this.deployLockUntil = 0; }
+      else if (why && !notice) notice = why;
+    }
     this.renderCampaign();
     if (notice) this.notice(notice);
   }
@@ -263,29 +278,38 @@ export class Menus {
   }
 
   /**
-   * v0.8A MISSION BRIEFING (Missions 1-12): opened by DEPLOY on the Campaign screen, before anything is deployed.
-   * Mission number and title, chapter, a short story, the primary objective, the optional objectives, a tactical
-   * tip, and DEPLOY / BACK. Compact enough for a phone in landscape without scrolling (style.css .brief).
+   * v0.9D.1 READY TO DEPLOY? (replaces the v0.8A briefing card; the briefing text moved to the Campaign screen's
+   * Mission Details): opened by DEPLOY, before anything is deployed. The mission, its own deployment limit, the
+   * selected soldiers (portrait, name, class) and an empty tile per unused slot. "N deployment slots are empty" only
+   * when another eligible soldier (owned, not fallen, not selected) could fill one, with DEPLOY ANYWAY; otherwise
+   * DEPLOY (full, or nobody left to add: the accurate count, no warning). EDIT SQUAD opens the Barracks roster and comes back here; ✕ / BACK / Esc close it. Nothing is auto-selected.
+   * Kept as `.brief` with `brief-deploy` / `brief-back` (the phone-layout and flow suites drive those).
    */
   private briefingHtml(m: CampaignMission) {
-    const b = m.brief;
+    const r = this.game.roster, cap = capacityFor(m.number), squad = r.squad(), n = squad.length;
     const ch = chapterOf(m.number);
     const chap = `CHAPTER ${ch.number}${ch.name ? `: ${esc(ch.name.toUpperCase())}` : ''}`;
-    const opts = m.optional.length ? m.optional.map((o) => `<li>${esc(o.label)}</li>`).join('') : '<li class="dim">None</li>';
+    const spare = r.living().filter((s) => !r.isSelected(s.id)).length;
+    const empty = Math.max(0, cap - n), warn = empty > 0 && spare > 0 ? Math.min(empty, spare) : 0;
+    const tiles = [
+      ...squad.slice(0, cap).map((s) => `<div class="dc-slot"><canvas class="slot-port" data-cls="${s.classId}"${specAttr(s)}></canvas><b>${esc(s.name)}</b><small>${isElite(s) ? '★ ' : ''}${esc(CLASSES[s.classId].label)}</small></div>`),
+      ...Array.from({ length: empty }, () => '<div class="dc-slot dc-empty"><span>+</span><small>Empty slot</small></div>'),
+    ].join('');
+    const msg = warn ? `<div class="dc-warn">⚠ ${empty} deployment slot${empty === 1 ? ' is' : 's are'} empty.</div>`
+      : empty > 0 ? `<div class="dc-note">No other soldier is available for the ${empty === 1 ? 'empty slot' : `${empty} empty slots`}.</div>` : '';
     return `
       <div class="m-modal brief-bg" data-a="brief-back-bg">
-        <div class="d-card x-card brief" role="dialog" aria-label="${esc(`Mission ${m.number} briefing: ${m.name}`)}">
+        <div class="d-card x-card brief dcheck" role="dialog" aria-label="${esc(`Ready to deploy: Mission ${m.number}, ${m.name}`)}">
+          <button class="dc-x" data-a="brief-back" title="Back to the Campaign (Esc)" aria-label="Close">✕</button>
           <div class="brief-kicker">${chap} · MISSION ${m.number}</div>
-          <div class="brief-title">${esc(m.name)}</div>
-          <div class="brief-story">${esc(b?.story ?? m.briefing)}</div>
-          <div class="brief-grid">
-            <div><h4>OBJECTIVE</h4>${b?.objectives ? `<ul>${b.objectives.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : `<p>${esc(b?.objective ?? m.primary.join(', '))}</p>`}</div>
-            <div><h4>OPTIONAL</h4><ul>${opts}</ul></div>
-          </div>
-          ${b?.tip ? `<div class="brief-tip"><b>TIP</b> ${esc(b.tip)}</div>` : ''}
+          <div class="brief-title">READY TO DEPLOY?</div>
+          <div class="dc-mission">Mission ${m.number} — ${esc(m.name)}</div>
+          <div class="dc-count">YOUR SQUAD: <b class="${warn ? 'warn' : ''}">${n}/${cap}</b></div>
+          <div class="dc-slots">${tiles}</div>
+          ${msg}
           <div class="d-btns">
-            <button class="m-big alt" data-a="brief-back" title="Back to the Campaign (Esc)">BACK</button>
-            <button class="m-big" data-a="brief-deploy" title="Deploy the selected squad (Enter)">DEPLOY</button>
+            <button class="m-big alt" data-a="brief-edit" title="Change the squad in the Barracks roster (B)">EDIT SQUAD</button>
+            <button class="m-big" data-a="brief-deploy" title="Deploy this squad (Enter)">${warn ? 'DEPLOY ANYWAY' : 'DEPLOY'}</button>
           </div>
         </div>
       </div>`;
@@ -308,6 +332,13 @@ export class Menus {
       </div>`;
   }
 
+  /**
+   * v0.9D.1 progressive disclosure: the default view is the mission's number and title, completion and best stars, a
+   * one-sentence summary, the squad readiness (`Squad: 5/6 ready`), a MISSION DETAILS expander (collapsed whenever a
+   * mission is selected) and EDIT SQUAD / DEPLOY. The expander holds everything the panel used to show at once: the
+   * briefing, primary and optional objectives with their rewards, star rules, squad limit, mission tip, first-clear
+   * rewards. It is always in the DOM (hidden while collapsed) so nothing is lost.
+   */
   private missionDetailHtml(m: CampaignMission) {
     const acc = getAccount(), st = this.missionState(m), rec = acc.missions[m.id];
     const cap = capacityFor(m.number), r = this.game.roster, n = r.count();
@@ -332,22 +363,32 @@ export class Menus {
     const best = rec?.bestStars ?? 0;
     const starRows = [STAR_TEXT.one, STAR_TEXT[m.stars.two], STAR_TEXT[m.stars.three]]
       .map((t, i) => `<li class="${best > i ? 'got' : ''}"><b>${'★'.repeat(i + 1)}</b> ${i ? '+ ' : ''}${t}</li>`).join('');
-    const names = r.squad().map((s) => esc(s.name)).join(', ');
-    const squadNow = n === 0 ? 'none selected' : `${n} selected${n > cap ? ` <b class="warn">— over the limit, remove ${n - cap}</b>` : ''}`;
+    const ready = n === 0 ? '<b class="warn">none selected</b>'
+      : n > cap ? `<b class="warn">${n}/${cap}</b> selected <b class="warn">— over the limit, remove ${n - cap}</b>`
+      : `<b>${n}/${cap}</b> ready`;
     const block = st === 'locked' || st === 'soon' ? 'Mission locked' : this.game.roster.deployBlock(cap);
+    const b = m.brief, open = this.detailsOpen;
+    const objs = b?.objectives ?? m.primary;
+    const chap = chapterOf(m.number);
     return `
-      <section class="c-detail ${st}">
-        <div class="c-kicker">${chapterOf(m.number).name && m.playable ? `<span class="c-kchap">CHAPTER ${chapterOf(m.number).number}: ${esc(chapterOf(m.number).name.toUpperCase())} · </span>` : ''}MISSION ${m.playable ? m.number : '—'} · ${m.playable ? MISSION_TYPE_LABEL[m.type].toUpperCase() : 'FUTURE'} <span class="c-chip ${st}">${chip}</span></div>
+      <section class="c-detail ${st}${open ? ' c-open' : ''}">
+        <div class="c-kicker">${chap.name && m.playable ? `<span class="c-kchap">CHAPTER ${chap.number}: ${esc(chap.name.toUpperCase())} · </span>` : ''}MISSION ${m.playable ? m.number : '—'} · ${m.playable ? MISSION_TYPE_LABEL[m.type].toUpperCase() : 'FUTURE'} <span class="c-chip ${st}">${chip}</span></div>
         <div class="c-title">${esc(m.name)} ${m.playable ? stars(best) : ''}</div>
-        <div class="c-brief">${esc(m.briefing)}</div>
-        <div class="c-grid">
-          <div><h4>OBJECTIVES</h4><ul>${m.primary.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-          <div><h4>OPTIONAL <small>+${PROGRESSION.xp.perOptionalObjective} XP · +${PROGRESSION.credits.perOptionalObjective} CR each</small></h4><ul>${m.optional.length ? m.optional.map((x) => `<li>${esc(x.label)}</li>`).join('') : '<li class="dim">None</li>'}</ul></div>
-          <div><h4>STARS</h4><ul class="c-stars">${starRows}</ul></div>
-          <div><h4>SQUAD</h4><ul><li>Up to <b>${cap}</b> soldiers</li><li>Selected: ${squadNow}</li>${n ? `<li class="c-squad">${names}</li>` : ''}<li class="dim">${esc(m.teaches)}</li></ul></div>
+        <div class="c-sum">${esc(m.playable ? missionSummary(m) : m.briefing)}</div>
+        ${st === 'locked' ? `<div class="c-lock">🔒 Clear Mission ${prev?.number ?? 1} (${esc(prev?.name ?? '')}) to unlock.</div>`
+          : m.playable ? `<div class="c-ready ${n === 0 || n > cap ? 'warn' : n < cap ? 'part' : 'full'}">Squad: ${ready}</div>` : ''}
+        <button class="c-more" data-a="cdetails" aria-expanded="${open}" aria-controls="c-more-body">${open ? '▾' : '▸'} MISSION DETAILS</button>
+        <div class="c-more-body" id="c-more-body"${open ? '' : ' hidden'}>
+          <div class="c-brief">${esc(b?.story ?? m.briefing)}</div>
+          <div class="c-grid">
+            <div><h4>OBJECTIVES</h4><ul>${objs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+            <div><h4>OPTIONAL <small>+${PROGRESSION.xp.perOptionalObjective} XP · +${PROGRESSION.credits.perOptionalObjective} CR each</small></h4><ul>${m.optional.length ? m.optional.map((x) => `<li>${esc(x.label)}</li>`).join('') : '<li class="dim">None</li>'}</ul></div>
+            <div><h4>STARS</h4><ul class="c-stars">${starRows}</ul></div>
+            <div><h4>SQUAD</h4><ul><li>Up to <b>${cap}</b> soldiers</li><li class="dim">${esc(m.teaches)}</li></ul></div>
+          </div>
+          ${b?.tip ? `<div class="brief-tip"><b>TIP</b> ${esc(b.tip)}</div>` : ''}
+          <div class="c-first"><b>FIRST CLEAR</b> ${firstLine}</div>
         </div>
-        <div class="c-first"><b>FIRST CLEAR</b> ${firstLine}</div>
-        ${st === 'locked' ? `<div class="c-lock">🔒 Clear Mission ${prev?.number ?? 1} (${esc(prev?.name ?? '')}) to unlock.</div>` : ''}
         <div class="c-btns">
           <button class="m-big alt" data-a="to-barracks" data-tab="roster" ${st === 'locked' || st === 'soon' ? 'disabled' : ''} title="Choose the squad in the Barracks roster (B)">EDIT SQUAD ▸</button>
           <button class="m-big" data-a="deploy" ${block ? 'disabled' : ''} title="${block ? esc(block) : 'Deploy the selected squad (Enter)'}">DEPLOY</button>
@@ -1505,12 +1546,14 @@ export class Menus {
       case 'settings': this.openSettings(); return;
       case 'deploy': this.openBriefing(); return;
       case 'brief-deploy': this.deploy(); return;
+      case 'brief-edit': this.briefOpen = false; this.deployReturn = true; this.tab = 'roster'; this.detailsId = null; this.targetSlot = null; this.showBarracks(); return;
+      case 'cdetails': this.detailsOpen = !this.detailsOpen; this.renderCampaign(); return;
       case 'brief-back': this.briefOpen = false; this.renderCampaign(); return;
       case 'brief-back-bg': if (e.target === el) { this.briefOpen = false; this.renderCampaign(); } return;
       case 'retry': g.reset(); return;
       case 'barracks': g.toBarracks(); return;
       case 'campaign': g.toCampaign(); return;
-      case 'to-barracks': if (el.dataset.tab) { this.tab = el.dataset.tab as BarracksTab; this.detailsId = null; this.targetSlot = null; } this.showBarracks(); return;
+      case 'to-barracks': this.deployReturn = false; if (el.dataset.tab) { this.tab = el.dataset.tab as BarracksTab; this.detailsId = null; this.targetSlot = null; } this.showBarracks(); return;
       case 'to-campaign': this.showCampaign(); return;
       case 'reset-open': this.resetOpen = true; this.briefOpen = false; this.renderCampaign(); return;
       case 'reset-cancel': this.resetOpen = false; this.renderCampaign(); return;
@@ -1531,13 +1574,14 @@ export class Menus {
         const ms = CAMPAIGN.filter((m) => chapterOf(m.number).number === n);
         const pick = ms.find((m) => m.id === g.missionId) ?? [...ms].reverse().find((m) => m.playable && this.missionState(m) !== 'locked') ?? ms[0];
         if (!pick) return;
-        this.campaignSel = pick.id;
+        this.campaignSel = pick.id; this.detailsOpen = false;
         if (pick.playable && this.missionState(pick) !== 'locked') g.selectMission(pick.id);
         this.renderCampaign();
         return;
       }
       case 'csel': {
         const m = campaignMission(id!);
+        if (this.campaignSel !== id) this.detailsOpen = false;
         this.campaignSel = id!;
         if (m && this.missionState(m) !== 'locked' && m.playable) g.selectMission(id!);
         this.renderCampaign();
@@ -1612,13 +1656,19 @@ export class Menus {
     const why = this.game.deployBlock();
     if (why) { this.notice(why); return; }
     this.briefOpen = true;
+    this.deployLockUntil = 0; // a fresh check: the double-tap lock only guards the one that is open
     this.renderCampaign();
   }
 
   private deploy() {
-    // v0.6.1: deployment happens only from the Campaign screen (v0.8A: from its mission briefing)
-    if (this.screen !== 'campaign') return;
-    this.briefOpen = false;
+    // v0.6.1: deployment happens only from the Campaign screen (v0.8A: from its mission briefing; v0.9D.1: from
+    // READY TO DEPLOY?, only while it is open). A double tap / repeated Enter can't launch twice: the first call
+    // closes the check and hides the menus, and a short lock covers a re-render in between.
+    if (this.screen !== 'campaign' || !this.briefOpen) return;
+    const now = performance.now();
+    if (now < this.deployLockUntil) return;
+    this.deployLockUntil = now + 700;
+    this.briefOpen = false; this.deployReturn = false;
     if (this.campaignSel !== this.game.missionId) { this.notice('This mission is locked.'); return; }
     const res = this.game.deploySelected();
     if (!res.ok) { this.renderCampaign(); this.notice(res.reason); }
@@ -1657,7 +1707,7 @@ export class Menus {
         const open = CAMPAIGN.filter((m) => m.playable && this.missionState(m) !== 'locked');
         const i = open.findIndex((m) => m.id === this.campaignSel);
         const next = open[Math.max(0, Math.min(open.length - 1, i + (e.code === 'ArrowDown' ? 1 : -1)))];
-        if (next) { this.campaignSel = next.id; this.game.selectMission(next.id); this.renderCampaign(); }
+        if (next) { if (next.id !== this.campaignSel) this.detailsOpen = false; this.campaignSel = next.id; this.game.selectMission(next.id); this.renderCampaign(); }
       }
     }
     // Results keys (Enter retry, C campaign, B/Esc barracks) are handled by Game.onKey

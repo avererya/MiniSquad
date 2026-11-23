@@ -303,7 +303,10 @@ function installHelpers() {
   await page.click('[data-a="csel"][data-id="first-contact"]');
   await page.click('.c-btns [data-a="deploy"]'); await page.waitForTimeout(80);
   const b1 = await ev(() => { const el = document.querySelector('.brief'); return el ? { t: el.textContent.replace(/\s+/g, ' '), phase: window.game.phase, deployBtn: !!el.querySelector('[data-a="brief-deploy"]'), back: !!el.querySelector('[data-a="brief-back"]') } : null; });
-  check('C3 DEPLOY opens the briefing (number, title, chapter, story, objective, optional, tip, DEPLOY + BACK) without deploying', b1 && /MISSION 1/.test(b1.t) && /First Contact/i.test(b1.t) && /CHAPTER 1/i.test(b1.t) && /TIP/.test(b1.t) && /OPTIONAL/i.test(b1.t) && b1.deployBtn && b1.back && b1.phase !== 'playing', b1 && b1.t.slice(0, 200));
+  // v0.9D.1 DEPLOY opens READY TO DEPLOY? (mission, squad n / cap, DEPLOY + BACK); the briefing's story, objectives,
+  // optionals and tip moved to the Campaign screen's MISSION DETAILS (checked here too)
+  const det1 = await ev(() => { const el = document.querySelector('.c-more-body'); return el ? el.textContent.replace(/\s+/g, ' ') : ''; });
+  check('C3 DEPLOY opens the deploy check (READY TO DEPLOY?, mission number, title, chapter, squad n/cap, DEPLOY + BACK) without deploying; the briefing (story, objectives, optional, tip) is in MISSION DETAILS', b1 && /READY TO DEPLOY/.test(b1.t) && /MISSION 1/.test(b1.t) && /First Contact/i.test(b1.t) && /CHAPTER 1/i.test(b1.t) && /YOUR SQUAD: \d\/2/.test(b1.t) && b1.deployBtn && b1.back && b1.phase !== 'playing' && /TIP/.test(det1) && /OPTIONAL/.test(det1) && /OBJECTIVES/.test(det1), (b1 && b1.t.slice(0, 160)) + ' | ' + det1.slice(0, 80));
   await page.click('[data-a="brief-back"]'); await page.waitForTimeout(80);
   const b2 = await ev(() => ({ open: !!document.querySelector('.brief'), menu: document.getElementById('menu').className, phase: window.game.phase }));
   check('C4 BACK closes it and stays on the Campaign screen', !b2.open && /campaign/.test(b2.menu) && b2.phase !== 'playing', JSON.stringify(b2));

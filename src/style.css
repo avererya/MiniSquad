@@ -7,8 +7,29 @@ body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit
 #hud { position: absolute; inset: 0; pointer-events: none; }
 #hud button { pointer-events: auto; font-family: inherit; }
 
-#objective { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(0,0,0,0.55); padding: 8px 18px; border-radius: 10px; min-width: 360px; }
-.obj-text { font-weight: 800; font-size: 18px; letter-spacing: 0.3px; }
+/* v0.9D.1 objectives dock (top, right of the joystick half, left of the top buttons): the objectives control
+   (collapsed to one line at every mission start; a tap opens the details, a movement command closes them) and, below
+   it and never under it, the boss bar. Nothing in the dock but the control's button takes a touch. */
+#objdock { position: absolute; top: 8px; left: 46%; width: 410px; /* v0.9D.1 right edge clear of the mute button's 44 px touch area on iPhone SE (tools/accuracy.cjs D2) */ display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+#objective { position: relative; text-align: left; background: rgba(0,0,0,0.55); padding: 0; border-radius: 10px; min-width: 250px; max-width: 100%; }
+#objective.open { width: 100%; padding-bottom: 6px; background: rgba(0,0,0,0.68); }
+.obj-head { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; min-height: 40px; padding: 4px 12px; background: none; border: none; color: #fff; cursor: pointer; text-align: left; touch-action: manipulation; }
+.obj-head::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: max(100%, var(--t44, 0px)); transform: translateY(-50%); }
+.obj-ico { flex: none; color: #7dff8a; font-size: 18px; font-weight: 900; }
+.obj-text { display: flex; min-width: 0; flex: 1 1 auto; font-weight: 800; font-size: 18px; letter-spacing: 0.3px; white-space: nowrap; }
+.obj-text .ot-m { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.obj-text .ot-p { flex: none; color: #ffd84a; white-space: pre; }
+.obj-caret { flex: none; color: #9fb6d0; font-size: 15px; font-weight: 900; }
+#objective .obj-bar, #objective .obj-meter { margin-left: 12px; margin-right: 12px; }
+#objective .obj-bar { margin-top: 0; margin-bottom: 6px; }
+#objective .obj-meter { margin-top: 0; margin-bottom: 6px; }
+.obj-body { display: none; padding: 0 12px; }
+#objective.open .obj-body { display: block; }
+#objective .obj-chips { justify-content: flex-start; }
+.obj-prim { margin-top: 5px; font-size: 13px; font-weight: 800; text-align: left; }
+.obj-prim div { color: #fff; } .obj-prim .complete { color: #7dff8a; } .obj-prim .pending { color: #8a949e; } .obj-prim .failed { color: #ff9a80; }
+#bossbar { width: 100%; background: rgba(0,0,0,0.55); border-radius: 10px; padding: 4px 12px 5px; text-align: center; }
+#bossbar .ob-state.alert { color: #ff4a3a; animation: om-pulse 0.5s ease-in-out infinite alternate; }
 .obj-sub { font-size: 13px; color: #ffd84a; margin-top: 3px; font-weight: 700; }
 .obj-bar { height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
 .obj-bar div { height: 100%; background: #ffd84a; width: 0; }
@@ -789,7 +810,7 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
 .obj-meter .om-bar div { height: 100%; width: 0; background: linear-gradient(90deg, #ffd84a, #ff6040); }
 .obj-meter.hot { color: #ff6040; animation: om-pulse 0.8s ease-in-out infinite alternate; }
 @keyframes om-pulse { from { opacity: 1; } to { opacity: 0.6; } }
-.obj-boss { margin-top: 6px; }
+.obj-boss { margin-top: 0; }
 .obj-boss .ob-name { font-size: 13px; font-weight: 900; letter-spacing: 2px; color: #ff7a5a; }
 .obj-boss .ob-bar { position: relative; height: 12px; background: rgba(255,255,255,0.15); border: 1px solid #ff7a5a; border-radius: 4px; overflow: hidden; }
 .obj-boss .ob-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #c0392b, #ff7a5a); }
@@ -945,6 +966,54 @@ tr.lvup td.r-xp { background: rgba(255,216,74,0.08); }
   .t-row.q-row { grid-template-columns: minmax(0, 1fr) 6.2em; }
   .t-row.q-row .q-val { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* ---- v0.9D.1 Campaign: progressive disclosure (summary + squad readiness; the rest in MISSION DETAILS) ---- */
+.c-detail { max-height: 100%; min-height: 0; }
+@media (orientation: landscape) {
+  /* the details scroll inside the panel; EDIT SQUAD / DEPLOY stay on screen */
+  #menu.campaign .m-wrap { height: 100%; }
+  #menu.campaign .c-main { grid-template-rows: minmax(0, 1fr); }
+  #menu.campaign .c-detail { overflow: hidden; }
+}
+.c-sum { color: #e6ecdf; font-weight: 700; font-size: max(12px, 1em); line-height: 1.3; }
+.c-ready { font-weight: 800; color: #cfe6ff; font-size: max(12px, 0.95em); }
+.c-ready b { color: #9be7a5; }
+.c-ready.part b { color: #ffd84a; }
+.c-ready.warn b, .c-ready b.warn { color: #ffb070; }
+.c-more { align-self: flex-start; min-height: 44px; padding: 0.2em 0.8em; border-radius: 0.5em; border: 1px solid rgba(125,211,255,0.55);
+  background: rgba(47,127,240,0.14); color: #cfe6ff; font-weight: 900; letter-spacing: 0.06em; font-size: max(11px, 0.85em); cursor: pointer; touch-action: manipulation; }
+.c-detail.c-open .c-more { border-color: #ffd84a; color: #ffd84a; }
+.c-more-body { display: flex; flex-direction: column; gap: 0.35em; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.3em; }
+.c-more-body[hidden] { display: none; }
+.c-more-body .c-brief { display: block; }
+.c-detail .c-btns { margin-top: auto; padding-top: 0.2em; }
+.c-detail .c-btns .m-big { min-height: 44px; }
+/* ---- v0.9D.1 READY TO DEPLOY? (the deploy check: squad preview, empty slots) ---- */
+.dcheck { position: relative; width: min(34em, 100%); }
+.dc-x { position: absolute; top: 0.3em; right: 0.3em; width: var(--t44, 44px); height: var(--t44, 44px); min-width: 44px; min-height: 44px; border-radius: 0.5em; border: none;
+  background: rgba(255,255,255,0.08); color: #cfe6ff; font-size: 1.1em; font-weight: 900; cursor: pointer; touch-action: manipulation; }
+.dc-mission { color: #e6ecdf; font-weight: 800; font-size: max(12px, 1em); }
+.dc-count { color: #9fb6d0; font-weight: 900; letter-spacing: 0.06em; font-size: max(11px, 0.9em); }
+.dc-count b { color: #9be7a5; font-size: 1.15em; }
+.dc-count b.warn { color: #ffb070; }
+.dc-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.35em; }
+.dc-slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.05em; min-width: 0; padding: 0.25em 0.15em; border-radius: 0.55em;
+  border: 2px solid #ffd84a; background: rgba(47,127,240,0.22); text-align: center; }
+.dc-slot .slot-port { display: block; width: 2.4em; height: 2.4em; }
+.dc-slot b { max-width: 100%; font-weight: 900; font-size: max(11px, 0.8em); color: #cfe6ff; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15; }
+.dc-slot small { max-width: 100%; font-weight: 800; font-size: max(11px, 0.7em); color: #9fb6d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15; }
+.dc-slot.dc-empty { border-style: dashed; border-color: rgba(255,176,112,0.7); background: rgba(255,176,112,0.06); }
+.dc-slot.dc-empty span { font-size: 1.6em; font-weight: 900; color: rgba(255,176,112,0.6); line-height: 1.2; height: 1.5em; }
+.dc-slot.dc-empty small { color: #ffb070; }
+.dc-warn { color: #ffb070; font-weight: 900; font-size: max(12px, 0.95em); }
+.dc-note { color: #9fb6d0; font-weight: 700; font-size: max(11px, 0.85em); }
+@media (orientation: landscape) and (max-height: 430px) {
+  .c-sum { line-height: 1.2; }
+  .dc-slot .slot-port { width: 2em; height: 2em; }
+  .dc-slot { padding: 0.15em 0.1em; }
+}
+@media (orientation: portrait) { .dc-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* ---- v0.8A mission briefing (Campaign → DEPLOY): compact, fits a phone in landscape without scrolling ---- */
 .brief { width: min(36em, 100%); gap: 0.4em; }

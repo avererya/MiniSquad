@@ -115,6 +115,22 @@ export class WarlordFight {
   private path: Vec[] | null = null;
   private pathT = 0;
   private pathGoal: Vec | null = null;
+  /**
+   * v0.9D.1 phase 1 under-fire response (CFG.warlordResponse): HP lost while he had no target (fire he couldn't
+   * return), seconds since the last such hit, his HP a step ago, the firing spot he is stepping to (null = his post),
+   * seconds to the next spot search, progress check, and counters for tests / reports.
+   */
+  unanswered = 0;
+  private sinceHit = 99;
+  private noTargetT = 0;
+  /** Last step: a target in range and sight while on screen (his rifle could fire). */
+  canFire = false;
+  private lastHp = -1;
+  respondGoal: Vec | null = null;
+  private respondT = 0;
+  private stuckT = 0;
+  private stuckFrom: Vec | null = null;
+  responses = { triggered: 0, moved: 0, noSpot: 0, returned: 0, gaveUp: 0 };
 
   constructor(readonly unit: Unit, readonly spec: WarlordSpec) { this.mortarT = CFG.mortar.first; }
 
@@ -144,7 +160,75 @@ export class WarlordFight {
     this.updateMortar(g, dt);
     this.hold = Math.max(0, this.hold - dt);
     this.shoot(g, dt);
+    this.underFire(g, dt);
     this.move(g, dt);
+  }
+
+  /**
+   * v0.9D.1 phase 1: damage he takes while he can't fire back (no target in rifle range and sight, or he stands off
+   * screen, where his rifle never fires) counts as unanswered (forgotten
+   * after CFG.warlordResponse.forget s without a hit). Past `damage` of his max HP he looks for a firing spot toward
+   * the shooter (`firingSpot`) and steps there; once he has a target he fights from where he stands; after `calm` s
+   * without an unanswered hit he walks back to his command post. Phase 2 / 3 movement is untouched.
+   */
+  private underFire(g: Game, dt: number) {
+    const u = this.unit, R = CFG.warlordResponse;
+    const lost = this.lastHp < 0 ? 0 : Math.max(0, this.lastHp - u.hp);
+    this.lastHp = u.hp;
+    this.sinceHit += dt;
+    // he can answer only with a target in range and sight while he is on screen (the rifle's fairness rule)
+    const canFire = !!this.target && g.isOnScreen(u.pos, -8);
+    this.canFire = canFire;
+    this.noTargetT = canFire ? 0 : this.noTargetT + dt;
+    if (lost > 0 && !canFire) { this.unanswered += lost; this.sinceHit = 0; }
+    if (this.sinceHit >= R.forget) this.unanswered = 0;
+    if (this.phase !== 1) { this.respondGoal = null; return; }
+    if (canFire) { if (this.respondGoal && dist(u.pos, this.respondGoal) > 12) this.respondGoal = { ...u.pos }; return; } // in a fight: hold here
+    this.respondT -= dt;
+    if (this.unanswered >= R.damage * u.maxHp && this.respondT <= 0) {
+      this.respondT = R.recheck;
+      const spot = this.firingSpot(g);
+      if (spot) {
+        if (!this.respondGoal) this.responses.triggered++;
+        if (!this.respondGoal || dist(spot, this.respondGoal) > 30) { this.respondGoal = spot; this.stuckT = 0; this.stuckFrom = { ...u.pos }; this.responses.moved++; this.note(g, `respond:${Math.round(spot.x)},${Math.round(spot.y)}`); }
+      } else this.responses.noSpot++;
+    }
+    if (this.respondGoal && this.sinceHit >= R.calm && this.noTargetT >= R.calm) { this.respondGoal = null; this.responses.returned++; this.note(g, 'respond:back'); }
+    // a walk that makes no progress is given up (back to the post: never stuck on a barrier)
+    if (this.respondGoal && dist(u.pos, this.respondGoal) > 12) {
+      this.stuckT += dt;
+      if (this.stuckT >= R.stuck) {
+        if (this.stuckFrom && dist(u.pos, this.stuckFrom) < 15) { this.respondGoal = null; this.responses.gaveUp++; this.note(g, 'respond:stuck'); }
+        this.stuckT = 0; this.stuckFrom = { ...u.pos };
+      }
+    }
+  }
+
+  /**
+   * The nearest spot (to his command post) within CFG.warlordResponse.leash of it, inside the arena (60 px margin),
+   * open and walkable and on screen, from where the soldier who hit him last (else the nearest one) is within rifle
+   * range - margin and in sight. Candidates fan out from the post toward the shooter; null when none qualifies (he stays at his post).
+   */
+  firingSpot(g: Game): Vec | null {
+    const u = this.unit, R = CFG.warlordResponse, W = CFG.warlord, post = this.spec.posts[0], Ar = this.spec.arena, mg = 60;
+    const vs = this.victims(g);
+    if (!vs.length) return null;
+    const hitBy = u.lastHitBy && vs.includes(u.lastHitBy) ? u.lastHitBy : null;
+    const foe = hitBy ?? vs.reduce((b, v) => (dist(v.pos, u.pos) < dist(b.pos, u.pos) ? v : b));
+    const base = Math.atan2(foe.pos.y - post.y, foe.pos.x - post.x), reach = W.range - R.margin;
+    let best: Vec | null = null, bd = Infinity;
+    for (const da of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) {
+      for (let r = 40; r <= R.leash + 1e-6; r += 40) {
+        const p = { x: post.x + Math.cos(base + da) * r, y: post.y + Math.sin(base + da) * r };
+        if (p.x < Ar.x + mg || p.x > Ar.x + Ar.w - mg || p.y < Ar.y + mg || p.y > Ar.y + Ar.h - mg) continue;
+        if (!g.world.isOpen(p.x, p.y) || g.world.insideObstacle(p, u.radius + 4)) continue;
+        if (dist(p, foe.pos) > reach || !g.world.clear(p, foe.pos) || !g.isOnScreen(p, -40)) continue;
+        const d = dist(p, post) + Math.abs(da) * 20; // straight toward the shooter preferred
+        if (d < bd) { bd = d; best = p; }
+        break; // the first qualifying distance on this bearing is the closest
+      }
+    }
+    return best;
   }
 
   private enterPhase(m: Mission, g: Game, p: number) {
@@ -214,7 +298,8 @@ export class WarlordFight {
     const p = this.mortarTarget(g);
     if (!p) { this.mortarT = M.retry; this.mortars.skipped++; return; }
     this.mortar = { pos: p, t: 0, n: ++this.mortars.launched };
-    g.banner('INCOMING MORTAR! MOVE!', '#ff4040', 1.8);
+    // v0.9D.1 one compact warning: the boss bar's pulsing MORTAR state (hud.ts) plus the red circle and its countdown;
+    // the big red banner and the objective's yellow line are gone (presentation only: timing and damage unchanged)
     sfx('rocket');
     this.note(g, 'mortar');
   }
@@ -300,8 +385,9 @@ export class WarlordFight {
     let near: Unit | null = null, nd = Infinity;
     for (const v of vs) { const d = dist(v.pos, u.pos); if (d < nd) { nd = d; near = v; } }
     if (this.phase === 1) {
-      const p = this.spec.posts[0];
-      if (dist(u.pos, p) > 10) this.steerTo(g, p, dt, u.maxSpeed * 0.6);
+      // v0.9D.1 his post, or the firing spot he steps to under fire he can't return (underFire); a target in sight stops him
+      const p = this.respondGoal ?? this.spec.posts[0];
+      if (dist(u.pos, p) > 10 && !(this.respondGoal && this.canFire)) this.steerTo(g, p, dt, u.maxSpeed * (this.respondGoal ? 0.8 : 0.6));
     } else if (this.phase === 2) {
       this.postT += dt;
       if (!this.moving && (this.postT >= W.relocateEvery || nd < W.relocateNear)) { this.postT = 0; this.relocate(g); }
@@ -665,8 +751,7 @@ export class WarlordObjective extends Objective {
   hud(m: Mission): HudLine {
     const f = mech(m)?.fight;
     if (!f) return { text: this.label };
-    const sub = f.mortar ? 'INCOMING MORTAR: get the squad out of the red circle!'
-      : f.pendingCount > 0 ? 'His reinforcements are coming in'
+    const sub = f.pendingCount > 0 ? 'His reinforcements are coming in'
       : f.phase >= 3 ? 'Last stand: he is coming for you. Keep moving and finish him'
       : f.phase === 2 ? (f.moving ? 'He is falling back to another post: chase him down' : 'He holds a fall-back post. Mortars come faster')
       : 'He fights from his command post. Watch for red mortar circles';

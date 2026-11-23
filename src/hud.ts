@@ -42,11 +42,21 @@ const setFlag = (el: HTMLElement, name: string, on: boolean) => { if (changed(el
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
 export class Hud implements GameUI {
-  private objText: HTMLElement;
   private objSub: HTMLElement;
   private objBar: HTMLElement;
   private objBarFill: HTMLElement;
   private objOpt: HTMLElement;
+  // v0.9D.1 collapsible objectives: collapsed at every mission start; open = the details below the one-line summary
+  private objEl!: HTMLElement;
+  private objHead!: HTMLElement;
+  private otMain!: HTMLElement;
+  private otProg!: HTMLElement;
+  private objPrim!: HTMLElement;
+  private primKey = '';
+  objOpen = false;
+  /** Opened while the squad stood still (or it has stopped since): the next movement command collapses it. */
+  private objArmed = false;
+  private objMission: unknown = null;
   private optKey = '';
   private objChips!: HTMLElement;
   private chipsKey = '';
@@ -96,7 +106,7 @@ export class Hud implements GameUI {
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
-      <div id="objective"><div class="obj-text"></div><div class="obj-sub"></div><div class="obj-bar"><div></div></div><div class="obj-chips"></div><div class="obj-meter"><span class="om-l"></span><div class="om-bar"><div></div></div><span class="om-v"></span></div><div class="obj-boss"><div class="ob-name">IRON WARDEN</div><div class="ob-bar"><div class="ob-fill"></div><i class="ob-t1" style="left:65%"></i><i class="ob-t2" style="left:30%"></i></div><div class="ob-state"></div></div><div class="obj-opt"></div></div>
+      <div id="objdock"><div id="objective" class="collapsed"><button class="obj-head" aria-expanded="false" title="Objectives: tap to show or hide the details"><span class="obj-ico">☑</span><span class="obj-text"><span class="ot-m"></span><span class="ot-p"></span></span><span class="obj-caret">▾</span></button><div class="obj-bar"><div></div></div><div class="obj-meter"><span class="om-l"></span><div class="om-bar"><div></div></div><span class="om-v"></span></div><div class="obj-body"><div class="obj-sub"></div><div class="obj-chips"></div><div class="obj-prim"></div><div class="obj-opt"></div></div></div><div id="bossbar" class="obj-boss"><div class="ob-name">IRON WARDEN</div><div class="ob-bar"><div class="ob-fill"></div><i class="ob-t1" style="left:65%"></i><i class="ob-t2" style="left:30%"></i></div><div class="ob-state"></div></div></div>
       <div id="timer"></div>
       <div id="topbtns"><button data-a="mute">🔊</button><button data-a="pause">⏸</button><button data-a="tune">⚙</button></div>
       <div id="hint"></div>
@@ -108,7 +118,16 @@ export class Hud implements GameUI {
       <div id="gunsel" role="dialog" aria-label="Choose the truck gunner" style="display:none"><div class="gs-title">CHOOSE THE TRUCK GUNNER</div><div class="gs-sub">Fixed machine gun: same stats for anyone. The gunner leaves the formation and can't use their own weapon or ability. Locked for the escort.</div><div class="gs-list"></div><div class="gs-btns"><button data-g="go" disabled>CONFIRM</button></div></div>
       <div id="overlay"></div>`;
     this.story = new StoryView(root, game);
-    this.objText = root.querySelector('.obj-text')!;
+    this.objEl = root.querySelector('#objective')!;
+    this.objHead = root.querySelector('.obj-head')!;
+    this.otMain = root.querySelector('.ot-m')!;
+    this.otProg = root.querySelector('.ot-p')!;
+    this.objPrim = root.querySelector('.obj-prim')!;
+    // v0.9D.1 the objectives control: a tap toggles the details (its own touch, never the joystick / a battlefield tap)
+    this.objHead.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation(); unlockAudio();
+      this.setObjOpen(!this.objOpen);
+    });
     this.objSub = root.querySelector('.obj-sub')!;
     this.objBar = root.querySelector('.obj-bar')!;
     this.objBarFill = root.querySelector('.obj-bar div')!;
@@ -219,10 +238,32 @@ export class Hud implements GameUI {
     });
   }
 
+  /** v0.9D.1 open / collapse the objectives details (a tap on the control; a movement command collapses it). */
+  setObjOpen(open: boolean) {
+    this.objOpen = open;
+    this.objArmed = open && !this.game.squadMoving;
+    setFlag(this.objEl, 'collapsed', !open);
+    setFlag(this.objEl, 'open', open);
+    if (changed(this.objHead, 'aria', open)) this.objHead.setAttribute('aria-expanded', String(open));
+    setText(this.objHead.querySelector<HTMLElement>('.obj-caret')!, open ? '▴' : '▾');
+  }
+
   update() {
     const g = this.game;
     const o = g.objective;
-    setText(this.objText, o.text);
+    // v0.9D.1 every mission starts with the objectives collapsed (never remembered across missions); an open panel
+    // collapses on the next movement command (not on auto-fire or enemy movement)
+    if (g.mission !== this.objMission) { this.objMission = g.mission; this.primKey = ''; this.setObjOpen(false); }
+    if (this.objOpen) {
+      if (!g.squadMoving) this.objArmed = true;
+      else if (this.objArmed) this.setObjOpen(false);
+    }
+    // the one-line summary: the objective, its count (" · 0/2") kept whole while a long label is cut with an ellipsis
+    const cut = o.text.lastIndexOf(' · '), tail = cut > 0 ? o.text.slice(cut + 3) : '';
+    const split = cut > 0 && tail.length <= 14 && /\d/.test(tail);
+    setText(this.otMain, split ? o.text.slice(0, cut) : o.text);
+    setText(this.otProg, split ? ` · ${tail}` : '');
+    if (this.objOpen || this.primKey === '') this.updatePrimaries();
     setText(this.objSub, o.sub ?? '');
     setStyle(this.objSub, 'display', o.sub ? '' : 'none');
     setStyle(this.objBar, 'display', o.progress !== undefined ? '' : 'none');
@@ -296,6 +337,17 @@ export class Hud implements GameUI {
     }
   }
 
+  /** v0.9D.1 the details' primary objective list: done ✓, current ▸, later ones dimmed (rebuilt only on a change). */
+  private updatePrimaries() {
+    const g = this.game, m = g.mission;
+    const list = g.phase === 'start' || !m ? [] : m.primaries.map((p) => ({ s: p.state, t: `${p.state === 'complete' ? '✓' : p.state === 'failed' ? '✗' : p.state === 'active' ? '▸' : '·'} ${p.label}` }));
+    const key = list.map((x) => x.s + x.t).join('|') || '-';
+    if (key === this.primKey) return;
+    this.primKey = key;
+    this.objPrim.innerHTML = list.map((x) => `<div class="${x.s}">${x.t.replace(/[<>&]/g, '')}</div>`).join('');
+    this.objPrim.style.display = list.length ? '' : 'none';
+  }
+
   /**
    * v0.6.2 objective widgets: chips (truck / relay / installation HP, compact), the ALARM meter
    * (Mission 9) and the boss HP bar with its 65% / 30% reinforcement ticks (Mission 10).
@@ -332,8 +384,9 @@ export class Hud implements GameUI {
       setStyle(this.obFill, 'width', `${Math.max(0, (unit.hp / unit.maxHp) * 100)}%`);
       const st = b ? (b.rocket ? 'ROCKET!' : b.phase === 'windup' ? 'MG WINDING UP' : b.phase === 'burst' ? 'FIRING' : '')
         : v ? (v.rallyActive(g) ? 'RALLY!' : v.pendingCount > 0 ? 'REINFORCEMENTS' : `PHASE ${v.phase}`)
-        : w ? (w.mortar ? 'MORTAR!' : w.pendingCount > 0 ? 'REINFORCEMENTS' : w.moving ? 'FALLING BACK' : `PHASE ${w.phase}`) : '';
+        : w ? (w.mortar ? '⚠ MORTAR INCOMING — MOVE!' : w.pendingCount > 0 ? 'REINFORCEMENTS' : w.moving ? 'FALLING BACK' : `PHASE ${w.phase}`) : '';
       setText(this.obState, st);
+      setFlag(this.obState, 'alert', !!w?.mortar);
     }
   }
 

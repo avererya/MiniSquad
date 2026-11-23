@@ -12,7 +12,7 @@ import { ABILITY_FACTORIES, CLASSES, CLASS_IDS, PRESETS, cloneIdentity, createGe
 import { MissionStats } from './missionstats';
 import { Roster } from './roster';
 import { Medkit, RapidFire, updatePickups, type Pickup } from './pickups';
-import { updateSquad, updateEscort, updateAllies, squadCentre } from './squad';
+import { updateSquad, updateEscort, updateAllies, squadCentre, newMarch, type MarchState } from './squad';
 import { updateEnemyMovement } from './enemy';
 import { Mission } from './mission';
 import { scriptFor } from './missions';
@@ -100,6 +100,8 @@ export class Game implements InputHandler {
   squadMoving = false;
   /** v0.6.2 protective escort formation: facing (radians, smoothed) and each soldier's ring slot. */
   formation = { heading: 0, slots: new Map<number, number>(), key: '' };
+  /** v0.9D.1 role-based marching formation (squad.ts `marchSlots`): reset at every mission start. */
+  march: MarchState = newMarch();
   cam: Vec = { ...this.mission.map.start };
   phase: GamePhase = 'start';
   time = 0; // mission time
@@ -291,6 +293,7 @@ export class Game implements InputHandler {
     this.eliteCount = 0; this.eliteCommanders = 0;
     const start = script.map.start;
     this.anchor = { ...start }; this.cam = { ...start }; this.spread = 1;
+    this.march = newMarch();
     this.time = 0; this.targeting = null; this.paused = false;
     this.pickups = [
       ...script.map.medkits.map((p) => ({ type: Medkit, pos: { ...p }, bob: Math.random() * 6 })),

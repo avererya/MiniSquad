@@ -387,7 +387,10 @@ function installHelpers() {
     // [30] [31] floors
     out.boss = { before: +(bossBefore / b.maxHp).toFixed(4), after: +(b.hp / b.maxHp).toFixed(4), state: b.state };
     out.objs = objs.map((o, i) => `${o.structure}:${Math.round(objHp[i])}->${Math.round(o.hp)}:${o.state}`).join(' ');
-    out.objOk = objs.every((o) => o.state === 'active' && o.hp >= 1);
+    // v0.9D.1: the squad marches in its role formation (Heavy up front) during the 30 s countdown and can destroy a bunker
+    // itself before the blast; the rule is that the Nuclear Strike leaves every objective it finds standing at >= 1 HP
+    const standing = objs.filter((o, i) => objHp[i] >= 1);
+    out.objOk = standing.length > 0 && standing.every((o) => o.state === 'active' && o.hp >= 1);
     out.phase = g.phase;
     return out;
   });
@@ -400,7 +403,7 @@ function installHelpers() {
   check('D12 [28] every enemy on the map is hit, off-screen and dormant ones included (none of them survive)', nk.far === 'dead,dead,dead,dead' && nk.left === 0 && nk.hitN === nk.activeAtDet && nk.offBefore > 10, JSON.stringify({ far: nk.far, left: nk.left, hit: nk.hitN, active: nk.activeAtDet, enemies: nk.enemies0, onScreen: nk.onScreen, off: nk.offBefore, guards: nk.guards }));
   check('D13 [29] soldiers and allies take no nuke damage', nk.friendly, '');
   check('D14 [30] the boss loses 40% and keeps >= 10% (alive)', nk.boss.after >= 0.1 && Math.abs(nk.boss.before - nk.boss.after - 0.4) < 0.001 && nk.boss.state === 'active', JSON.stringify(nk.boss));
-  check('D15 [31] mission objectives keep >= 1 HP (installations not destroyed)', nk.objOk && nk.objs.length > 0, nk.objs);
+  check('D15 [31] mission objectives standing at the blast keep >= 1 HP (installations not destroyed by the strike)', nk.objOk && nk.objs.length > 0, nk.objs);
 
   // [31] objectives near death + boss near the floor; [33] failure; [34] win keeps stock; [35] both in one mission
   const nk2 = await ev(() => {

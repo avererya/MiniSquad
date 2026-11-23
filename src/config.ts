@@ -482,6 +482,35 @@ function makeDefaults() {
       escapeDirs: 3, // a strike needs at least this many of 8 directions open just outside the ring
       shake: 16,
     },
+    // v0.9D.1 role-based squad formation (squad.ts): once the squad first moves, each soldier's slot comes from a
+    // template ordered front to back (Heavies, then Infantry, Demolitions / Commandos in the middle and on the flanks,
+    // Snipers, then Medics at the rear), rotated to the direction of travel. Slots are assigned only when the set of
+    // standing soldiers changes; a turn only rotates the template.
+    formation: {
+      turnThreshold: 35, // deg: a travel direction this far off the formation's facing...
+      turnHold: 0.25, // s ...held this long swings the formation round (brief jinks don't)
+      drift: 1.2, // rad/s the facing follows small direction changes (inside the threshold)
+      turnRate: 2.4, // rad/s the slots swing round the anchor (a rigid rotation: nobody crosses through the middle)
+      catchUpDist: 10, // px from its slot before a soldier hurries (CFG.squad.catchUpDist while the formation is off)
+      catchUpRange: 40, // px over which the hurry ramps to CFG.squad.catchUpBoost (CFG.squad.catchUpRange while off): a slow
+      //                   Heavy keeps his place up front instead of settling 100+ px behind it
+      catchUpBoost: 0.4, // max extra speed fraction while behind a march slot (CFG.squad.catchUpBoost while off): after a
+      //                   reversal a Heavy (120 px/s) gets back to the front (168 px/s at most, below a Commando's 172.5)
+    },
+    // v0.9D.1 the Warlord's answer to fire he can't return (warlord.ts WarlordFight, phase 1 only): after `damage` of his
+    // max HP taken with no target in rifle range and sight (forgotten after `forget` s without a hit), he steps toward
+    // the shooter to the nearest spot within `leash` px of his command post that is open, inside the arena, in range
+    // (rifle range - `margin`) and in sight; he fights from there and walks back after `calm` s without being hit
+    // unanswered. Stats, rifle, mortar and phases are unchanged.
+    warlordResponse: {
+      damage: 0.05, // share of max HP (120 of 2,400) taken unanswered before he reacts (a stray round never does)
+      forget: 3, // s without a hit before the unanswered damage is forgotten
+      leash: 240, // px from his command post he may step out to
+      margin: 50, // px inside rifle range for a firing spot
+      calm: 6, // s without unanswered hits before he returns to the post
+      recheck: 1, // s between firing-spot searches while he still has no target
+      stuck: 1.5, // s with no progress before a walk is given up
+    },
     // v0.9D Mission 20 "The Warlord" (warlord.ts WarlordHQ): Extraction Alpha's scripted ambush timeline (s after the
     // squad reaches Alpha; presentation only, it deals no damage) and Extraction Bravo's final countdown.
     hq: {

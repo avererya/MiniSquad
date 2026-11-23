@@ -1,7 +1,7 @@
 {
   "name": "minisquad-combat-prototype",
-  "version": "0.9.5",
-  "versionLabel": "0.9D",
+  "version": "0.9.6",
+  "versionLabel": "0.9D.1",
   "private": true,
   "type": "module",
   "scripts": {

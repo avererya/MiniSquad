@@ -4,7 +4,8 @@
 import { CFG } from './config';
 import type { Game } from './game';
 import type { Unit } from './unit';
-import { clamp, dist, lerp, type Vec } from './util';
+import { angleDiff, clamp, dist, lerp, turnToward, type Vec } from './util';
+import type { SoldierClassId } from './classes';
 
 /** Centre of the standing soldiers on foot (v0.8B: the truck's gunner only when nobody else stands). */
 export function squadCentre(soldiers: Unit[]): Vec | null {
@@ -42,6 +43,90 @@ function moveAnchor(game: Game, a: Vec, dx: number, dy: number) {
     }
   }
   a.x = p.x; a.y = p.y;
+}
+
+// ---------------- v0.9D.1 role-based marching formation ----------------
+/**
+ * Front-to-back preference per class (lower = further forward). Heavies lead, Infantry fills the front when no Heavy
+ * stands, Demolitions and Commandos take the middle / flank slots, Snipers and then Medics the rear.
+ */
+export const ROLE_RANK: Record<SoldierClassId, number> = { heavy: 0, infantry: 1, demolitions: 2, commando: 2.5, sniper: 3, medic: 4 };
+/**
+ * Slot templates by number of standing soldiers, ordered front to back: [forward, lateral] in slot units (scaled by
+ * CFG.squad.slotSpacing * game.spread like the old fixed offsets, x = forward along the direction of travel). Pairs
+ * share a row; the middle row of 5-6 is the flanks.
+ */
+export const MARCH_TEMPLATES: [number, number][][] = [
+  [],
+  [[0, 0]],
+  [[0.65, 0.25], [-0.65, -0.25]],
+  [[1.0, 0], [-0.2, -0.9], [-0.9, 0.45]],
+  [[1.1, -0.55], [1.1, 0.55], [-0.1, -0.85], [-1.1, 0.3]],
+  [[1.2, -0.6], [1.2, 0.6], [0, -1.1], [0, 1.1], [-1.2, 0]],
+  [[1.25, -0.62], [1.25, 0.62], [0.05, -1.15], [0.05, 1.15], [-1.15, -0.52], [-1.15, 0.52]],
+];
+export interface MarchState {
+  /** Off until the squad first moves in a mission (the deploy offsets are used until then). */
+  on: boolean;
+  /** Committed facing (radians, direction of travel) and the template's current, smoothly turning, rotation. */
+  heading: number;
+  rot: number;
+  /** Seconds a direction beyond the threshold has been held. */
+  turnT: number;
+  /** Standing soldiers the slots were assigned for, and each one's template slot. */
+  key: string;
+  slots: Map<number, [number, number]>;
+  /** Times the slots were (re)assigned (tests / reports). */
+  assigns: number;
+}
+export function newMarch(): MarchState { return { on: false, heading: 0, rot: 0, turnT: 0, key: '', slots: new Map(), assigns: 0 }; }
+const roleRank = (s: Unit) => ROLE_RANK[s.identity?.classId as SoldierClassId] ?? 1.5;
+
+/**
+ * v0.9D.1 the marching formation, one call per step: the facing follows the travel direction with hysteresis (a turn
+ * past CFG.formation.turnThreshold must be held turnHold s; smaller drifts are followed slowly) and the template turns
+ * at turnRate. Slots are (re)assigned only when the set of standing soldiers changes: by role, ties by who stands
+ * further forward, and each row's pair by who stands on which side, so nobody crosses the squad to take a slot.
+ * Returns each soldier's offset from the anchor in slot units (world axes), or null while the formation is off.
+ */
+export function marchSlots(game: Game, active: Unit[], mv: Vec, moving: boolean, dt: number): Map<Unit, [number, number]> | null {
+  const F = CFG.formation, M = game.march;
+  if (moving) {
+    const want = Math.atan2(mv.y, mv.x);
+    if (!M.on) { M.on = true; M.heading = M.rot = want; M.turnT = 0; M.key = ''; }
+    else if (Math.abs(angleDiff(M.heading, want)) > F.turnThreshold * (Math.PI / 180)) {
+      M.turnT += dt;
+      if (M.turnT + 1e-9 >= F.turnHold) { M.heading = want; M.turnT = 0; }
+    } else { M.turnT = 0; M.heading = turnToward(M.heading, want, F.drift * dt); }
+  } else M.turnT = 0;
+  if (!M.on) return null;
+  M.rot = turnToward(M.rot, M.heading, F.turnRate * dt);
+  const n = Math.min(active.length, MARCH_TEMPLATES.length - 1);
+  const key = active.map((s) => s.id).join(',');
+  if (key !== M.key) {
+    M.key = key; M.slots.clear(); M.assigns++;
+    const T = MARCH_TEMPLATES[n], c = Math.cos(M.rot), sn = Math.sin(M.rot), a = game.anchor;
+    // soldier position in the formation frame (forward along the facing, lateral to its right)
+    const fwd = (s: Unit) => (s.pos.x - a.x) * c + (s.pos.y - a.y) * sn;
+    const lat = (s: Unit) => -(s.pos.x - a.x) * sn + (s.pos.y - a.y) * c;
+    const order = [...active].sort((p, q) => roleRank(p) - roleRank(q) || fwd(q) - fwd(p) || p.id - q.id);
+    const pick: (Unit | undefined)[] = order.slice(0, T.length);
+    // a row's two soldiers keep their sides (the one standing further left takes the left slot)
+    for (let i = 0; i + 1 < T.length; i++) {
+      if (Math.abs(T[i][0] - T[i + 1][0]) > 0.2) continue;
+      const p = pick[i], q = pick[i + 1];
+      if (p && q && (lat(p) - lat(q)) * (T[i][1] - T[i + 1][1]) < 0) { pick[i] = q; pick[i + 1] = p; }
+      i++;
+    }
+    pick.forEach((s, i) => { if (s) M.slots.set(s.id, T[i]); });
+  }
+  const c = Math.cos(M.rot), sn = Math.sin(M.rot), out = new Map<Unit, [number, number]>();
+  for (const s of active) {
+    const t = M.slots.get(s.id);
+    if (!t) continue; // a seventh soldier never happens (maxSize 6); keeps the old offset if it did
+    out.set(s, [t[0] * c - t[1] * sn, t[0] * sn + t[1] * c]);
+  }
+  return out;
 }
 
 export function updateSquad(game: Game, mv: Vec, dt: number) {
@@ -96,13 +181,20 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
   // the movement direction (or, when stopped, the nearest visible threat) ---
   const vip = game.npcs.find((n) => n.escorting && n.active) ?? null;
   const ring = vip ? escortRing(game, active, mv, moving, dt) : null;
+  // v0.9D.1 role-based marching formation (the protective ring above still wins while a captive walks with the squad)
+  // (no march slots or march catch-up at all while the ring holds: the escort keeps its v0.6.2 behaviour exactly)
+  const march = ring ? null : marchSlots(game, active, mv, moving, dt);
+  const catchUpDist = march ? CFG.formation.catchUpDist : S.catchUpDist;
+  const catchUpRange = march ? CFG.formation.catchUpRange : S.catchUpRange;
+  const catchUpBoost = march ? CFG.formation.catchUpBoost : S.catchUpBoost;
 
   for (const s of active) {
     // --- goal: slot around anchor, plus a little organic wander ---
     s.wander += dt;
     const solo = active.length === 1;
-    const ox = solo ? 0 : s.slot[0] * S.slotSpacing * game.spread;
-    const oy = solo ? 0 : s.slot[1] * S.slotSpacing * game.spread;
+    const slotOff = march?.get(s) ?? s.slot;
+    const ox = solo ? 0 : slotOff[0] * S.slotSpacing * game.spread;
+    const oy = solo ? 0 : slotOff[1] * S.slotSpacing * game.spread;
     const wob = loose * 12;
     let goal: Vec = {
       x: a.x + ox + Math.sin(s.wander * 0.7 + s.id * 1.7) * wob,
@@ -123,8 +215,8 @@ export function updateSquad(game: Game, mv: Vec, dt: number) {
     if (s.clearGoal) { s.clearGoal.t -= dt; if (s.clearGoal.t <= 0 || !truck || dist(s.pos, s.clearGoal.p) < 6) s.clearGoal = null; else goal = s.clearGoal.p; }
 
     // --- catch-up: a soldier well behind his slot hurries a little (ramped, never a snap) ---
-    const behind = dist(s.pos, goal) - S.catchUpDist;
-    const want = 1 + Math.max(0, S.catchUpBoost) * clamp(behind / Math.max(1, S.catchUpRange), 0, 1);
+    const behind = dist(s.pos, goal) - catchUpDist;
+    const want = 1 + Math.max(0, catchUpBoost) * clamp(behind / Math.max(1, catchUpRange), 0, 1);
     s.catchUp += (want - s.catchUp) * (1 - Math.exp(-4 * dt));
 
     // --- direct steer, or follow an A* path when the straight line is blocked ---

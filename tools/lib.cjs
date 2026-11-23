@@ -220,8 +220,8 @@ const V09C = {
  */
 const V09D = {
   cfgGroups: ['warlord', 'mortar', 'hq'],
-  /** CFG group names that differ, without the v0.9D groups. */
-  cfgDiff(keys) { return keys.filter((k) => !V09D.cfgGroups.includes(k)); },
+  /** CFG group names that differ, without the v0.9D groups (and the v0.9D.1 ones, V09D1). */
+  cfgDiff(keys) { return V09D1.cfgDiff(keys.filter((k) => !V09D.cfgGroups.includes(k))); },
   /** A mission's snapshot string with Mission 19's unlock list set aside (other missions as is). */
   norm(id, s) {
     if (!s || id !== 'jungle-prison') return s;
@@ -233,5 +233,16 @@ const V09D = {
   },
 };
 
-module.exports = { V09B1, V09C, V09D, RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
+/**
+ * v0.9D.1 UI POLISH & SQUAD INTELLIGENCE, the intended changes to older content: two new CFG groups (the role-based
+ * marching formation and the Warlord's phase 1 under-fire response). No mission, campaign row or older CFG value moved.
+ * V09D.cfgDiff sets them aside too, so every older BASE comparison ignores them; `v09d1` checks the new values.
+ */
+const V09D1 = {
+  cfgGroups: ['formation', 'warlordResponse'],
+  /** CFG group names that differ, without the v0.9D.1 groups. */
+  cfgDiff(keys) { return keys.filter((k) => !V09D1.cfgGroups.includes(k)); },
+};
+
+module.exports = { V09B1, V09C, V09D, V09D1, RESULT_TAG, URL, BASE, OUT, loadPlaywright, get chromium() { return loadPlaywright().chromium; }, createChecks, emitResult, parseResult, runSuite, serveDir,
   seedRandom, installPageHelpers, missionSnapshot, openPage };

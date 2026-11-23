@@ -95,6 +95,36 @@ export interface CampaignMission {
   legacyId?: string;
 }
 
+/**
+ * v0.9D.1 one-sentence mission summaries for the Campaign screen's default view (the full briefing, objectives,
+ * optionals, stars and first-clear rewards sit in its collapsible Mission Details). Kept apart from the campaign rows
+ * so the rows (compared with older builds by the BASE suites) stay unchanged. Written from each mission's objectives.
+ */
+export const MISSION_SUMMARY: Record<string, string> = {
+  'first-contact': 'Wipe out three enemy patrols and reach extraction.',
+  'heavy-support': 'Blow up the enemy supply depot and get out.',
+  'field-medicine': 'Take the enemy outpost and hold it until extraction.',
+  'red-canyon': 'Survive the canyon ambush and reach extraction.',
+  'bring-them-home': 'Free a captured scout and escort them to extraction.',
+  'bridgehead': 'Seize the river bridge and hold it against the counterattack.',
+  'prison-break': 'Break a captured medic out of a guarded camp.',
+  'convoy-crusher': 'Stop the enemy supply trucks crossing the canyon.',
+  'blackout': 'Knock out three communication relays under cover of night.',
+  'iron-fist': 'Destroy the stronghold installations and defeat the Iron Warden.',
+  'resistance-rising': 'Liberate the village and defend the resistance safehouse.',
+  'artillery-hunt': 'Destroy three artillery guns at night, away from the searchlights.',
+  'hold-the-line': 'Defend the resistance command center against four assaults.',
+  'supply-line': 'Destroy three depots, then escort the captured truck to extraction.',
+  'last-stand': 'Storm the fortress and defeat General Voss.',
+  'jungle-sweep': 'Sweep the jungle and eliminate enemy defenses.',
+  'fuel-for-the-fire': 'Destroy enemy fuel supplies.',
+  'ambush-alley': 'Fight through an enemy-held urban district.',
+  'jungle-prison': 'Rescue three captured specialists.',
+  'warlord-hq': 'Defeat the Warlord and escape his headquarters.',
+};
+/** The Campaign screen's one-line summary (falls back to the campaign row's briefing). */
+export function missionSummary(m: CampaignMission): string { return MISSION_SUMMARY[m.id] ?? m.briefing; }
+
 /** Deployment capacity by mission number (future missions included). */
 export const CAPACITY_TABLE: { from: number; to: number; max: number }[] = [
   { from: 1, to: 2, max: 2 },

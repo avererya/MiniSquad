@@ -723,6 +723,8 @@ function installHelpers() {
     for (const mid of ['hold-the-line', 'supply-line']) {
       await p.tap('[data-a="cchap"][data-ch="3"]'); await p.waitForTimeout(60);
       await p.tap(`[data-a="csel"][data-id="${mid}"]`); await p.waitForTimeout(60);
+      // v0.9D.1 the objectives moved from the deploy dialog to the panel's Mission Details expander
+      const detail = await p.evaluate(() => (document.querySelector('.c-more-body')?.textContent ?? '').replace(/\s+/g, ' '));
       await p.tap('.c-btns [data-a="deploy"]'); await p.waitForTimeout(150);
       const L = await p.evaluate(() => {
         const vw = window.innerWidth, vh = window.innerHeight, el = document.querySelector('.brief');
@@ -734,7 +736,7 @@ function installHelpers() {
         return { inside: r.top >= -0.5 && r.bottom <= vh + 0.5 && r.left >= -0.5 && r.right <= vw + 0.5, scroll: el.scrollHeight > el.clientHeight + 1, btns, clipped, minFont: Math.min(...texts.map((e) => parseFloat(getComputedStyle(e).fontSize))), text: el.textContent.replace(/\s+/g, ' ').slice(0, 400) };
       });
       if (OUT) await p.screenshot({ path: `${OUT}/c3b-${dev.name}-${mid}-briefing.png` });
-      check(`E ${dev.name}: ${mid} briefing fits (no scroll / clipping), DEPLOY / BACK >= 44 CSS px, objectives listed`, L && L.inside && !L.scroll && L.clipped === 0 && L.btns.length === 2 && L.btns.every((b) => b.inside && b.aligned && b.h >= 43.5) && L.minFont >= 11 && /Extract|Escort it to extraction/.test(L.text), JSON.stringify(L && { ...L, text: L.text.slice(0, 80) }));
+      check(`E ${dev.name}: ${mid} Ready to Deploy check fits (no scroll / clipping), DEPLOY / BACK >= 44 CSS px; objectives listed in Mission Details`, L && L.inside && !L.scroll && L.clipped === 0 && L.btns.length === 2 && L.btns.every((b) => b.inside && b.aligned && b.h >= 43.5) && L.minFont >= 11 && /READY TO DEPLOY/.test(L.text) && /Extract|Escort it to extraction/.test(detail), JSON.stringify(L && { ...L, text: L.text.slice(0, 80), detail: detail.slice(0, 80) }));
       await p.tap('[data-a="brief-back"]'); await p.waitForTimeout(80);
     }
     // six portraits in Mission 13
