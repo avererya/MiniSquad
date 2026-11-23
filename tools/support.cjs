@@ -494,7 +494,12 @@ function installHelpers() {
     return ev(() => {
       const P = window.__progression, CS = window.__casualties, EL = window.__elite, out = {};
       const cp = window.__campaign;
+      // v0.9D.2 (on purpose, tools/v09d2.cjs): Victory credits gain 25 per mission after Mission 1; compared with that step at 0
+      const step = P.PROGRESSION.credits.perMission;
+      if (step !== undefined) P.PROGRESSION.credits.perMission = 0;
+      out.step = step ?? null;
       out.rewards = cp.CAMPAIGN.filter((m) => m.playable && m.number <= 10).map((m) => [true, false].map((fc) => JSON.stringify(P.computeMissionRewards({ missionId: m.id, runId: 'x', won: true, deployed: [{ id: 'a', status: 'Standing', downs: 0 }, { id: 'b', status: 'Downed', downs: 1 }], optional: { total: 2, completed: 1 } }, fc))).join('|')).join('#');
+      if (step !== undefined) P.PROGRESSION.credits.perMission = step;
       out.xp = Array.from({ length: 25 }, (_, i) => P.xpForLevel(i + 1)).join() + '/' + Array.from({ length: 30 }, (_, i) => EL.eliteXpForLevel(i + 1)).join();
       out.kia = ['infantry', 'heavy', 'medic', 'sniper'].flatMap((c) => [1, 10, 25].map((l) => { try { return CS.costFor({ classId: c, progression: { level: l, tier: 'recruit', eliteLevel: 0 }, resurrections: 0 }); } catch (e) { return 'n/a'; } })).join();
       window.__debugUnlockAll();
@@ -508,7 +513,7 @@ function installHelpers() {
   };
   if (BASE) {
     const a = await sig(URL), b = await sig(BASE);
-    check('E4 [37] mission rewards (XP + Credits, first clear / replay, M1-M10) identical to v0.7B.1', a.rewards === b.rewards, a.rewards.slice(0, 120));
+    check('E4 [37] mission rewards (XP + Credits, first clear / replay, M1-M10) identical to v0.7B.1, except the v0.9D.2 Victory step (+25 per mission)', a.step === 25 && a.rewards === b.rewards, a.rewards.slice(0, 120));
     check('E5 [37][39] XP curves (Recruit 1-25, Elite 1-30) identical to v0.7B.1', a.xp === b.xp, a.xp.slice(0, 80));
     check('E6 [38] resurrection prices identical to v0.7B.1', a.kia === b.kia, a.kia);
     check('E7 [39] trained / Elite effective stats and individual training tables identical to v0.7B.1 (squad tables: v0.7D)', a.train === b.train && a.training === b.training, a.train.slice(0, 100));

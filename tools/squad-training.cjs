@@ -149,9 +149,16 @@ function installHelpers() {
   const rewards = await both(() => {
     const P = window.__progression;
     const o = (won, first) => P.computeMissionRewards({ missionId: 'red-canyon', runId: 'r1', won, deployed: [{ id: 'ace', status: 'Standing', downs: 0 }, { id: 'tank', status: 'Downed', downs: 1 }], optional: { total: 1, completed: 1 }, stars: 3 }, first);
-    return JSON.stringify({ credits: P.PROGRESSION.credits, first: o(true, true), replay: o(true, false), lost: o(false, false) });
+    // v0.9D.2 (on purpose, tools/v09d2.cjs): Victory credits gain 25 per mission after Mission 1; compared with that step at 0
+    const step = P.PROGRESSION.credits.perMission;
+    if (step !== undefined) P.PROGRESSION.credits.perMission = 0;
+    const credits = { ...P.PROGRESSION.credits }; delete credits.perMission;
+    const out = JSON.stringify({ credits, first: o(true, true), replay: o(true, false), lost: o(false, false) });
+    if (step !== undefined) P.PROGRESSION.credits.perMission = step;
+    return out;
   });
-  check('B7 [14] mission Credit rewards unchanged (table + a first clear / replay / defeat settlement) vs v0.7C', !BASE || rewards.now === rewards.base, BASE ? (rewards.now === rewards.base ? 'identical' : 'DIFFERS') : 'no BASE: skipped');
+  const step = await page.evaluate(() => [window.__progression.PROGRESSION.credits.perMission, window.__progression.victoryCredits('red-canyon', true), window.__progression.victoryCredits('red-canyon', false)].join());
+  check('B7 [14] mission Credit rewards unchanged (table + a first clear / replay / defeat settlement) vs v0.7C, except the v0.9D.2 Victory step (Mission 4: 575 / 475)', step === '25,575,475' && (!BASE || rewards.now === rewards.base), BASE ? (rewards.now === rewards.base ? 'identical' : 'DIFFERS') : 'no BASE: skipped');
 
   // ================= C. STATS [15-23] =================
   await fresh();

@@ -40,8 +40,12 @@ export const PROGRESSION = {
   levels: { cap: 25, base: 150, step: 25 },
   /** Automatic growth per level GAINED (L1 = +0), as a fraction of the class base stat. */
   growth: { hp: 0.01, damage: 0.0075, fireRate: 0.005 },
-  /** Credits: once per mission, account-wide. Replays pay replayVictory instead of victory. */
-  credits: { victory: 500, replayVictory: 400, perOptionalObjective: 150, fullExtraction: 150, flawless: 100, firstClear: 250 },
+  /**
+   * Credits: once per mission, account-wide. Replays pay replayVictory instead of victory.
+   * v0.9D.2: both Victory lines grow by `perMission` for each mission after Mission 1 (victoryCredits below:
+   * first clear 500 + 25 (n - 1), replay 400 + 25 (n - 1); Mission 1 unchanged). Bonus lines are flat.
+   */
+  credits: { victory: 500, replayVictory: 400, perMission: 25, perOptionalObjective: 150, fullExtraction: 150, flawless: 100, firstClear: 250 },
   /** Minimum standing cone (degrees, full cone) that upgrades can reach. */
   spreadFloorDeg: 1,
   /**
@@ -72,6 +76,15 @@ export function missionXp(missionNumber: number): number {
 /** Victory XP for a mission id: its campaign number's curve value (unknown ids = Mission 1). */
 export function victoryXp(missionId: string): number {
   return PROGRESSION.xp.victory ?? missionXp(campaignMission(missionId)?.number ?? 1);
+}
+
+/**
+ * v0.9D.2 Victory credits for a mission id: the first-clear or replay base plus `perMission` for every mission after
+ * Mission 1 (by campaign number; unknown ids = Mission 1). Applied once, to the Victory line only.
+ */
+export function victoryCredits(missionId: string, firstClear: boolean): number {
+  const C = PROGRESSION.credits, n = Math.max(1, Math.floor(campaignMission(missionId)?.number ?? 1));
+  return (firstClear ? C.victory : C.replayVictory) + C.perMission * (n - 1);
 }
 
 // ---------------- levels ----------------
@@ -526,7 +539,7 @@ export function computeMissionRewards(o: MissionOutcome, firstClear: boolean, fi
   if (flawless) xpLines.push({ label: 'Nobody downed', amount: X.flawless });
   const xpMul = firstClear ? 1 : X.replayMul;
   const xpEach = Math.floor(xpLines.reduce((a, l) => a + l.amount, 0) * xpMul + 0.5);
-  const creditLines: RewardLine[] = [{ label: firstClear ? 'Victory' : 'Victory (replay)', amount: firstClear ? C.victory : C.replayVictory }];
+  const creditLines: RewardLine[] = [{ label: firstClear ? 'Victory' : 'Victory (replay)', amount: victoryCredits(o.missionId, firstClear) }];
   if (o.optional.total > 0) creditLines.push({ label: `Optional objectives ${opt}/${o.optional.total}`, amount: C.perOptionalObjective * opt });
   if (fullPaid) creditLines.push({ label: 'Whole squad extracted', amount: C.fullExtraction });
   if (flawless) creditLines.push({ label: 'Nobody downed', amount: C.flawless });
