@@ -15,7 +15,7 @@ MiniSquad began as **Combat Prototype v0.1**, a disposable web feel prototype bu
 
 ## Status
 
-Current release: **v0.9D.1 Squad Flow & Mission UX** (package `0.9.6`, save v9: simpler mission selection, a Ready to Deploy? check, a collapsible objectives HUD, a role-based march formation, the Warlord answering fire he can't return, one compact mortar warning), on v0.9D Chapter 4 finale: The Warlord, v0.9C Chapter 4: Prison Break, v0.9B.2 Ambush Alley: Rooftop Threats & Extraction Assault, v0.9B.1 Combat Pacing & Extraction Pressure, v0.9B Chapter 4: Missions 17-18 and v0.9A Chapter 4: Jungle Sweep. Missions 1-20 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines, Mission 17 adds exploding fuel tanks, Mission 18 an urban ambush, Mission 19 a jungle prison break (three rescued specialists fight beside the squad, then a 60-strong last stand) and Mission 20 the Chapter 4 finale: the Warlord's jungle headquarters, a three-phase boss with telegraphed mortar strikes, a scripted helicopter ambush and a retreat to a second extraction. Mission 7 is now called "Operation Breakout". Chapter 2 is now called "Hostile Territory". The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+Current release: **v0.9D.2 Mission Credit Scaling** (package `0.9.7`, save v9: Victory Credits 500 / 400 + 25 per mission after Mission 1, everything else unchanged), on **v0.9D.1 Squad Flow & Mission UX** (package `0.9.6`, save v9: simpler mission selection, a Ready to Deploy? check, a collapsible objectives HUD, a role-based march formation, the Warlord answering fire he can't return, one compact mortar warning), on v0.9D Chapter 4 finale: The Warlord, v0.9C Chapter 4: Prison Break, v0.9B.2 Ambush Alley: Rooftop Threats & Extraction Assault, v0.9B.1 Combat Pacing & Extraction Pressure, v0.9B Chapter 4: Missions 17-18 and v0.9A Chapter 4: Jungle Sweep. Missions 1-20 are playable across four chapters; Mission 15 closes Chapter 3 and unlocks the Demolitions Expert class, Mission 16 opens Chapter 4 "Behind Enemy Lines" with land mines, Mission 17 adds exploding fuel tanks, Mission 18 an urban ambush, Mission 19 a jungle prison break (three rescued specialists fight beside the squad, then a 60-strong last stand) and Mission 20 the Chapter 4 finale: the Warlord's jungle headquarters, a three-phase boss with telegraphed mortar strikes, a scripted helicopter ambush and a retreat to a second extraction. Mission 7 is now called "Operation Breakout". Chapter 2 is now called "Hostile Territory". The release label lives in `package.json` (`versionLabel`) and the Settings panel shows it with the commit hash. What each release added is in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Run it
 
@@ -61,6 +61,7 @@ The sections below are the player-facing rules and numbers, grouped by system. H
 - [Elite Promotions](#elite-promotions-v07a) · [Elite Progression](#elite-progression-v07b) · [Tactical Support](#tactical-support-v07c)
 - [Chapter 2](#chapter-2-hostile-territory-v062) · [Chapter 3A](#chapter-3a-the-resistance-begins-v08a) · [Chapter 3B](#chapter-3b-hold-the-line--supply-line-sabotage-v08b) · [Difficulty, Extended Escort & Ability Capacity](#difficulty-extended-escort--ability-capacity-v08b1)
 - [Chapter 4: Jungle Sweep and land mines](#chapter-4-jungle-sweep-v09a) · [Missions 17-18: fuel tanks and urban ambushes](#chapter-4-missions-17-18-v09b) · [v0.9B.1 combat pacing, rooftop snipers, extraction pressure](#combat-pacing--extraction-pressure-v09b1) · [v0.9B.2 Mission 18 rooftop threats and extraction assault](#ambush-alley-rooftop-threats--extraction-assault-v09b2)
+- [Mission Credit Scaling (v0.9D.2)](#mission-credit-scaling-v09d2)
 - [Performance](#performance-v063)
 
 ## Campaign
@@ -467,7 +468,7 @@ Chapter 4 **Behind Enemy Lines** opens with Mission 16; Missions 17-20 are not p
 3. **Eliminate the defenders at the fortified checkpoint** (live count): the front guard, two watchtowers, the inner garrison (holds its sandbagged compound) and a reserve behind the back wall with a long reaction range (650 px). OVERWATCH: the west road is mined, the south path is clean. The south (and the north) approach reach the compound without crossing a mine.
 4. **Reach helicopter extraction** in the north-east clearing (15 s countdown, standard extraction pressure since v0.9B.1; was 12 s, moderate).
 
-Optional (+25 XP / +150 CR): **Take out 3 enemies with mine blasts** (shoot a mine as a patrol walks past it, or let them walk into one). ★★ all optionals, ★★★ no KIA. Rewards follow the usual rules (Mission 16 XP by mission number, flat Credits, 75% XP on replays, no second first-clear bonus); a mine kill gives no soldier kill credit or Credits of its own.
+Optional (+25 XP / +150 CR): **Take out 3 enemies with mine blasts** (shoot a mine as a patrol walks past it, or let them walk into one). ★★ all optionals, ★★★ no KIA. Rewards follow the usual rules (Mission 16 XP by mission number, Credits by mission number since v0.9D.2, 75% XP on replays, no second first-clear bonus); a mine kill gives no soldier kill credit or Credits of its own.
 
 **Land mines** (`CFG.mine`; a reusable mission mechanic, `MineField`):
 - **Hidden** until a standing soldier comes within **130 px**: then a mine plate, a pulsing red trigger ring, a dashed **65 px blast ring** and a warning triangle mark it ("MINE!"). It stays marked until it goes off. Mines are never all shown at the start, and there is none near the landing zone.
@@ -508,6 +509,24 @@ Optional (+25 XP / +150 CR): **Take out 5 enemies with fuel explosions** (a tank
 Optional (+25 XP / +150 CR): **Recover 2 supply caches** of the three hidden off the main route (an outskirts backyard, a courtyard off North Avenue, a dead-end alley off Main Street). Walk up to a cache to open it: it drops existing pickups (medkits, Rapid Fire). No new currency or inventory; nothing is saved. ★★ all optionals, ★★★ no KIA.
 
 Fairness rules for ambushes: every ambush has a radio line or banner before its enemies appear, ground ambushes appear off screen at a minimum distance from every soldier (420-600 px), rooftop snipers give the long first telegraph, and every encounter is finite. Rewards follow the usual rules (XP by mission number, flat Credits, 75% XP on replays, no second first-clear bonus).
+
+## Mission Credit Scaling (v0.9D.2)
+
+Victory Credits now grow with the mission number. Nothing else in the economy changed; save v9 unchanged (no new field).
+
+- **First clear**: Victory `500 + 25 × (n − 1)` CR, plus the one-time **+250** first-time completion bonus (paid once per mission, never on a replay).
+- **Replay**: Victory `400 + 25 × (n − 1)` CR.
+- Bonus lines are flat and unchanged: **+150** per optional objective, **+150** whole squad extracted (Missions 3, 6 and 10: their optional replaces it), **+100** nobody downed. A failed mission pays **0**.
+
+| Mission | First clear before bonuses | Replay Victory |
+|---|---:|---:|
+| 1 | 750 (unchanged) | 400 (unchanged) |
+| 5 | 850 | 500 |
+| 10 | 975 | 625 |
+| 15 | 1,100 | 750 |
+| 20 | 1,225 | 875 |
+
+`PROGRESSION.credits.perMission` (25) and `victoryCredits` in `src/progression.ts`; the Results breakdown shows the scaled Victory line. XP, training, recruitment, resurrection and Elite prices are unchanged. Mission 1 remains the most Credit-efficient replay per minute; later missions now pay meaningfully more (the audit is in `minisquad-reports/progression-audit-report.md`).
 
 ## Squad Flow & Mission UX (v0.9D.1)
 

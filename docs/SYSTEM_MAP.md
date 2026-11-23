@@ -59,9 +59,9 @@ Player Sniper damage: `CFG.sniper` (`damage`, `fireRate`, `aimTime`…). Enemy S
 
 | | |
 |---|---|
-| Main | `src/progression.ts` (XP curve, `missionXp`, `TRAINING`, `SQUAD_BONUS` / `SQUAD_TRAINING`, `rankBonus`, `softFloor`), `src/elite.ts` (`ELITE_SPECS`, `ELITE_PROGRESSION`, passives, `promotionReady`) |
+| Main | `src/progression.ts` (XP curve, `missionXp`, mission rewards `computeMissionRewards` / `victoryCredits` (v0.9D.2 Credits by mission number, `PROGRESSION.credits.perMission`), `TRAINING`, `SQUAD_BONUS` / `SQUAD_TRAINING`, `rankBonus`, `softFloor`), `src/elite.ts` (`ELITE_SPECS`, `ELITE_PROGRESSION`, passives, `promotionReady`) |
 | Supporting | `src/economy.ts` (`buyTraining`, `buySquadTraining`, `promote`, Elite XP in `settleMission`), `src/classes.ts` (`ProgressionRecord`, `effectiveStats` pipeline), `CFG.elite`, `src/menus.ts` (Training / Squad Training tabs, promotion, ceremony), `src/render.ts` (Elite looks) |
-| Tests | `progression`, `progression-balance` (report), `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` |
+| Tests | `progression`, `progression-balance` (report), `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression`, `v09d2` (Credit scaling: formula, bonus lines, first-time bonus once, failures 0, XP / prices unchanged, a real Mission 20 end, fixtures) |
 | Watch | No rank may become weaker than in an earlier release; prices and Squad Training tables are locked. Elite 1 equals Recruit 25. Promotion ledger `account.promotions` is the source of truth. |
 
 ## Permanent death and resurrection
@@ -257,10 +257,10 @@ Chapter 4–5 feature → where it plugs in: **land mines** done in v0.9A (`src/
 | `combat` | `logic`, `accuracy`, `elite`, `support`, `v082`, `v08c`, `arch`, `v09a`, `v09b` | weapons, damage, classes, Tactical Support, Demolitions |
 | `movement` | `logic`, `v081-collision`, `mobile`, `v09d1` | squad movement, collisions, joystick |
 | `recruitment` | `recruitment`, `recruit-mobile`, `failure-recruit`, `failure-recruit-mobile`, `barracks`, `v08c` | Recruitment Office, roster |
-| `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression` | XP, training, Elite |
+| `progression` | `progression`, `training-rebalance`, `squad-training`, `accuracy`, `elite`, `elite-progression`, `v09d2` | XP, training, Elite |
 | `permadeath` | `permadeath`, `permadeath-mobile`, `failure-recruit` | KIA, resurrection, failed missions |
 | `missions` | `maps`, `campaign-rules`, `chapter2`, `chapter3a`, `chapter3b`, `v081`, `v081-collision`, `v081-e2e`, `v082`, `v08c`, `story`, `arch`, `v09a`, `v09b`, `v09b1`, `v09b2`, `v09c`, `v09d`, `v09d1` | missions, campaign, escort, defense, mechanic hooks, mines, fuel tanks, ambushes, prison break, the Warlord |
-| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c`, `v09a`, `v09b`, `v09c`, `v09d` | saves, fixtures, economy |
+| `persistence` | `barracks`, `progression`, `permadeath`, `recruitment`, `failure-recruit`, `elite`, `elite-progression`, `support`, `v081-e2e`, `v082`, `v08c`, `v09a`, `v09b`, `v09c`, `v09d`, `v09d2` | saves, fixtures, economy |
 | `ui` | `mobile`, `chapter2-mobile`, `permadeath-mobile`, `failure-recruit-mobile`, `recruit-mobile`, `story`, `v09d1` | HUD, menus, phone layouts |
 | `fps` | `fps-default`, `fps-parity` | frame cap, 30 / 60 FPS parity |
 | `all` | every rule suite (38) | full regression before a release |

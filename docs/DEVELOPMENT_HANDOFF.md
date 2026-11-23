@@ -1,6 +1,6 @@
 # MiniSquad development handoff (current state)
 
-> **Snapshot as of v0.9D.1 Squad Flow & Mission UX (on v0.9D `53d2762`), written 2026-11-23.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
+> **Snapshot as of v0.9D.2 Mission Credit Scaling (on v0.9D.1 `8c85256`), written 2026-11-23.** Before relying on it, check `git log --oneline -5 origin/main` and `package.json`. If `main` has moved on, the newer commits and their reports win; update this file at the end of your milestone.
 
 Replace this file's sections in place when a milestone ships; do not append release logs. Release history goes in [CHANGELOG.md](CHANGELOG.md), the previous append-only handoff is in [archive/DEVELOPMENT_HANDOFF_HISTORY.md](archive/DEVELOPMENT_HANDOFF_HISTORY.md).
 
@@ -10,9 +10,9 @@ Related: [CLAUDE.md](../CLAUDE.md) (how to work) · [ARCHITECTURE.md](ARCHITECTU
 
 | | |
 |---|---|
-| Release | v0.9D.1 Squad Flow & Mission UX (simplified mission selection with a Mission Details expander, a Ready to Deploy? check, a collapsible objectives HUD, a role-based movement-relative march formation, the Warlord's phase-1 answer to fire he can't return, one compact mortar warning; on v0.9D Chapter 4 finale: The Warlord (Mission 20: the Warlord's jungle headquarters, three approaches, two installations, a three-phase boss with telegraphed mortars, a scripted helicopter ambush at Extraction Alpha, a retreat to Extraction Bravo; Chapter 4 epilogue + Chapter 5 teaser; on v0.9C Chapter 4: Prison Break)) |
-| `package.json` | `version` 0.9.6, `versionLabel` "0.9D.1" |
-| Commit | the v0.9D.1 commit on `main` (see `git log`; v0.9D was `53d2762`, v0.9C `82e10ca`, v0.9B.2 `4199686`, v0.9B.1 `f4cf5e0`, v0.9B `2d09342`, v0.9A `550fcb8`) |
+| Release | v0.9D.2 Mission Credit Scaling (Victory Credits 500 first clear / 400 replay + 25 per mission after Mission 1; nothing else in the economy changed) on v0.9D.1 Squad Flow & Mission UX (simplified mission selection with a Mission Details expander, a Ready to Deploy? check, a collapsible objectives HUD, a role-based movement-relative march formation, the Warlord's phase-1 answer to fire he can't return, one compact mortar warning; on v0.9D Chapter 4 finale: The Warlord (Mission 20: the Warlord's jungle headquarters, three approaches, two installations, a three-phase boss with telegraphed mortars, a scripted helicopter ambush at Extraction Alpha, a retreat to Extraction Bravo; Chapter 4 epilogue + Chapter 5 teaser; on v0.9C Chapter 4: Prison Break)) |
+| `package.json` | `version` 0.9.7, `versionLabel` "0.9D.2" |
+| Commit | the v0.9D.2 commit on `main` (see `git log`; v0.9D.1 was `8c85256`, v0.9D `53d2762`, v0.9C `82e10ca`, v0.9B.2 `4199686`, v0.9B.1 `f4cf5e0`, v0.9B `2d09342`, v0.9A `550fcb8`) |
 | Save | v9 (`SAVE_VERSION` in `src/save.ts`), key `minisquad.save` |
 | Deploy | push to `main` → Cloudflare Workers serves `./dist` (`wrangler.jsonc`); production https://minisquad.ryanaverett1996.workers.dev (check Settings for the label and commit) |
 
@@ -39,7 +39,7 @@ Squad caps: M1–2 → 2, M3–5 → 3, M6 → 4, M7–12 → 5, M13+ → 6. Ros
 - Fortress mechanics (v0.8C): lockdown gates that open when an objective falls (`MissionScript.lockdown`, `Mission.openGate`), live-count group objectives, generator / relay objectives.
 - Recruitment Office (three offers, refresh, rename, dismiss), named campaign recruits, class unlocks.
 - Permanent death: KIA, resurrection prices, Memorial, Operation Phoenix, interrupted-mission recovery.
-- Progression: Recruit Levels 1–25, individual training (10 ranks), Squad Training (10 ranks), accuracy soft floor, mission XP by mission number.
+- Progression: Recruit Levels 1–25, individual training (10 ranks), Squad Training (10 ranks), accuracy soft floor, mission XP by mission number; since v0.9D.2 Victory Credits by mission number too (first clear `500 + 25 (n − 1)`, replay `400 + 25 (n − 1)`, `victoryCredits`; bonus lines flat).
 - Elite: promotion at Recruit 25 for 3,000 CR, 10 specializations with passives, Elite Levels 1–30.
 - Ability Capacity: 1 / 2 / 3 uses per mission per soldier (0 / 1,500 / 3,000 CR); revives unlimited.
 - Tactical Support: free airstrike with 3 deployed Elites, Nuclear Strike (3,000 CR, stock) with 6.
@@ -90,6 +90,10 @@ Condensed from the 30 invariants in the [archived handoff](archive/DEVELOPMENT_H
 - Settlement happens once per run id; a failed mission makes downed soldiers KIA; quitting mid-mission brings downed soldiers home (known, accepted).
 
 ## Test status
+
+**v0.9D.2 run (2026-11-23):** tsc and build clean, `git diff --check` clean. `npm test -- v09d2 progression persistence logic fps-parity` (21 suites, 39 min) plus `v09d1`: all green except `training-rebalance` E5 and `squad-training` F1, the known failures below, reproduced on the unchanged v0.9D build (`--url` of `53d2762`, with that commit's own tools) and unrelated to Credits. `v09d2` 29 checks, `progression` 115, `support` 81, `fps-parity` 85, `v09d1` 57. Only `src/progression.ts` changed in the game (reward settlement, no simulation code), so `missions` / `ui` were not rerun beyond `v09d1`.
+
+**v0.9D.2 test changes (behaviour changed on purpose, assertions kept):** four reward checks compared Credits with older builds and now accept exactly the Victory step: `training-rebalance` D9 (BASE + 25 × (n − 1) per case, `PROGRESSION.credits` equal but for `perMission: 25`), `squad-training` B7 and `support` E4 (compared with `perMission` set to 0, plus the step itself), `progression` (Mission 3 first clear with a KIA 800, Results `Victory +550`, replay +700); `v09d1` G1 accepts a later release than 0.9.6 / 0.9D.1 (as `v09d` L1 does). New `v09d2` suite (29 checks, no BASE).
 
 **v0.9D.1 run (2026-11-23):** tsc and build clean, `git diff --check` clean. `npm test -- all` (38 suites incl. the new `v09d1`, 40 min): 32 passed on the first pass. Fixed after it: `chapter2` "captive-centred formation" (2 soldiers inside the ring 0.39, 3 of 3 reruns: a real regression, the march catch-up applied while the escort ring held; the formation is now fully off while a captive walks with the squad, 3 of 3 pass), `accuracy` D2 (the collapsed objectives box reached the mute button's 44 px touch area on iPhone SE in Mission 19; `#objdock` 440 → 410 px), `chapter3b` E (expectation change below), `support` D15 (expectation change below). **Pre-existing, confirmed on the v0.9D build (`--url` of `53d2762`):** `training-rebalance` E5 and `squad-training` F1 (their config snapshots include the v0.9C / v0.9D groups (`mortar` matches F1's enemy regex); they fail identically on v0.9D, not touched here). `support` D12 (nuke hit count one below the active count, an enemy killed by the squad in the last second of the countdown) failed once in 7 runs, not reproduced. Reruns after the fixes: `chapter2` 3/3, `support` 3/3 (+3 more earlier with only D15), `accuracy` 3/3, `chapter3b` 3/3, `v09d1` 5/5 (57 checks), `logic`, `chapter3a`, `fps-parity` (85 checks, incl. Mission 20 boss / retreat and Mission 16's minefield) green.
 

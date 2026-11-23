@@ -77,13 +77,13 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       g.win();
       const xp1 = R.soldiers.map((s) => `${s.id}:${s.progression.xp}`).join(' ');
       check('equal XP for eligible survivors (M3 Victory 140); revived+extracted gets XP; KIA gets 0', revived && byId('ace').progression.xp === 140 && byId('tank').progression.xp === 140 && byId('doc').progression.xp === 0 && doc.state === 'kia', xp1);
-      check('first clear credits with a KIA: 750 (no bonuses)', A().credits === 750 && A().missions['field-medicine'].completions === 1 && A().missions['field-medicine'].firstClearRun === run1, `credits ${A().credits}`);
+      check('first clear credits with a KIA: 800 (Mission 3 Victory 550 since v0.9D.2 + 250, no bonuses)', A().credits === 800 && A().missions['field-medicine'].completions === 1 && A().missions['field-medicine'].firstClearRun === run1, `credits ${A().credits}`);
       const cr1 = A().credits;
       g.win(); g.ui.showEnd(); g.ui.showEnd(); // re-render / repeated end
       const again = E.settleMission(R, A(), { missionId: 'field-medicine', runId: run1, won: true, deployed: [{ id: 'ace', status: 'Standing', downs: 0 }], optional: { total: 0, completed: 0 } });
       check('no double award: win() again, Results re-render, same run id settled again', A().credits === cr1 && again === null && byId('ace').progression.xp === 140, `credits ${A().credits}, settle again -> ${again}`);
       const resultsText = document.getElementById('menu').textContent;
-      check('Results show XP per soldier, credit breakdown and total', /\+140 XP/.test(resultsText) && /no XP/.test(resultsText) && /Victory\+500/.test(resultsText.replace(/\s+/g, '')) && /First-time completion/.test(resultsText) && /750/.test(resultsText), resultsText.replace(/\s+/g, ' ').slice(0, 160));
+      check('Results show XP per soldier, credit breakdown and total', /\+140 XP/.test(resultsText) && /no XP/.test(resultsText) && /Victory\+550/.test(resultsText.replace(/\s+/g, '')) && /First-time completion/.test(resultsText) && /800/.test(resultsText), resultsText.replace(/\s+/g, ' ').slice(0, 160));
       // v0.6: Doc's KIA is permanent: the mission-end transaction queued a decision, which blocks the
       // retry until it is resolved. Resurrect Doc (top-up first, so the Credit checks below are unchanged)
       const pend = A().pendingDecision && { queue: A().pendingDecision.queue.map((q) => ({ ...q })) };
@@ -93,7 +93,7 @@ const V022 = fs.readFileSync(path.join(__dirname, 'fixtures/v0.2.2-save.json'), 
       g.reset(); clearEnemies();
       const run2 = g.runId;
       g.win();
-      check('Retry = new run id; replay perfect: (140+25+25) x 0.75 = +143 XP each, +650 CR', run2 !== run1 && byId('ace').progression.xp === 283 && byId('doc').progression.xp === 143 && A().credits === cr1 + 650 && g.lastReward.firstClear === false, `ace ${byId('ace').progression.xp}, doc ${byId('doc').progression.xp}, credits ${A().credits}`);
+      check('Retry = new run id; replay perfect: (140+25+25) x 0.75 = +143 XP each, +700 CR (v0.9D.2: Mission 3 replay Victory 450)', run2 !== run1 && byId('ace').progression.xp === 283 && byId('doc').progression.xp === 143 && A().credits === cr1 + 700 && g.lastReward.firstClear === false, `ace ${byId('ace').progression.xp}, doc ${byId('doc').progression.xp}, credits ${A().credits}`);
       // OVERLAP RULE (Mission 3): the optional 'Extract every soldier' pays instead of the whole-squad line, same totals
       check('M3: optional (= whole squad extracted) + flawless listed, no double whole-squad line', g.lastReward.xpLines.map((l) => l.label).join() === 'Victory,Optional objectives 1/1,Nobody downed' && g.lastReward.creditLines.map((l) => l.label).join() === 'Victory (replay),Optional objectives 1/1,Nobody downed', g.lastReward.xpLines.map((l) => `${l.label} ${l.amount}`).join(', '));
       check('level-up from the award (Ace 140 -> 283 XP = LV 1 -> LV 2)', byId('ace').progression.level === 2 && g.lastReward.soldiers[0].before.level === 1 && g.lastReward.soldiers[0].after.level === 2, JSON.stringify(g.lastReward.soldiers[0]));

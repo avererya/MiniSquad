@@ -256,7 +256,11 @@ function installHelpers() {
       return { allCredits, credits: JSON.stringify(P.PROGRESSION.credits), recruit: Array.from({ length: 26 }, (_, l) => P.xpForLevel(l)), elite: Array.from({ length: 31 }, (_, l) => EL.eliteXpForLevel(l)), growth: JSON.stringify(P.PROGRESSION.growth), promo: EL.PROMOTION_COST ?? null };
     });
     const nx = await page.evaluate(() => { const P = window.__progression, EL = window.__elite; return { credits: JSON.stringify(P.PROGRESSION.credits), recruit: Array.from({ length: 26 }, (_, l) => P.xpForLevel(l)), elite: Array.from({ length: 31 }, (_, l) => EL.eliteXpForLevel(l)), growth: JSON.stringify(P.PROGRESSION.growth), promo: EL.PROMOTION_COST ?? null }; });
-    check('D9 Credit rewards identical to v0.7B for every mission x first / replay x outcome x optionals (54 x 2 cases)', JSON.stringify(xp.allCredits) === JSON.stringify(bx.allCredits) && nx.credits === bx.credits, `${xp.allCredits.length} cases`);
+    // v0.9D.2 (on purpose, tools/v09d2.cjs): every winning case pays exactly 25 x (n - 1) more on its Victory line; the
+    // cases run 18 per mission in campaign order (Missions 1-12), and PROGRESSION.credits only gains `perMission: 25`
+    const scaled = bx.allCredits.map((c, i) => c + 25 * Math.floor(i / 18));
+    const nc = JSON.parse(nx.credits), step = nc.perMission; delete nc.perMission;
+    check('D9 Credit rewards identical to v0.7B for every mission x first / replay x outcome x optionals (54 x 2 cases), except the v0.9D.2 Victory step (+25 per mission after Mission 1)', JSON.stringify(xp.allCredits) === JSON.stringify(scaled) && step === 25 && JSON.stringify(nc) === bx.credits, `${xp.allCredits.length} cases`);
     check('D10 Recruit (L25 = 10,500) and Elite (E30 = 35,670) thresholds, level growth and promotion cost identical to v0.7B', JSON.stringify(nx.recruit) === JSON.stringify(bx.recruit) && JSON.stringify(nx.elite) === JSON.stringify(bx.elite) && nx.growth === bx.growth && nx.promo === bx.promo && nx.recruit[25] === 10500 && nx.elite[30] === 35670, `L25 ${nx.recruit[25]}, E30 ${nx.elite[30]}, promo ${nx.promo}`);
   } else {
     const nx = await page.evaluate(() => ({ r: window.__progression.xpForLevel(25), e: window.__elite.eliteXpForLevel(30) }));
