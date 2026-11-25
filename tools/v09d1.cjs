@@ -484,7 +484,7 @@ runSuite(async () => {
   // ================= G. VERSION, SAVE, BASE =================
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const saveSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'save.ts'), 'utf8');
-  check('G1 package 0.9.6 / label 0.9D.1 or a later release (v0.9D.2: 0.9.7, checked by v09d2 / package.json); SAVE_VERSION 9 (nothing new is saved: the details / objectives states are per screen and per mission)', pkg.version >= '0.9.6' && /^0\.9D\.\d/.test(pkg.versionLabel) && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
+  check('G1 package 0.9.6 / label 0.9D.1 or a later release (v0.9D.2: 0.9.7, checked by v09d2 / package.json); SAVE_VERSION 9 (nothing new is saved: the details / objectives states are per screen and per mission)', pkg.version >= '0.9.6' && /^0\.9(D\.\d|E)/.test(pkg.versionLabel) && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
   if (BASE) {
     const pb = await openPage(browser, BASE, { seed: 4242 }), pn = await openPage(browser, URL, { seed: 4242 });
     const before = await pb.evaluate(missionSnapshot), nowS = await pn.evaluate(missionSnapshot);

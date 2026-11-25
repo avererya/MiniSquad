@@ -228,6 +228,7 @@ export class Tuning {
     r.appendChild(head);
     if (this.dev) this.buildDebug(r);
     this.buildPerf(r);
+    this.buildBootCamp(r);
     if (this.dev) this.buildDev(r);
 
     const ver = document.createElement('div');
@@ -332,6 +333,22 @@ export class Tuning {
     this.ovBox.addEventListener('change', () => { setPerfSettings({ overlay: this.ovBox.checked }); this.refreshPerf(); });
     this.refreshPerf();
     r.appendChild(pf);
+  }
+
+  /** v0.9E players: replay Boot Camp (Field Training + the headquarters tour) at any time outside a campaign mission. */
+  private buildBootCamp(r: HTMLElement) {
+    const sec = document.createElement('div');
+    sec.className = 'tune-sec';
+    sec.innerHTML = `<div class="tune-title">Boot Camp</div>
+      <div class="tune-btns"><button data-a="bootcamp" class="bc-replay">Replay Boot Camp</button></div>
+      <div class="dim tune-note" data-k="bcnote">The tutorial with Ace and Ranger. No rewards; your roster, Credits and campaign are never changed.</div>`;
+    const note = sec.querySelector<HTMLElement>('[data-k="bcnote"]')!;
+    sec.querySelector('button')!.addEventListener('click', () => {
+      const res = this.game.startBootCamp();
+      if (res.ok) { if (!this.root.classList.contains('hidden')) this.toggle(); }
+      else note.textContent = res.reason;
+    });
+    r.appendChild(sec);
   }
 
   /** Developer tuning: every CFG slider section and the JSON export / import / reset (`?dev=1` only). */

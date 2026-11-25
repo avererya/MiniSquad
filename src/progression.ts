@@ -385,7 +385,15 @@ export interface AccountData {
   promotions: PromotionRecord[];
   /** v0.7C: Support Shop inventory (Nuclear Strikes). Older saves: 0. */
   support: SupportInventory;
+  /**
+   * v0.9E Boot Camp offer (bootcamp.ts): 'pending' only on a save created by v0.9E+ until the player starts, skips or
+   * finishes it; 'done' / 'skipped' after. Missing (every older save) = never offered. Optional: save v9 unchanged.
+   */
+  bootCamp?: BootCampState;
 }
+/** v0.9E Boot Camp offer state (AccountData.bootCamp; bootcamp.ts). */
+export type BootCampState = 'pending' | 'done' | 'skipped';
+export const BOOT_CAMP_STATES: readonly BootCampState[] = ['pending', 'done', 'skipped'];
 export const newCampaign = (): CampaignProgress => ({ unlockedMissions: [FIRST_MISSION], selectedMission: FIRST_MISSION });
 export const newAccount = (): AccountData => ({
   credits: 0, squadTraining: newSquadTraining(), missions: {}, settledRuns: [], campaign: newCampaign(), recruitment: newRecruitment(),

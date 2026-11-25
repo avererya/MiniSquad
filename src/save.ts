@@ -92,7 +92,7 @@ import { RECRUIT_ID, campaignFlags, generateCandidate, generateName, isTraitVali
 import { newClassUnlocks, newNamedRecruits, newPhoenix, type NamedRecruitState, type ActiveRun, type CasualtyDecision, type FallenEntry, type KiaCause, type MemorialRecord, type PhoenixState } from './progression';
 import { PHOENIX_CANDIDATES, PHOENIX_LEVEL } from './casualties';
 import { ELITE_LEVEL_CAP, PROMOTION_LEVEL, eliteLevelForXp, eliteXpForLevel, isSpecFor } from './elite';
-import type { PromotionRecord } from './progression';
+import { BOOT_CAMP_STATES, type BootCampState, type PromotionRecord } from './progression';
 
 export const SAVE_KEY = 'minisquad.save';
 export const SAVE_BACKUP_KEY = 'minisquad.save.invalid';
@@ -396,6 +396,8 @@ function cleanAccount(v: unknown, notes: string[], legacy: boolean, expected: st
   }
   a.campaign = cleanCampaign(v.campaign, a.missions, notes, legacy, expected);
   a.support = cleanSupport(v.support, notes);
+  // v0.9E Boot Camp offer state: kept when valid, otherwise left out quietly (= never offered; Settings can replay it)
+  if (typeof v.bootCamp === 'string' && (BOOT_CAMP_STATES as readonly string[]).includes(v.bootCamp)) a.bootCamp = v.bootCamp as BootCampState;
   return a;
 }
 
@@ -529,7 +531,7 @@ export function writeSave(r: Roster, a: AccountData): WriteResult {
  */
 export function parseSave(raw: string | null): LoadResult {
   const notes: string[] = [];
-  if (raw === null) return { roster: new Roster(), account: newAccount(), notes, status: 'new', fromVersion: null };
+  if (raw === null) return { roster: new Roster(), account: { ...newAccount(), bootCamp: 'pending' }, notes, status: 'new', fromVersion: null }; // v0.9E a new player is offered Boot Camp
   let data: unknown;
   try { data = JSON.parse(raw); } catch { data = undefined; }
   if (!isObj(data) || !Array.isArray(data.roster)) {
@@ -807,7 +809,7 @@ export function resetSave(): { roster: Roster; account: AccountData } | null {
     } catch { return null; }
   }
   try { ls?.removeItem(SAVE_KEY); } catch { /* ignore */ }
-  const roster = new Roster(), account = newAccount();
+  const roster = new Roster(), account: AccountData = { ...newAccount(), bootCamp: 'pending' }; // v0.9E a new campaign is offered Boot Camp again
   writeSave(roster, account);
   return { roster, account };
 }

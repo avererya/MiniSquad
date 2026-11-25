@@ -16,6 +16,7 @@ import { adrenalineActive } from './elite';
 import { getAccount } from './progression';
 import { NUKE_ELITES } from './support';
 import { StoryView } from './storyview';
+import { BootCampView } from './bootcampview';
 
 /** v0.7C: the nuke LAUNCH button arms this long after the confirmation opens (a double tap on NUKE can't launch). */
 const NUKE_ARM_MS = 500;
@@ -103,6 +104,8 @@ export class Hud implements GameUI {
   private gsPick = -1;
   /** v0.8C.1 story cinematic + radio strip. */
   private story: StoryView;
+  /** v0.9E Boot Camp coach card + highlights (Field Training and the headquarters tour). */
+  private coach: BootCampView;
 
   constructor(private root: HTMLElement, tuningRoot: HTMLElement, menuRoot: HTMLElement, private game: Game) {
     root.innerHTML = `
@@ -200,6 +203,7 @@ export class Hud implements GameUI {
     tap(this.gsGo, () => { if (this.gsPick >= 0) game.chooseGunner(this.gsPick === 0 ? null : this.gsPick); });
     this.tuning = new Tuning(tuningRoot, game);
     this.menus = new Menus(menuRoot, game, () => this.toggleTuning());
+    this.coach = new BootCampView(root, game, this.menus);
   }
 
   toggleTuning() { this.tuning.toggle(); }
@@ -295,6 +299,7 @@ export class Hud implements GameUI {
     this.updateWarning();
     this.updateGunnerSelect();
     this.story.update();
+    this.coach.update();
 
     const compact = this.panels.length >= 4;
     const crit = CFG.revive.criticalTime;

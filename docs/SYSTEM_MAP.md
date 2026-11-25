@@ -211,13 +211,22 @@ Chapter 4–5 feature → where it plugs in: **land mines** done in v0.9A (`src/
 | Tests | `support`, `chapter3b` A (six-Elite support) |
 | Watch | Support never takes a boss below 10% or an objective below 1 HP; a launched nuke is spent and saved before the countdown. |
 
+## Boot Camp tutorial (v0.9E)
+
+| | |
+|---|---|
+| Main | `src/bootcamp.ts` (`BOOT`, `BOOT_CAMP_SCRIPT` / `BOOT_CAMP_DEF`, `AbilityDrillObjective`, `CasualtyBriefObjective`, `trainingSquad`, `fieldCoach`, `tourCoach` / `tourAdvance` (tour steps), `bootCampDue`, `closeBootCampOffer`, `bootCampOfferShown`), `src/bootcampview.ts` (`BootCampView`: coach card, ghost joystick, `.bc-hl` highlights, EXIT / DONE), `BOOT_CAMP_MAP` + zones at the end of `src/map.ts` |
+| Supporting | `src/game.ts` (`'training'` deployment kind, `startBootCamp` / `exitBootCamp` / `finishBootCampField`, 1 HP floor in `damage`; `settle` / `kia` / `abandonRunning` already ignore non-`roster` deployments), `src/mission.ts` (`MissionScript.def`), `src/menus.ts` (`bootCampOfferHtml`, `bc-start` / `bc-skip`, `offerOpen`), `src/tuning.ts` (`buildBootCamp`: Settings → Replay), `src/hud.ts` (owns the view), `src/progression.ts` (`AccountData.bootCamp`, `BootCampState`), `src/save.ts` (`cleanAccount`, new / reset saves start `'pending'`), `src/style.css` (`#bc-coach`, `#bc-tour`, `.bc-hl`) |
+| Tests | `bootcamp` (offer, every step, tour, economy / casualty isolation, replay / exit, reload, phones, fixtures) |
+| Watch | Only a save created by v0.9E+ is `'pending'`; a missing field = never offered. Headless browsers (`navigator.webdriver`) see no offer without `?bootcamp` so older suites that start from a fresh save are unchanged. A training run never settles, journals a KIA or writes the save; nothing in it may use `Game.soldiers` identities of the roster. |
+
 ## Save / load and fixtures
 
 | | |
 |---|---|
 | Main | `src/save.ts` (`SAVE_VERSION` 9, `parseSave`, `mergeSoldier`, `clean*`, backup keys, `resetSave`) |
 | Supporting | `src/progression.ts` (`AccountData` and sub-types), `src/classes.ts` (`SoldierIdentity`, `ProgressionRecord`), `src/main.ts` (migration notices), `tools/fixtures/*.json` (real saves v0.2.2 → v0.7C), `tools/fixtures-v08b/v0.8B-m12-cleared.json` |
-| Tests | `barracks` (invalid save recovery), `progression` (v2 migration), `permadeath` (v5), `failure-recruit` (v6), `chapter2` (v7), `elite` (v8), `elite-progression` (v9), `support`, `squad-training`, `chapter3a`, `chapter3b`, `v081`, `v081-e2e` |
+| Tests | `bootcamp` (optional `account.bootCamp`), `barracks` (invalid save recovery), `progression` (v2 migration), `permadeath` (v5), `failure-recruit` (v6), `chapter2` (v7), `elite` (v8), `elite-progression` (v9), `support`, `squad-training`, `chapter3a`, `chapter3b`, `v081`, `v081-e2e` |
 | Watch | Prefer optional fields over a version bump; every fixture must load unchanged; store stable ids; paid items need a ledger and a repair rule. |
 
 ## HUD and mobile UI

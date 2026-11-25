@@ -156,6 +156,8 @@ export interface ExtractionSpec {
 }
 export interface MissionScript {
   id: string;
+  /** v0.9E a script outside the campaign (Boot Camp) carries its own row; campaign missions use CAMPAIGN (campaignMission). */
+  def?: CampaignMission;
   map: MapDef;
   groups: () => GroupSpec[];
   triggers: TriggerSpec[];
@@ -329,7 +331,7 @@ export class Mission {
 
   constructor(readonly script: MissionScript) {
     this.id = script.id;
-    this.def = campaignMission(script.id)!;
+    this.def = script.def ?? campaignMission(script.id)!;
     this.name = this.def.name;
     this.primaries = script.primaries();
     this.optionals = script.optionals();

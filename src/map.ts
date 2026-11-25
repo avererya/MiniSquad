@@ -1210,3 +1210,26 @@ export const HQ_MAP: MapDef = {
 /** Locked: the command-area gate shut (Mission.lockdown worlds[0]). */
 export const HQ_LOCKED: MapDef = { ...HQ_MAP, id: 'warlord-hq-locked', obstacles: [...HQ_MAP.obstacles, HQ_CMD_GATE] };
 export const HQ_OPEN_SHAPES = HQ_OPEN;
+
+// =====================================================================================
+// v0.9E Boot Camp "Field Training": a small, open training ground (not a campaign map). West to east: the start
+// box, the movement marker, two drill targets behind a low wall, a sandbag pit for the grenade drill and the
+// helicopter landing zone. Short sight lines, generous cover, no pickups.
+// =====================================================================================
+export const BOOT_MOVE_ZONE: Rect = { x: 640, y: 420, w: 220, h: 200 };
+export const BOOT_DRILL: Vec[] = [{ x: 1290, y: 470 }, { x: 1320, y: 580 }];
+export const BOOT_PIT: Vec[] = [{ x: 1760, y: 470 }, { x: 1800, y: 520 }, { x: 1750, y: 560 }];
+export const BOOT_EXTRACTION: Rect = { x: 2020, y: 160, w: 240, h: 210 };
+export const BOOT_CAMP_MAP: MapDef = {
+  id: 'bootcamp', w: 2400, h: 1000, theme: 'grass',
+  obstacles: [
+    B(420, 120, 200, 140), B(460, 760, 220, 140),
+    C(980, 330), C(1016, 330), W(1180, 640, 150, 18), C(1000, 700),
+    S(1660, 420, 16, 180), S(1676, 420, 120, 16), S(1676, 604, 120, 16),
+    B(1480, 760, 200, 150), W(1900, 700, 18, 140), C(2200, 560), B(1320, 90, 160, 120),
+  ],
+  start: { x: 180, y: 520 }, startZone: { x: 50, y: 400, w: 250, h: 240 },
+  medkits: [],
+  rapidFire: [],
+  roads: [[{ x: 0, y: 520 }, { x: 760, y: 520 }, { x: 1400, y: 520 }, { x: 1950, y: 420 }, { x: 2140, y: 270 }]],
+};

@@ -447,7 +447,7 @@ runSuite(async () => {
   // ================= L. VERSION, SAVE, PHONES =================
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const saveSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'save.ts'), 'utf8');
-  check('L1 package 0.9.5 / label 0.9D or a later release (v0.9D.1: 0.9.6, checked by v09d1); SAVE_VERSION 9 (nothing new is saved)', pkg.version >= '0.9.5' && /^0\.9D/.test(pkg.versionLabel) && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
+  check('L1 package 0.9.5 / label 0.9D or a later release (v0.9D.1: 0.9.6, checked by v09d1); SAVE_VERSION 9 (nothing new is saved)', pkg.version >= '0.9.5' && /^0\.9[DE]/.test(pkg.versionLabel) && /SAVE_VERSION = 9;/.test(saveSrc), `${pkg.version} ${pkg.versionLabel}`);
   {
     const p2 = await openPage(browser, URL, { seed: 2020, viewport: { width: 667, height: 375 }, context: { deviceScaleFactor: 2, isMobile: true, hasTouch: true } });
     await p2.evaluate(helpers);

@@ -32,6 +32,7 @@ import { NAME_MAX, RECRUIT_CLASSES, RECRUIT_LOCK_MS, REFRESH_ARM_MS, REFRESH_COS
 import { CLASS_BRANCHES, ELITE_LEVEL_CAP, ELITE_PROGRESSION, ELITE_SPECS, PROMOTION_COST, PROMOTION_LEVEL, eliteBonusFrac, eliteProgress, eliteSpec, isElite, levelTag, promotionReady, specOf, type EliteSpecDef } from './elite';
 import { promote, promotionBlock, buySupport } from './economy';
 import { AIRSTRIKE_ELITES, SUPPORT_ITEMS, supportItem } from './support';
+import { bootCampDue, bootCampOfferShown, closeBootCampOffer } from './bootcamp';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const fmtTime = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -220,7 +221,7 @@ export class Menus {
           ${this.missionDetailHtml(m)}
         </div>
       </div>
-      ${this.resetOpen ? this.resetHtml() : this.briefOpen ? this.briefingHtml(m) : this.recruitNoticeHtml()}`;
+      ${this.resetOpen ? this.resetHtml() : this.briefOpen ? this.briefingHtml(m) : this.offerOpen() ? this.bootCampOfferHtml() : this.recruitNoticeHtml()}`;
     this.drawPortraits(); // the recruit notice's portrait
   }
 
@@ -316,6 +317,25 @@ export class Menus {
   }
 
   /** Player-facing "New Campaign" confirmation: says exactly what is wiped; Cancel / Confirm. */
+  /** v0.9E the Boot Camp offer is due (a brand-new save) and shown on the Campaign screen. */
+  offerOpen() { return bootCampDue(getAccount()) && bootCampOfferShown(); }
+  /** v0.9E new players: START BOOT CAMP or SKIP TUTORIAL (either answer closes the offer for good; Settings can replay it). */
+  private bootCampOfferHtml() {
+    return `
+      <div class="m-modal bc-offer-bg">
+        <div class="d-card x-card bc-offer" role="dialog" aria-label="Boot Camp: a short playable tutorial">
+          <div class="rn-kicker">★ WELCOME, COMMANDER ★</div>
+          <div class="x-title">BOOT CAMP</div>
+          <div class="rn-help">A short playable tutorial (about 3 minutes) with Ace and Ranger: move, fight, use abilities, extract, then a quick tour of headquarters. No rewards and no risk to your squad.</div>
+          <div class="d-btns">
+            <button class="m-big alt" data-a="bc-skip">SKIP TUTORIAL</button>
+            <button class="m-big" data-a="bc-start">START BOOT CAMP</button>
+          </div>
+          <div class="rn-help bc-note">You can replay Boot Camp any time from Settings ⚙.</div>
+        </div>
+      </div>`;
+  }
+
   private resetHtml() {
     const a = getAccount(), r = this.game.roster;
     return `
@@ -1544,6 +1564,9 @@ export class Menus {
         return;
       }
       case 'settings': this.openSettings(); return;
+      // ----- v0.9E Boot Camp offer -----
+      case 'bc-start': { e.stopPropagation(); const res = g.startBootCamp(); if (!res.ok) this.notice(res.reason); return; }
+      case 'bc-skip': e.stopPropagation(); if (closeBootCampOffer(getAccount(), 'skipped')) g.persist?.(); this.renderCampaign(); return;
       case 'deploy': this.openBriefing(); return;
       case 'brief-deploy': this.deploy(); return;
       case 'brief-edit': this.briefOpen = false; this.deployReturn = true; this.tab = 'roster'; this.detailsId = null; this.targetSlot = null; this.showBarracks(); return;
@@ -1699,6 +1722,7 @@ export class Menus {
       } else if (this.dismissId || this.renameId || this.promoteId || this.ceremonyId) { /* dialogs: buttons only (no Enter shortcut for a dismissal or a promotion) */ }
       else if (e.code === 'KeyC' && !this.detailsId) this.showCampaign();
     } else if (this.screen === 'campaign') {
+      if (this.offerOpen() && !this.resetOpen && !this.briefOpen) return; // v0.9E the Boot Camp offer: its two buttons only
       if (e.code === 'Enter' && !this.resetOpen) { e.preventDefault(); if (this.briefOpen) this.deploy(); else this.openBriefing(); }
       else if (this.resetOpen) { if (e.code === 'Escape') { this.resetOpen = false; this.renderCampaign(); } }
       else if (this.briefOpen) { if (e.code === 'Escape') { this.briefOpen = false; this.renderCampaign(); } }

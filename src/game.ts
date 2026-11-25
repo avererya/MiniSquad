@@ -30,6 +30,7 @@ import { Support, supportRoom } from './support';
 import { raiseAlert, type AlertLog } from './awareness';
 import { siegeAnswer } from './defense';
 import { StoryDirector } from './story';
+import { BOOT_CAMP_SCRIPT, BootCamp, closeBootCampOffer, trainingSquad } from './bootcamp';
 
 export type GamePhase = 'start' | 'playing' | 'failed' | 'won';
 
@@ -41,8 +42,10 @@ export interface Objective { text: string; sub?: string; progress?: number; chip
  *  - 'roster': saved Barracks soldiers (copies of their identities)
  *  - 'temp':   roster soldiers deployed by a dev shortcut (?squad=ace,doc); selection not saved
  *  - 'generic': anonymous class-only soldiers (dev presets, tools); never saved
+ *  - 'training': v0.9E Boot Camp Field Training: fresh copies of Ace and Ranger (bootcamp.ts trainingSquad) in the
+ *               Boot Camp script; never settled, journaled or saved, and nobody drops below 1 HP
  */
-export interface Deployment { kind: 'roster' | 'temp' | 'generic'; identities: SoldierIdentity[]; classes: SoldierClassId[] }
+export interface Deployment { kind: 'roster' | 'temp' | 'generic' | 'training'; identities: SoldierIdentity[]; classes: SoldierClassId[] }
 
 export interface GameUI {
   rebuildPanels(): void;
@@ -89,6 +92,8 @@ export class Game implements InputHandler {
   modal: 'gunner' | 'story' | null = null;
   /** v0.8C.1 story cinematics and radio lines (story.ts); a cinematic sets modal = 'story'. */
   story = new StoryDirector();
+  /** v0.9E Boot Camp: the headquarters tour in progress (Field Training is the 'training' deployment). */
+  bootCamp = new BootCamp();
   enemies: Unit[] = [];
   projectiles: Projectile[] = [];
   grenades: Grenade[] = [];
@@ -278,7 +283,7 @@ export class Game implements InputHandler {
 
   private startMission() {
     const dep = this.deployment;
-    const script = scriptFor(this.missionId)!;
+    const script = dep.kind === 'training' ? BOOT_CAMP_SCRIPT : scriptFor(this.missionId)!; // v0.9E Boot Camp never changes the selected mission
     this.mission = new Mission(script);
     this.world = Game.worldFor(script.map);
     this.phase = 'start';
@@ -287,6 +292,7 @@ export class Game implements InputHandler {
     this.lastReward = null; this.lastStars = null; this.escortRescues = 0; this.bossDamage = new Map();
     this.soldiers = []; this.npcs = []; this.allies = []; this.assets = []; this.enemies = []; this.projectiles = []; this.grenades = [];
     this.modal = null;
+    if (dep.kind !== 'training') { this.bootCamp.tour = null; this.bootCamp.finished = null; } // v0.9E a real deployment ends the tour
     this.story.reset(); // v0.8C.1: per-attempt cues live on the new Mission (Mission.cue)
     this.alertLog = { broadcasts: 0, received: 0 };
     this.scorches = []; this.fx = new Effects(); this.banners = [];
@@ -326,7 +332,42 @@ export class Game implements InputHandler {
       statuses: rows.map((r) => r.status), downs: rows.map((r) => r.downs),
     });
     this.settle();
+    if (this.deployment.kind === 'training') { this.bootCamp.finished = won; return; } // v0.9E no Results: the next step opens the tour
     this.ui.showEnd();
+  }
+
+  // ---------------- v0.9E Boot Camp (bootcamp.ts) ----------------
+  /**
+   * Start Field Training with fresh copies of the starting soldiers. The roster, the squad selection, the selected
+   * mission and the save are untouched; a running campaign mission or pending casualty decisions refuse it.
+   */
+  startBootCamp(): DeployResult {
+    const blocked = decisionBlock(getAccount());
+    if (blocked) return { ok: false, reason: blocked };
+    if (this.phase === 'playing' && this.deployment.kind === 'roster') return { ok: false, reason: 'Finish the current mission first.' };
+    this.bootCamp.tour = null; this.bootCamp.finished = null;
+    this.bootCamp.runs++;
+    const ids = trainingSquad();
+    this.deployment = { kind: 'training', identities: ids, classes: ids.map((i) => i.classId) };
+    this.startMission();
+    return { ok: true };
+  }
+  /** EXIT on the coach card (Field Training or the tour): back to the Campaign screen; the offer is closed ('skipped'). */
+  exitBootCamp() {
+    const field = this.deployment.kind === 'training';
+    this.bootCamp.tour = null; this.bootCamp.finished = null;
+    if (closeBootCampOffer(getAccount(), 'skipped')) this.persist?.();
+    if (field) { this.deployment = Game.generic(PRESETS[0].classes); this.toCampaign(); }
+  }
+  /** Field Training ended (the helicopter took off): close the offer and open the headquarters tour on the Campaign screen. */
+  private finishBootCampField(won: boolean) {
+    this.leaveMission();
+    this.deployment = Game.generic(PRESETS[0].classes);
+    if (won) {
+      if (closeBootCampOffer(getAccount(), 'done')) this.persist?.();
+      this.bootCamp.tour = 'roster';
+    }
+    if (decisionBlock(getAccount())) { this.bootCamp.tour = null; this.ui.showDecisions(); } else this.ui.showCampaign();
   }
 
   /**
@@ -516,6 +557,8 @@ export class Game implements InputHandler {
       if (this.invuln) return;
     }
     amount = modifyDamage(this, u, amount, source, opts);
+    // v0.9E Boot Camp: training soldiers never drop below 1 HP (nobody is downed or killed in the tutorial)
+    if (this.deployment.kind === 'training' && u.team === 'squad' && !u.asset) amount = Math.min(amount, Math.max(0, u.hp - 1));
     // v0.7A Adrenaline Rush / Ironclad (decided on the HP before this hit; capped, never immune)
     if (u.elite) { const k = incomingMul(u); if (k !== 1) { u.elite.effect += amount * (1 - k); u.elite.procs++; amount *= k; } }
     // v0.7C tactical support: a boss keeps 10% of its max HP, a mission objective 1 HP (the squad finishes them)
@@ -786,6 +829,7 @@ export class Game implements InputHandler {
 
   // ---------------- update ----------------
   update(dt: number) {
+    if (this.bootCamp.finished !== null) { const won = this.bootCamp.finished; this.bootCamp.finished = null; this.finishBootCampField(won); return; }
     nextStatEpoch();
     this.clock += dt;
     this.fx.update(dt);
